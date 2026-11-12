@@ -785,9 +785,10 @@ def run_complex_identification_example():
     model.add_component(controller)
 
     # Actuator sensors (one per actuator)
-    actuator_sensor_pi = tb.SensorSystem(filename=act_pi_file, id="actuator_sensor_pi")
+    actuator_sensor_pi = tb.SensorSystem(source=CsvSource(act_pi_file), id="actuator_sensor_pi")
     actuator_sensor_onoff = tb.SensorSystem(
-        filename=act_onoff_file, id="actuator_sensor_onoff"
+        source=CsvSource(act_onoff_file),
+        id="actuator_sensor_onoff",
     )
     model.add_component(actuator_sensor_pi)
     model.add_component(actuator_sensor_onoff)

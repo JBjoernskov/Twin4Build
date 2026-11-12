@@ -57,13 +57,13 @@ def water(n, gap=None):
     return f.drop(f.index[gap]) if gap is not None else f
 
 
-def model_with_input(model_id, data, water_frame, **sensor_kwargs):
+def model_with_input(model_id, data, water_frame, fill=None, **sensor_kwargs):
     """Three heated zones, a scored sensor on each temperature; radiator 2 reads its supply water from a data leaf."""
     model = build(n_pairs=3, model_id=model_id)
     for k in range(3):
-        sensor = tb.SensorSystem(id=f"T{k}", df=frame(data[k] - OFFSETS[k], START), uuid=f"ROOM{k}_T")
+        sensor = tb.SensorSystem(id=f"T{k}", source=DataFrameSource(frame(data[k] - OFFSETS[k], START)), uuid=f"ROOM{k}_T")
         model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
-    leaf = tb.SensorSystem(id="water_sensor", df=water_frame, dt_limit=3600, **sensor_kwargs)
+    leaf = tb.SensorSystem(id="water_sensor", source=DataFrameSource(water_frame, dt_limit=3600, fill=fill), **sensor_kwargs)
     radiator = model.components["Radiator2"]
     model.remove_connection(model.components["WaterTemp"], radiator, "scheduleValue", "supplyWaterTemperature")
     model.add_connection(leaf, radiator, "measuredValue", "supplyWaterTemperature")
@@ -158,7 +158,7 @@ class TestSensorsAndScoring(unittest.TestCase):
 
     def test_a_fill_on_a_scored_sensor_is_refused(self):
         model = model_with_input("missing_scoredfill", self.data, water(N + 6))
-        model.components["T0"].fill = "linear"
+        model.components["T0"].source.fill = "linear"
         with self.assertRaisesRegex(ValueError, "invent measurements"):
             simulate(model)
 
@@ -166,7 +166,7 @@ class TestSensorsAndScoring(unittest.TestCase):
         data = [d.copy() for d in self.data]
         model = build(n_pairs=3, model_id="missing_scored")
         f = frame(data[0] - OFFSETS[0], START)
-        sensor = tb.SensorSystem(id="T0", df=f.drop(f.index[GAP]), uuid="ROOM0_T", dt_limit=3600)
+        sensor = tb.SensorSystem(id="T0", source=DataFrameSource(f.drop(f.index[GAP]), dt_limit=3600), uuid="ROOM0_T")
         model.add_connection(model.components["Zone0"], sensor, "indoorTemperature", "measuredValue")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         errors = simulate(model).measurement_errors()

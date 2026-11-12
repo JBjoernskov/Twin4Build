@@ -33,6 +33,7 @@ import twin4build as tb
 import twin4build.utils.types as tps
 from twin4build.tests.simulator.test_fusion import build_model, simulate
 from twin4build.tests.estimator.test_two_zone_wall import build_two_zone_model
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -131,14 +132,14 @@ class TestModelToCUDA(unittest.TestCase):
         t_b = zone_b.output["indoorTemperature"].history().detach().flatten()
         index = pd.date_range(start=start, periods=len(t_a), freq=f"{STEP_SIZE}s")
         rng = np.random.default_rng(0)
-        sensor_a.df = pd.DataFrame(
+        sensor_a.source = DataFrameSource(pd.DataFrame(
             {"value": t_a.cpu().numpy() + 0.05 * rng.standard_normal(len(t_a))},
             index=index,
-        )
-        sensor_b.df = pd.DataFrame(
+        ))
+        sensor_b.source = DataFrameSource(pd.DataFrame(
             {"value": t_b.cpu().numpy() + 0.05 * rng.standard_normal(len(t_b))},
             index=index,
-        )
+        ))
 
         model.to("cuda")
         estimator = tb.Estimator(simulator)

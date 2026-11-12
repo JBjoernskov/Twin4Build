@@ -18,18 +18,18 @@ The central design rule is:
 Why this contract exists
 ------------------------
 
-Twin4Build has two component execution paths:
+A System's physics lives only in ``forward(x, inputs, p, step_size)``. Both
+execution paths call it:
 
-* ``do_step`` integrates a component into the object-graph simulator. It reads
-  and writes ports and histories.
-* ``forward(state, inputs, parameters, step_size, ...)`` is used by
-  ``Simulator(..., execution_mode="functional")`` for estimation and
-  collocation maps. PyTorch may call it under ``vmap``,
-  ``jacrev``, higher-order differentiation, or CUDA Graph capture.
+* the object-graph simulator, whose base ``do_step`` reads the ports, calls
+  ``forward`` and writes the outputs and the state (a System does not write
+  ``do_step`` or ``initialize``); and
+* ``Simulator(..., execution_mode="functional")``, for estimation and
+  collocation maps. PyTorch may call ``forward`` under ``vmap``, ``jacrev``,
+  higher-order differentiation, or CUDA Graph capture.
 
-``do_step`` must be a thin I/O wrapper around ``forward``. There must not be a
-second implementation of the physics. Otherwise normal simulation and the
-derivative supplied to an optimizer can silently describe different models.
+There is one implementation of the physics, so normal simulation and the
+derivative supplied to an optimizer describe the same model.
 
 Execution-mode ownership
 ------------------------
@@ -57,8 +57,7 @@ Pure ``forward`` contract
 * avoid reading or writing ports, histories, ``tps.Parameter`` objects, global
   state, or mutable module attributes;
 * avoid logging, file I/O, data loading, lazy initialization, and randomness;
-* preserve the input device and dtype; and
-* use the same equations as ``do_step``.
+* preserve the input device and dtype.
 
 The plain parameter dictionary is intentional. Differentiated parameters must
 be explicit tensor arguments rather than values discovered through module or
@@ -67,27 +66,21 @@ be explicit tensor arguments rather than values discovered through module or
 .. code-block:: python
 
    class MySystem(core.System):
-       PARAM_NAMES = ("capacity", "conductance")
+       heatGain = Input(doc="Heat gain [W]")
+       temperatures = State(size=2, init=20.0)
+       temperature = Output(init=temperatures, doc="Temperature [degC]")
+       capacity = Parameter(1e6, lb=1e4, ub=1e8, scaling="log")
+       conductance = Parameter(50.0, lb=1.0, ub=500.0)
 
        def derive(self, parameters, step_size):
            # Work that depends on the parameters and the step size alone.
-           return {"matrices": self._build_matrices(parameters)}
+           return {"matrices": self._build_matrices(parameters, step_size)}
 
        def forward(self, state, inputs, parameters, step_size):
            # Tensor-only mathematics; no port or module mutation.
-           A, B, C, D, E, F = parameters["matrices"]
+           A, B = parameters["matrices"]
            next_state = ...
            return next_state, {"temperature": next_state[..., 0]}
-
-       def do_step(self, second_time, date_time, step_size, step_index):
-           state = self.get_state()
-           inputs = {name: port.get() for name, port in self.input.items()}
-           next_state, outputs = self.forward(
-               state, inputs, self._forward_params(step_size), step_size
-           )
-           self.set_state(next_state)
-           for name, value in outputs.items():
-               self.output[name]._set(value, i_t=step_index)
 
 Tensor values must not control Python
 -------------------------------------
@@ -261,32 +254,29 @@ it must not appear in ``FUSABLE_OUTPUT_PORTS``. A fused block logs a warning
 for a member output that is neither a row nor a derived output: that output
 would keep its initial value.
 
-Renaming an output port
------------------------
+Renaming a port
+---------------
 
-A component that renames an output port keeps the old name working for a
-release. It lists the old name in ``OUTPUT_PORT_ALIASES`` (``{"old":
-"new"}``) and holds its outputs in an
-:class:`~twin4build.systems.saref4syst.system.AliasedPorts`:
+A System that renames a port keeps the old name working for a release. The
+port declares its old name:
 
 .. code-block:: python
 
-   OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
+   class HeaterSystem(core.System):
+       heatOutput = Output(alias="oldHeatOutput")
 
-   self._output = core.AliasedPorts(
-       {"toRoomPower": tps.Scalar(0), ...},
-       aliases=self.OUTPUT_PORT_ALIASES,
-       owner=type(self).__name__,
-   )
-
-The ports are a plain ``dict`` of the current names, so everything that walks
-them sees one name per port; ``output["old"]`` and ``output.get("old")``
-return the renamed port with a ``DeprecationWarning`` and ``"old" in output``
-is true. ``Model.add_connection`` and ``remove_connection``, the loader of a
-saved model, the translator's signature-pattern inputs and the optimizer's
+The class's ``OUTPUT_PORT_ALIASES`` (``INPUT_PORT_ALIASES`` for an input)
+then map the old name to the new one, and the ports are an
+:class:`~twin4build.systems.saref4syst.system.AliasedPorts`: a plain ``dict``
+of the current names, so everything that walks them sees one name per port;
+``output["old"]`` and ``output.get("old")`` return the renamed port with a
+``DeprecationWarning`` and ``"old" in output`` is true.
+``Model.add_connection`` and ``remove_connection``, the loader of a saved
+model, the translator's signature-pattern inputs and the optimizer's
 ``(component, port, ...)`` tuples replace the old name through
-``System.resolve_output_port``, so connections, saved models, fusion,
-batching and the functional rollout hold the new name only.
+``System.resolve_output_port`` (``resolve_input_port``), so connections,
+saved models, fusion, batching and the functional rollout hold the new name
+only.
 
 Persistent tensors in ``nn.Module``
 -----------------------------------
@@ -311,7 +301,10 @@ Required validation
 
 A new or modified tensor component should test all applicable levels:
 
-#. ``do_step`` and ``forward`` produce the same one-step result.
+#. It passes :func:`~twin4build.testing.check_system` (save and reload, a
+   deepcopy, object mode against the functional engine, batched copies,
+   finite gradients, CUDA), with an example in
+   ``twin4build/tests/test_check_system.py`` for a core System.
 #. A multi-step functional rollout matches the object simulator.
 #. CPU and CUDA values agree in float64.
 #. ``vmap`` output agrees with an explicit loop.
@@ -335,7 +328,7 @@ Review checklist
 
 Before merging a component model, verify:
 
-* one implementation of the equations, shared by ``do_step`` and ``forward``;
+* one implementation of the equations, in ``forward`` (and ``derive``);
 * no tensor-to-Python conversion or data-dependent Python structure;
 * no side effects or mutable caches in transformed execution;
 * device-native, dtype-preserving tensor creation;

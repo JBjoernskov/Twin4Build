@@ -42,7 +42,7 @@ from twin4build.simulator._functional_simulation import (
     FUNCTIONAL_MATERIALIZATION_REVISION,
 )
 from twin4build.utils.rgetattr import rgetattr
-from twin4build.utils.data_loaders.sources import CsvSource
+from twin4build.utils.data_loaders.sources import CsvSource, DataFrameSource
 
 
 class DiscomfortSystem(System):
@@ -1560,7 +1560,7 @@ def _estimation_problem(n_zones: int, config: BenchmarkConfig, *, batched: bool)
         for role, _ in MEASUREMENT_ROLES:
             source_id = zone[role].id.replace("fit_estimation_", "true_estimation_")
             # Prefixes are identical; model id is not part of component ids.
-            zone[role].df = data[zone[role].id]
+            zone[role].source = DataFrameSource(data[zone[role].id])
     if not batched:
         if n_zones != 1:
             raise ValueError("Unbatched canonical setup is only used for one zone")

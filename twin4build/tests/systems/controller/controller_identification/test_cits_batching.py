@@ -21,6 +21,7 @@ from twin4build.systems.controller.controller_identification.controller_identifi
     ControllerIdentificationPISystem,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -33,7 +34,7 @@ N = HOURS * 3600 // STEP + 1
 def _series(sid, values):
     """An in-memory data sensor: one value column on a time index."""
     times = pd.DatetimeIndex(pd.date_range(START, periods=N, freq=f"{STEP}s"), name="time")
-    return SensorSystem(id=sid, df=pd.DataFrame({"value": [float(v) for v in values]}, index=times), use_df=True)
+    return SensorSystem(id=sid, source=DataFrameSource(pd.DataFrame({"value": [float(v) for v in values]}, index=times)))
 
 
 def _controller(k, slots=1, **kwargs):

@@ -18,7 +18,7 @@ from dateutil import tz
 
 import twin4build as tb
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, State
 
 
 def _n_t(start_time, end_time, step_size):
@@ -29,69 +29,30 @@ def _n_t(start_time, end_time, step_size):
 class Leaf(core.System):
     """``v = p`` (a parameter per instance)."""
 
-    def __init__(self, p=1.0, p_max=100.0, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {}
-        self.output = {"v": tps.Scalar()}
-        # Each instance has its own cap in its ``parameter`` spec (a room's
-        # occupancy bound from its floor area, say) while the tensor's own
-        # bounds are the class defaults: the batched meta must report the
-        # spec's caps per instance.
-        self.p = tps.Parameter(torch.tensor(float(p)), min_value=0.0, max_value=100.0)
-        self.parameter = {"p": {"lb": 0.0, "ub": float(p_max)}}
-        self._config = {"parameters": ["p"]}
+    v = Output()
+    p = Parameter(1.0, lb=0.0, ub=100.0)
 
-    @property
-    def config(self):
-        return self._config
+    def forward(self, x, inputs, p, step_size):
+        return x, {"v": p["p"].reshape(-1)}
 
-    def initialize(self, start_time, end_time, step_size):
-        n_t = _n_t(start_time, end_time, step_size)
-        self.p = self.p.expand_to_n_c(self.n_c)
-        self.output["v"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
 
-    PARAM_NAMES = ("p",)
-
-    def forward(self, x, inputs, params, step_size):
-        return x, {"v": params["p"].reshape(-1)}
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        self.output["v"]._set(self.p.get().reshape(1, -1), i_t=step_index)
+def _leaf(p, p_max, id):
+    """A leaf with its own cap in its ``parameter`` spec (a room's occupancy
+    bound from its floor area, say) while the declared bounds are the class
+    defaults: the batched meta must report the spec's caps per instance."""
+    leaf = Leaf(p=p, id=id)
+    leaf.parameter["p"] = {"lb": 0.0, "ub": float(p_max)}
+    return leaf
 
 
 class Hub(core.System):
     """``y[k] = 2 x[k]`` per slot; the width comes from the wiring."""
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {"x": tps.Vector()}
-        self.output = {"y": tps.Vector()}
-        self._config = {"parameters": []}
+    x = Input(size="wired")
+    y = Output(size=x)
 
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(self, start_time, end_time, step_size):
-        n_t = _n_t(start_time, end_time, step_size)
-        indices = [
-            int(i)
-            for cp in self.connects_at
-            if cp.input_port == "x"
-            for conn in cp.connects_system_through
-            for i in torch.as_tensor(cp.input_port_index[conn]).reshape(-1).tolist()
-        ]
-        n_v = max(indices, default=-1) + 1
-        self.input["x"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c, n_v=n_v)
-        self.output["y"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c, n_v=n_v)
-
-    PARAM_NAMES = ()
-
-    def forward(self, x, inputs, params, step_size):
+    def forward(self, x, inputs, p, step_size):
         return x, {"y": 2.0 * inputs["x"]}
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        self.output["y"]._set(2.0 * self.input["x"].get(), i_t=step_index)
 
 
 class Sink(core.System):
@@ -99,41 +60,13 @@ class Sink(core.System):
     branches); ``w`` is the new accumulator.  Stateful, so the functional
     engine has something to roll."""
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {"u": tps.Vector()}
-        self.output = {"w": tps.Scalar()}
-        self.acc = tps.State(n_v=1, init_value=0.0, names=[f"{self.id}.acc"])
-        self._config = {"parameters": []}
+    u = Input(size="wired")
+    w = Output()
+    acc = State(init=0.0)
 
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(self, start_time, end_time, step_size):
-        n_t = _n_t(start_time, end_time, step_size)
-        indices = [
-            int(i)
-            for cp in self.connects_at
-            if cp.input_port == "u"
-            for conn in cp.connects_system_through
-            for i in torch.as_tensor(cp.input_port_index[conn]).reshape(-1).tolist()
-        ]
-        n_v = max(indices, default=-1) + 1
-        self.input["u"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c, n_v=n_v)
-        self.output["w"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-        self.acc.initialize(n_s=len(start_time), n_c=self.n_c, n_v=1, force=True)
-
-    PARAM_NAMES = ()
-
-    def forward(self, x, inputs, params, step_size):
+    def forward(self, x, inputs, p, step_size):
         x_next = x + 3.0 * inputs["u"].sum(dim=-1, keepdim=True)
         return x_next, {"w": x_next[..., 0]}
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        x_next, outs = self.forward(self.get_state(), {"u": self.input["u"].get()}, {}, step_size)
-        self.set_state(x_next)
-        self.output["w"]._set(outs["w"], i_t=step_index)
 
 
 N_LEAVES = 4
@@ -147,7 +80,7 @@ def build():
     connection (two terminals), sinks 1..N-1 read slot k."""
     model = tb.Model(id="batching_vector_slots")
     hub = Hub(id="hub")
-    leaves = [Leaf(p=float(i + 1), p_max=10.0 * (i + 1), id=f"leaf{i}") for i in range(N_LEAVES + 1)]
+    leaves = [_leaf(p=float(i + 1), p_max=10.0 * (i + 1), id=f"leaf{i}") for i in range(N_LEAVES + 1)]
     sinks = [Sink(id=f"sink{k}") for k in range(N_LEAVES)]
     for i, leaf in enumerate(leaves):
         model.add_connection(leaf, hub, "v", "x", input_port_index=i)

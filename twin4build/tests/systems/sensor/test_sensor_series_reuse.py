@@ -1,10 +1,9 @@
 """A sensor keeps its series input while its source is unchanged.
 
-``TimeSeriesInputSystem`` caches its series by window (start, end, step) and
-skips the load when initialized again over the same windows.  The sensor
-built a new input at every ``initialize``, so the cache was always empty:
-every simulate of a model loaded every sensor again (from the database, the
-disk cache or an in-memory frame).
+A reader keeps its last reading and skips the load when read again over the
+same windows.  The sensor built a new input at every ``initialize``, so the
+cache was always empty: every simulate of a model loaded every sensor again
+(from the database, the disk cache or an in-memory frame).
 """
 
 # Standard library imports
@@ -21,6 +20,7 @@ import torch
 import twin4build
 import twin4build.utils.data_loaders.sources as tsi_mod  # where the readers call the loaders
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import DatabaseSource
 
 twin4build._IS_TESTING = True
 
@@ -49,12 +49,12 @@ def _database(**kwargs):
 
 
 def _values(sensor):
-    return sensor.output["measuredValue"].history().detach().clone()
+    return sensor.output["measuredData"].history().detach().clone()
 
 
 class TestSensorSeriesReuse(unittest.TestCase):
     def test_same_windows_load_once(self):
-        sensor = SensorSystem(id="room_temperature", uuid="R01_TRU01", dbconfig=DBCONFIG)
+        sensor = SensorSystem(id="room_temperature", source=DatabaseSource("R01_TRU01", DBCONFIG))
         with mock.patch.object(tsi_mod, "load_from_database", side_effect=_database) as load:
             sensor.initialize(start_time=STARTS, end_time=ENDS, step_size=STEPS)
             first, kept = _values(sensor), sensor.time_series_input
@@ -64,7 +64,7 @@ class TestSensorSeriesReuse(unittest.TestCase):
         torch.testing.assert_close(_values(sensor), first)
 
     def test_new_windows_load_again(self):
-        sensor = SensorSystem(id="room_temperature", uuid="R01_TRU01", dbconfig=DBCONFIG)
+        sensor = SensorSystem(id="room_temperature", source=DatabaseSource("R01_TRU01", DBCONFIG))
         later = [t + datetime.timedelta(days=7) for t in STARTS], [t + datetime.timedelta(days=7) for t in ENDS]
         with mock.patch.object(tsi_mod, "load_from_database", side_effect=_database) as load:
             sensor.initialize(start_time=STARTS, end_time=ENDS, step_size=STEPS)
@@ -72,10 +72,10 @@ class TestSensorSeriesReuse(unittest.TestCase):
         self.assertEqual(load.call_count, 2 * len(STARTS))
 
     def test_new_point_loads_again(self):
-        sensor = SensorSystem(id="room_temperature", uuid="R01_TRU01", dbconfig=DBCONFIG)
+        sensor = SensorSystem(id="room_temperature", source=DatabaseSource("R01_TRU01", DBCONFIG))
         with mock.patch.object(tsi_mod, "load_from_database", side_effect=_database) as load:
             sensor.initialize(start_time=STARTS, end_time=ENDS, step_size=STEPS)
-            sensor.uuid = "R01_TRU02"
+            sensor.source = DatabaseSource("R01_TRU02", DBCONFIG)
             sensor.initialize(start_time=STARTS, end_time=ENDS, step_size=STEPS)
         self.assertEqual(load.call_count, 2 * len(STARTS))
         self.assertEqual(load.call_args.kwargs["sensor_id"], "R01_TRU02")

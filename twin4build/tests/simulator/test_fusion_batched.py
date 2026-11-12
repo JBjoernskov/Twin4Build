@@ -17,6 +17,7 @@ from dateutil import tz
 
 import twin4build as tb
 from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -186,17 +187,17 @@ class TestBatchedFusion(unittest.TestCase):
         from the others; their zones must batch apart too, or the room meta
         would face two radiator metas with no aligned pairing."""
         model = build(n_pairs=4, model_id="split")
-        sensor = tb.SensorSystem(id="water_sensor", df=__import__("pandas").DataFrame(
+        sensor = tb.SensorSystem(id="water_sensor", source=DataFrameSource(__import__("pandas").DataFrame(
             {"value": [55.0] * 40},
             index=__import__("pandas").DatetimeIndex([START + datetime.timedelta(seconds=STEP * k) for k in range(40)], name="time"),
-        ), use_df=True)
+        )))
         for k in (2, 3):
             r = model.components[f"Radiator{k}"]
             model.remove_connection(model.components["WaterTemp"], r, "scheduleValue", "supplyWaterTemperature")
             model.add_connection(sensor, r, "measuredValue", "supplyWaterTemperature")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         reference = build(n_pairs=4, model_id="split_ref")
-        s2 = tb.SensorSystem(id="water_sensor", df=sensor.df, use_df=True)
+        s2 = tb.SensorSystem(id="water_sensor", source=sensor.source)
         for k in (2, 3):
             r = reference.components[f"Radiator{k}"]
             reference.remove_connection(reference.components["WaterTemp"], r, "scheduleValue", "supplyWaterTemperature")

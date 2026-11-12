@@ -36,8 +36,9 @@ class TestMemberIndexSharing(unittest.TestCase):
         )
         self.estimator = tb.Estimator(sim)
         # A stand-alone occupancy whose two damper slots are branches 1 and 2.
-        self.occ = OccupancySystem(id="occ", co2_filename="unused.csv", damper_filename="unused.csv")
-        self.occ.supply_damper.expand_to_n_c(2)
+        self.occ = OccupancySystem(id="occ")
+        damper = self.occ.supply_damper
+        damper.nominalAirFlowRate = damper.nominalAirFlowRate.expand_to_n_c(2)
 
     def _process(self, params):
         est = self.estimator

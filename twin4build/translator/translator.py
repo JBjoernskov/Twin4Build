@@ -1552,9 +1552,9 @@ class Translator:
                     # _map_port_indices()
 
                     # A pattern written against a renamed input port
-                    # (``"outdoorCO2"`` of a room) connects the port that
-                    # replaced it; the candidate edge and the model hold the
-                    # current name.
+                    # (``Input(alias=...)``) connects the port that replaced
+                    # it; the candidate edge and the model hold the current
+                    # name.
                     key = component.resolve_input_port(key)
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
@@ -1647,10 +1647,10 @@ class Translator:
 
                                     if b:
                                         # A pattern written against a renamed
-                                        # output port (``"Power"`` of a
-                                        # radiator) connects the port that
-                                        # replaced it; the candidate edge and
-                                        # the model hold the current name.
+                                        # output port (``Output(alias=...)``)
+                                        # connects the port that replaced
+                                        # it; the candidate edge and the
+                                        # model hold the current name.
                                         source_key = provider_component.resolve_output_port(
                                             source_key
                                         )
@@ -2593,7 +2593,7 @@ class Translator:
 
         Either it declares no input ports at all (outdoor environment,
         schedules, ...) or it is a data-bound leaf such as a
-        :class:`SensorSystem` with a ``uuid`` / ``filename`` / ``df`` source,
+        :class:`SensorSystem` with a recorded series (``has_data``),
         whose ``measuredValue`` input is optional.
         """
         if len(getattr(component, "input", None) or {}) == 0:
@@ -2616,11 +2616,7 @@ class Translator:
             if source_flags and not any(source_flags):
                 return False
             return True
-        return bool(
-            getattr(component, "uuid", None)
-            or getattr(component, "filename", None)
-            or getattr(component, "df", None) is not None
-        )
+        return bool(getattr(component, "has_data", False))
     #: Character budget for the human-readable prefix of a composite
     #: (multi-member ``ModeledNode``) component id.  The id doubles as a
     #: filename under ``model_parameters/<class>/<id>.json``, so it must

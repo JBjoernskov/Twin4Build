@@ -22,6 +22,7 @@ from twin4build.utils.scoring_mask import period_mask
 tb._IS_TESTING = True
 
 from twin4build.tests.simulator.test_fusion_batched import START, STEP, build, history
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 HOURS = 6
 END = START + datetime.timedelta(hours=HOURS)
@@ -75,12 +76,12 @@ def room_model(model_id, data, start=START):
     simulation's own values moved by an offset, the first two with a uuid."""
     model = build(n_pairs=3, model_id=model_id)
     for k in range(3):
-        sensor = tb.SensorSystem(id=f"T{k}", df=frame(data[k] - OFFSETS[k], start), uuid=f"ROOM{k}_T" if k < 2 else None)
+        sensor = tb.SensorSystem(id=f"T{k}", source=DataFrameSource(frame(data[k] - OFFSETS[k], start)), uuid=f"ROOM{k}_T" if k < 2 else None)
         model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
     # sensors that read a port and hold no data, and a data leaf: no measurements
     for k in range(3):
-        model.add_connection(model.components[f"Radiator{k}"], tb.SensorSystem(id=f"P{k}"), "Power", "measuredValue")
-    leaf = tb.SensorSystem(id="water_sensor", df=frame([60.0] * (len(data[0]) + 6), start))
+        model.add_connection(model.components[f"Radiator{k}"], tb.SensorSystem(id=f"P{k}"), "toRoomPower", "measuredValue")
+    leaf = tb.SensorSystem(id="water_sensor", source=DataFrameSource(frame([60.0] * (len(data[0]) + 6), start)))
     radiator = model.components["Radiator2"]
     model.remove_connection(model.components["WaterTemp"], radiator, "scheduleValue", "supplyWaterTemperature")
     model.add_connection(leaf, radiator, "measuredValue", "supplyWaterTemperature")
@@ -207,7 +208,7 @@ class TestMeasurementErrors(unittest.TestCase):
             values = pd.concat(
                 [frame(self.data[k] - OFFSETS[k], START), frame(self.data[k] - 2 * OFFSETS[k], second)]
             )
-            sensor = tb.SensorSystem(id=f"T{k}", df=values)
+            sensor = tb.SensorSystem(id=f"T{k}", source=DataFrameSource(values))
             model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         simulator = tb.Simulator(model)

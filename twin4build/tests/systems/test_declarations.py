@@ -4,8 +4,9 @@ Covered:
 
 1. class definition: one input and one output may share a name, ports and
    parameters are not class attributes, any other repeated name raises, a
-   ``size=`` must name a declaration of the class, a subclass inherits and
-   redeclares;
+   ``size=`` must name a declaration of the class, ``forward``, ``derive``
+   and ``series`` take the arguments the base gives them, a subclass
+   inherits and redeclares;
 2. construction: settings (default, required), parameter values by keyword,
    unknown keywords, the constructor keywords, ``PARAM_NAMES`` in declaration
    order, the bounds table and the saved config, attribute access to ports,
@@ -21,8 +22,9 @@ Covered:
 9. initial values: a state and an output start at a setting, an output at its
    state's start;
 10. a parameter's default computed from the System, an old keyword that moved
-    into a child, a removed keyword that names its replacement, and the alias
-    tables a renamed port fills;
+    into a child, a removed keyword that names its replacement, the alias
+    tables a renamed port fills, and a renamed input and output connecting,
+    disconnecting, reading and naming an objective through the old names;
 11. an input that reads another input while unwired, in both engines; a child
     that takes its composite's wired width; a child parameter shared with
     another; a child's own id;
@@ -294,6 +296,24 @@ class TestClassDefinition(unittest.TestCase):
             class Other(core.System):
                 flows = Input(size=SizedSystem._declarations["input"]["flows"])
 
+    def test_forward_derive_and_series_take_the_arguments_the_base_gives(self):
+        bodies = {
+            "forward": "    def forward(self, x, inputs):\n        pass\n",
+            "derive": "    def derive(self, p):\n        pass\n",
+            "series": "    def series(self, timestamps, step_size, period):\n        pass\n",
+        }
+        for name, method in bodies.items():
+            with self.subTest(name), self.assertRaisesRegex(TypeError, f"a System's {name} takes"):
+                exec("class X(core.System):\n    u = Input()\n" + method, {"core": core, "Input": Input})
+
+        class Named(core.System):  # other names, and an extra keyword with a default
+            u = Input()
+
+            def forward(self, state, values, params, dt, extra=None):
+                return state, {}
+
+        self.assertTrue(Named._is_declared)
+
     def test_a_subclass_inherits_and_redeclares(self):
         class Wider(GainSystem):
             gain = Parameter(4.0, lb=0.0, ub=20.0)
@@ -373,10 +393,10 @@ class TestSizes(unittest.TestCase):
         model = tb.Model(id=self.MODEL_ID)
         sized = SizedSystem(id="sized", n_zones=2)
         model.add_connection(_signal(), sized, "scheduleValue", "flows", input_port_index=0)
+        model.add_connection(_signal("t"), sized, "scheduleValue", "temperatures", input_port_index=0)
         model.add_connection(_signal("w"), sized, "scheduleValue", "weights", input_port_index=2)
-        model.load(draw_semantic_model=False, draw_simulation_model=False)
-        with self.assertRaisesRegex(ValueError, "weights"):
-            _simulate(model)
+        with self.assertRaisesRegex(ValueError, "'weights' is wired up to slot 2, but its size is 2"):
+            model.load(draw_semantic_model=False, draw_simulation_model=False)
 
 
 class TestStepping(unittest.TestCase):
@@ -662,6 +682,41 @@ class TestBuildRules(unittest.TestCase):
         self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
         with self.assertWarns(DeprecationWarning):
             self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
+
+    def test_renamed_ports_connect_and_read_through_their_old_names(self):
+        from twin4build.optimizer.optimizer import _resolve_port_names
+
+        class RenamedInputSystem(core.System):
+            u = Input(alias="signal")
+            y = Output()
+
+            def forward(self, x, inputs, p, step_size):
+                return x, {"y": inputs["u"]}
+
+        model = tb.Model(id="test_declared_renamed_ports")
+        gain, follower = GainSystem(id="g"), RenamedInputSystem(id="f")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model.add_connection(gain, follower, "out", "signal")
+        messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+        self.assertTrue(any("GainSystem.y" in m for m in messages), messages)
+        self.assertTrue(any("RenamedInputSystem.u" in m for m in messages), messages)
+        self.assertEqual({w.filename for w in caught if w.category is DeprecationWarning}, {__file__})
+        self.assertEqual([c.output_port for c in gain.connected_through], ["y"])
+        self.assertEqual([p.input_port for p in follower.connects_at], ["u"])
+        with self.assertWarnsRegex(DeprecationWarning, "RenamedInputSystem.u"):
+            port = follower.input["signal"]
+        self.assertIs(port, follower.input["u"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self.assertIn("signal", follower.input)  # no warning
+            self.assertNotIn("signal", list(follower.input))
+        with self.assertWarnsRegex(DeprecationWarning, "GainSystem.y"):
+            self.assertEqual(_resolve_port_names([(gain, "out", "min")]), [(gain, "y", "min")])
+        with self.assertWarns(DeprecationWarning):
+            model.remove_connection(gain, follower, "out", "signal")
+        self.assertEqual(gain.connected_through, [])
+        self.assertEqual(follower.connects_at, [])
 
 
 class TestCompositionRules(unittest.TestCase):

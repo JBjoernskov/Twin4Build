@@ -119,6 +119,9 @@ class TestSimulationModel(unittest.TestCase):
         self.sim_model.add_connection(
             supply_flow_junction, fan, "airFlowRateIn", "airFlowRate"
         )
+        self.sim_model.add_connection(
+            schedule, fan, "scheduleValue", "inletAirTemperature"
+        )
 
         self.sim_model.load()
 
@@ -151,19 +154,18 @@ class TestSimulationModel(unittest.TestCase):
         # If successful, execution order should exist
         self.assertIsNotNone(self.sim_model.execution_order)
 
-    def test_validate(self):
-        """Test model validation."""
-        self.sim_model.add_component(self.schedule)
+    def test_load_checks_the_inputs(self):
+        """A load raises on an input without a default that nothing is
+        wired to, naming it; wired, the model loads."""
         self.sim_model.add_component(self.damper)
+        with self.assertRaisesRegex(ValueError, "DamperSystem 'damper'.*damperPosition"):
+            self.sim_model.load()
+        self.sim_model.add_component(self.schedule)
         self.sim_model.add_connection(
             self.schedule, self.damper, "scheduleValue", "damperPosition"
         )
-
         self.sim_model.load()
-
-        # Validate should not raise errors for valid model
-        self.sim_model.validate()
-        self.assertTrue(True)
+        self.assertTrue(self.sim_model.is_loaded)
 
     def test_empty_model_load(self):
         """Test loading an empty model."""

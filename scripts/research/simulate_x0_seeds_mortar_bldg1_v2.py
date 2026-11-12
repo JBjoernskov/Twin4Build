@@ -217,7 +217,6 @@ def _build_stage1_model():
         id=STAGE1_MODEL_ID,
         verbose=1000,
     )
-    sim_model.validate()
     # v2 change #1: BRICK-class-keyed dbconfig + transformations.
     sim_model.set_dbconfigs(DB_CONFIG)
     sim_model.set_transformations(TRANSFORMATIONS)

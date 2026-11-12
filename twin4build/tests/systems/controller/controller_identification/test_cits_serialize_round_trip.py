@@ -54,6 +54,7 @@ from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.utils.scalar_product_system import ScalarProductSystem
 from twin4build.utils.get_main_dir import get_main_dir
+from twin4build.utils.data_loaders.sources import CsvSource
 
 tb._IS_TESTING = True
 
@@ -108,7 +109,8 @@ def _write_loop_data(folder):
 
 def _sensor(id_, paths):
     return SensorSystem(
-        id=id_, filename=paths[id_], datecolumn=0, valuecolumn=1, use_spreadsheet=True
+        id=id_,
+        source=CsvSource(paths[id_], date_column=0, value_column=1),
     )
 
 

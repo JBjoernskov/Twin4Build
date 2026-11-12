@@ -78,25 +78,19 @@ def _invert_raw(m_sup, m_exh, c_prev, c_now, dt=DT, transform_mode=None):
 
 def _invert(m_sup, m_exh, c_prev, c_now, dt=DT, transform_mode=None):
     occ = tb.OccupancySystem(
-        V=V, G_occ=G_OCC, m_inf=M_INF,
-        supply_damper_nominalAirFlowRate=m_sup,
-        exhaust_damper_nominalAirFlowRate=m_exh,
+        mass=dict(V=V, G_occ=G_OCC, m_inf=M_INF),
+        supply_damper=dict(nominalAirFlowRate=m_sup),
+        exhaust_damper=dict(nominalAirFlowRate=m_exh),
         id="occ",
     )
-    occ._co2_from_sensor = False
-    params = {
-        "mass.V": _t(V), "mass.G_occ": _t(G_OCC), "mass.m_inf": _t(M_INF),
-        "supply_damper.a": _t(1.0), "supply_damper.nominalAirFlowRate": _t(m_sup),
-        "exhaust_damper.a": _t(1.0), "exhaust_damper.nominalAirFlowRate": _t(m_exh),
-    }
-    inputs = {
+    inputs = occ.with_defaults({
         "indoorCo2Measured": _t(c_now),
         "previousIndoorCo2Measured": _t(c_prev),
-        "damperPositionMeasured": _t(1.0),  # fully open: flow = nominal
+        "damperPositionMeasured": _t(1.0).reshape(1, 1),  # one slot, fully open: flow = nominal
         "outdoorCo2Concentration": _t(C_OUT),
-    }
+    })
     with traceable(bool(transform_mode)):
-        _, out = occ.forward(torch.zeros((1, 0), dtype=torch.float64), inputs, params, dt)
+        _, out = occ.forward(None, inputs, occ.full_params({}, dt), dt)
     return float(out["scheduleValue"])
 
 

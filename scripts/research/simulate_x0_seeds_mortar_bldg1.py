@@ -143,7 +143,6 @@ def _build_stage1_model():
         ],
         verbose=1000,
     )
-    sim_model.validate()
     _prepare_stage1_model(sim_model)
     sim_model.load()
     sim_model.serialize()

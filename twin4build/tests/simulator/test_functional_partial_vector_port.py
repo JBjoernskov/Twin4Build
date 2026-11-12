@@ -66,6 +66,8 @@ class TestPartiallyConnectedVectorPort(unittest.TestCase):
             model.add_connection(damper, ahu, "scheduleValue", "exhaustDamperPosition", input_port_index=slot)
         model.add_connection(_schedule("t_sup", 18.0), ahu, "scheduleValue", "supplyAirTemperatureSetpoint")
         model.add_connection(_schedule("t_out", 5.0), ahu, "scheduleValue", "outdoorAirTemperature")
+        # The return air of every branch (a load raises on an input nothing is wired to).
+        model.add_connection(_schedule("t_return", 22.0), ahu, "scheduleValue", "exhaustTemperature", input_port_index=[0, 1, 2])
         # One stateful consumer on branch 0, so there is something to compose.
         room = BuildingSpaceSystem(
             id="room",

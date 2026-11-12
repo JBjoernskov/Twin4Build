@@ -19,6 +19,7 @@ from twin4build.systems.controller.controller_identification.pi_loop_rewire impo
     _resolve_actuator_measurement,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -54,12 +55,12 @@ class TestPlayback(unittest.TestCase):
         model = tb.Model(id="test_cits_playback")
         cits = ControllerIdentificationPISystem(id="cits", n_sensors=1, n_setpoints=1, n_on_off_signals=1)
         command = SensorSystem(
-            id="cmd", df=pd.DataFrame({"time": pd.date_range("2024-01-01", periods=3, freq="10min"), "value": [0.0, 0.5, 1.0]}),
-            use_df=True,
+            id="cmd",
+            source=DataFrameSource(pd.DataFrame({"time": pd.date_range("2024-01-01", periods=3, freq="10min"), "value": [0.0, 0.5, 1.0]})),
         )
         setpoint = SensorSystem(
-            id="sp", df=pd.DataFrame({"time": pd.date_range("2024-01-01", periods=3, freq="10min"), "value": [22.0] * 3}),
-            use_df=True,
+            id="sp",
+            source=DataFrameSource(pd.DataFrame({"time": pd.date_range("2024-01-01", periods=3, freq="10min"), "value": [22.0] * 3})),
         )
         model.add_connection(setpoint, cits, "measuredValue", "setpointValue", input_port_index=0)
         model.add_connection(cits, command, "inputSignal", "measuredValue", output_port_index=0)

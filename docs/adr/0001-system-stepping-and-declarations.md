@@ -1,6 +1,9 @@
 # ADR 0001: A System is its declarations and one forward step
 
-- **Status:** accepted, 2026-11-05. To be implemented in 2.0.
+- **Status:** accepted, 2026-11-05; decisions 7 and 10 amended 2026-11-10
+  (`OccupancySystem` is converted, not deleted; the probe runs on request),
+  decision 6 amended 2026-11-11 (the occupancy reads its measurements
+  through its own readers). To be implemented in 2.0.
 - **Scope:** how a System is written, stepped, sized, fed with data and
   checked, for every System in the core package and in the packages that
   build on it.
@@ -117,6 +120,18 @@ class DamperSystem(System):
   inputs. The occupancy System's file mode (`co2_filename`,
   `damper_filename` and their column keywords) goes.
   `ScheduleSwitchControllerSystem` is deleted: it has no users.
+  (Amended 2026-11-11, the maintainer's decision: the occupancy reads its
+  measurements through its own readers, not wired from the sensors. It
+  takes `co2=` and `damper_position=` readers, the sensors' own or others,
+  and its `series` fills the measured CO2, the CO2 of the step before and
+  the damper positions, which its inputs of the same names hand to
+  `forward`, as a sensor's `measuredValue` reads its `measuredData`. Wired
+  from the sensors' `measuredData`, the occupancy closed a loop between
+  components: occupancy, room, CO2 controller, damper, damper position
+  sensor, occupancy. The loader cuts a loop per component, so it cut the
+  edge into the damper sensor, whose modelled reading then lagged its
+  damper by one step. The occupancy reads only recorded data, but the
+  loader cannot see that through the sensor's two outputs.)
 - A data source is a System whose outputs are a series known before the run.
   It defines `series(self, timestamps, step_size)`. The base calls it once at
   run start with the `(n_s, n_t)` timestamps that `get_simulation_timesteps`
@@ -133,7 +148,8 @@ class DamperSystem(System):
 - A sensor has two outputs. `measuredData` is the recorded series, filled by
   `series`. `measuredValue` is an identity `forward` of its input, which
   defaults to `measuredData` when nothing is wired. A System that needs the
-  measurement connects to `measuredData`.
+  measurement connects to `measuredData` (amended 2026-11-11: the occupancy
+  holds the sensor's reader instead, above).
 - The examples switch from `PiecewiseLinearScheduleSystem` to
   `PiecewiseLinearSystem`.
 
@@ -141,8 +157,11 @@ class DamperSystem(System):
 
 - A forward `OccupancyProfileSystem`, written downstream so far, moves into core: people in
   a room are a time-of-day basis weighted by estimated knot values, and the
-  room's CO2 sensor scores the fit.
-- The inverse `OccupancySystem` is deleted. Its inversion survives as an
+  room's CO2 sensor scores the fit. (Amended: it stays downstream. Core is
+  stand-alone and takes nothing from the packages built on it.)
+- The inverse `OccupancySystem` is deleted (amended: it is converted, see
+  the Implementation, step 9, and reads its measurements through its own
+  readers, decision 6). Its inversion survives as an
   `invert_zoh_occupancy` helper for start values.
 
 ### 8. Load
@@ -175,14 +194,16 @@ class DamperSystem(System):
 ### 10. Checks
 
 Every check runs automatically, once, at the first moment its information
-exists, and raises. Nothing is checked during the steps themselves.
+exists, and raises, except the probe, which runs on request. Nothing is
+checked during the steps themselves.
 
 | When | What is checked |
 |---|---|
 | Class definition | no name declared twice (except one input and one output); no `do_step` or `initialize` override; `size=` and `default=` name a real port or setting; `forward`, `derive` and `series` take the arguments above |
 | Construction | no unknown keyword; every setting without a default is given |
 | Load | every input without a default is wired; wired widths match declared sizes; ports sized after the same port or setting agree; translator lists are paired; every parameter has a value after the config is read |
-| First run start after a load | one probe per System: `forward` returns exactly the declared outputs at their declared sizes and a state of the state's shape; `derive` returns a dict; `series` returns every output at `(n_s, n_t, size)`; every output is filled by exactly one of `series` or `forward` |
+| Every run start | `series` returns every output it fills at `(n_s, n_t, size)` and no other |
+| On request: `model.check(start_time, end_time, step_size)` or `simulate(check=True)`; `check_system` requests it | one probe per System on the run-start values: `forward` returns exactly the declared outputs at their declared sizes and a state of the state's shape; `derive` returns a dict; every output is filled by exactly one of `series` or `forward` |
 | After each run | every connected input stayed finite (as today) |
 
 The per-System `validate(self, p)` hooks (schedule, sensor, outdoor
@@ -190,6 +211,13 @@ environment) and the sensor's `validate_connections(self, p)` go. So do the
 model-level `SimulationModel.validate`, `validate_components`,
 `validate_connections`, the `_validated_for_*` flags, `is_validated` and
 `load(validate_model=...)`.
+
+The probe runs on request (amended 2026-11-10, the maintainer's decision;
+the draft ran it at the first run start after every load). Run at every
+load, it would catch a wrong output name, size or state shape before it
+reaches a fit. It would also cost one `derive` and one `forward` call per
+System on every load of every simulation, estimation and optimization, for
+a check that a System's author needs and `check_system` already requests.
 
 ### 11. Conformance check
 
@@ -227,16 +255,17 @@ Systems.
 | One per-System load method for wiring-dependent choices | That is a System looking at its own connections. `size=` and `default=` express every case found: widths, unwired fallbacks and width agreement. |
 | The AHU's branch -> room map as a setting | Indexing must come only from the connections. A scalar output filling several slots removes the need for the map. |
 | Pairing any two translator lists of the same length | Silent and wrong for the AHU pattern, where it put every room on every slot. Pairing must come from the pattern's rules. |
-| Declared self-fed inputs: a System reading a file for one of its inputs | A second way for data to reach a System. A data source plus a connection already does it. |
+| Declared self-fed inputs: a System reading a file for one of its inputs | A second way for data to reach a System. A data source plus a connection already does it. (Amended 2026-11-11: the occupancy reads its measurements through its own readers, decision 6; connected to the sensors, it lagged the damper sensor by a step.) |
 | Stepped data sources (a `do_step` that reads the next sample) | Their values are known before the run. Filling them once is cheaper and needs no state. |
 | Data sources keeping their own `initialize` | Run start belongs to the base (decision 1). `series` is the one thing a data source adds. |
 | A clock data source feeding schedules through ports | A schedule's values follow from the timestamps alone. Computing them once at run start is simpler than stepping calendar logic. |
 | A `run` object, or a `DatetimeIndex` with a frequency, as the argument to `series` | Wraps what a System needs, the timestamps and the step size, in something it must unpack. |
 | Caching derived values inside `forward` (`transform_mode`) | `forward` stays a pure function. The caller evaluates `derive` once, inside autograd. |
-| Keeping the inverse `OccupancySystem` | The forward profile fits occupancy as a model. The inversion stays only as a helper for start values. |
+| Keeping the inverse `OccupancySystem` | Chosen after all (amended 2026-11-10, see the Implementation, step 9). The forward profile fits occupancy as a model; converted, the inversion keeps its parameters estimable. |
 | Keeping the two port aliases until 2.1 | Each alias is a second name for the same port, and 2.0 already breaks the System interface. |
 | Checks that only warn | Today's checks only warn, and models with missing inputs run. |
-| Running the first-run probe only with `simulate(check=True)`, or all checks only on `model.check()` | A wrong output name or size then reaches a fit unnoticed. The probe costs about one `forward` call per System per load. |
+| All checks only on `model.check()` | A model with a missing input then loads and runs. |
+| The probe at the first run start after every load (the draft of decision 10) | Overridden by the maintainer: it would catch a wrong output name or size before a fit, at one `derive` and `forward` call per System on every load; the probe runs on request, and `check_system` requests it. |
 | A conformance test that is internal to core, or none | Downstream packages' Systems are the ones with the most to rewrite in 2.0. Without a shared check they can drift from core unseen. |
 | Example inputs declared on the System (`Input(example=...)`) | Adds to the declarations, which should stay as simple as possible. |
 
@@ -246,7 +275,7 @@ Systems.
   `derive` or `series`.
 - **Renamed:** `sample_time` becomes `step_size` in every `forward` (39
   files today) and in the engine's callers.
-- **Removed:** `OccupancySystem`, `ScheduleSwitchControllerSystem`, the
+- **Removed:** `ScheduleSwitchControllerSystem`, the
   `Power` and `outdoorCO2` aliases, `C_boundary` / `R_boundary`,
   `transform_mode` / `SUPPORTS_TRANSFORM_MODE` / `step_constants`, the
   occupancy file mode, the `use_*` switches, the per-System `validate`
@@ -281,7 +310,12 @@ A series of pull requests against `dev`, each keeping the tests passing:
 8. Convert the Systems in groups: simple Systems; flows, junctions and the
    AHU, where the branch maps go; rooms and composites, where the boundary
    wall goes; controllers.
-9. Deletions (decision 7, the aliases, the occupancy file mode).
+9. Deletions (the aliases, the occupancy file mode). `OccupancySystem` is
+   converted rather than removed (amended 2026-11-10, the maintainer's
+   decision): converted, it keeps the zone's `V`, `G_occ` and `m_inf` and
+   the dampers' `a`, `nominalAirFlowRate` and `c` estimable through the
+   inversion, shared with the room and the dampers. It reads its
+   measurements through its own readers (amended 2026-11-11, decision 6).
 10. Lock-in: overrides raise, the checks raise and `validate` goes, and
     `check_system` with the core examples table (decisions 1, 10 and 11).
 

@@ -215,11 +215,6 @@ class TestModelProperties(unittest.TestCase):
     def setUp(self):
         self.model = Model(id="test_properties_model")
 
-    def test_is_validated_property(self):
-        """Test is_validated property."""
-        # Before validation, should be False
-        self.assertFalse(self.model.is_validated)
-
     def test_dir_conf_setter(self):
         """Test dir_conf setter."""
         new_dir_conf = ["custom", "directory", "path"]
@@ -310,8 +305,9 @@ class TestModelMethods(unittest.TestCase):
         )
         # The method should execute without error
 
-    def test_validate(self):
-        """Test validate method."""
+    def test_load_checks_the_model(self):
+        """A load checks the model and raises on a problem; validate and
+        validate_model= are gone."""
         schedule = ScheduleSystem(
             weekday_ruleset={
                 "ruleset_start_minute": [0],
@@ -328,9 +324,12 @@ class TestModelMethods(unittest.TestCase):
         self.model.add_component(schedule)
         self.model.add_component(damper)
         self.model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
-
-        # Validate should not raise errors
-        self.model.validate()
+        self.assertFalse(hasattr(self.model, "validate"))
+        with self.assertRaisesRegex(TypeError, "validate_model"):
+            self.model.load(validate_model=False)
+        self.model.add_component(DamperSystem(id="unwired_damper"))
+        with self.assertRaisesRegex(ValueError, "unwired_damper.*damperPosition"):
+            self.model.load(draw_semantic_model=False, draw_simulation_model=False)
 
     def test_set_save_simulation_result(self):
         """Test set_save_simulation_result method."""
@@ -432,6 +431,20 @@ class TestModelMethods(unittest.TestCase):
             pass
 
 
+def _constant(value=0.5, sid="constant"):
+    return ScheduleSystem(
+        weekday_ruleset={
+            "ruleset_start_minute": [],
+            "ruleset_end_minute": [],
+            "ruleset_start_hour": [],
+            "ruleset_end_hour": [],
+            "ruleset_value": [],
+            "ruleset_default_value": value,
+        },
+        id=sid,
+    )
+
+
 class TestModelAdvanced(unittest.TestCase):
     def setUp(self):
         self.model = Model(id="test_advanced_model")
@@ -442,7 +455,7 @@ class TestModelAdvanced(unittest.TestCase):
         # Local application imports
 
         damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
-        self.model.add_component(damper)
+        self.model.add_connection(_constant(), damper, "scheduleValue", "damperPosition")
         self.model.load()
 
         counts = self.model.set_parameters({(damper, "nominalAirFlowRate"): 0.8})
@@ -458,7 +471,7 @@ class TestModelAdvanced(unittest.TestCase):
         # Local application imports
 
         damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
-        self.model.add_component(damper)
+        self.model.add_connection(_constant(), damper, "scheduleValue", "damperPosition")
         self.model.load()
 
         self.model._write_parameters(

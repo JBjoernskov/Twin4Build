@@ -1,29 +1,21 @@
+"""A measurement point: a sensor's recorded series and what it reads in the
+model (ADR 0001, decision 6)."""
+
 # Standard library imports
 import datetime
-import warnings
-import importlib
 from typing import Any, Callable, Dict, List, Optional, Union
 
 # Third party imports
+import numpy as np
 import pandas as pd
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
-from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.utils.data_loaders.sources import reader_from_keywords
-from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
-from twin4build.translator.translator import (
-    ModeledNode,
-    Node,
-    OptionalRule,
-    PathRule,
-    SignaturePattern,
-    StepRule,
-)
-from twin4build.utils.logger import LOGGER, autoreset_print
+from twin4build.utils.callable_ref import as_callable
+from twin4build.utils.data_loaders.sources import DatabaseSource, DataFrameSource, as_source
+from twin4build.utils.logger import autoreset_print
 
 
 # Properties of spaces
@@ -81,422 +73,119 @@ from twin4build.utils.logger import LOGGER, autoreset_print
 # -----------------------------------------------------------------------------
 
 
+
+def _standard_deviation(value) -> Optional[float]:
+    """A measurement's standard deviation: positive, or ``None``."""
+    if value is None:
+        return None
+    value = float(value)
+    if not value > 0:
+        raise ValueError(f"SensorSystem: measurement_sd must be positive, got {value}.")
+    return value
+
+
+_READER = "give the sensor a reader: source=CsvSource(path, date_column=..., value_column=...), DataFrameSource(df) or DatabaseSource(uuid)"
+
+
 @autoreset_print
 class SensorSystem(core.System):
-    """A system representing a physical or virtual sensor in the building.
+    """A measurement point: what a sensor recorded, and what it reads in the
+    model (ADR 0001, decision 6).
 
-    This class implements sensor functionality, supporting both physical sensors
-    (reading from time series data) and virtual sensors (computing values from
-    other inputs). It integrates with TimeSeriesInputSystem for data handling.
+    ::
+
+        tb.SensorSystem(id="room_temperature", source=CsvSource("room.csv", value_column=2))
+
+    Two outputs.  ``measuredData`` is the recorded series, read once at run
+    start from ``source`` (:meth:`series`).  ``measuredValue`` is what the
+    sensor reads: the value wired to its input, or its recorded series while
+    nothing is wired (``measuredValue = Input(default=measuredData)``).  A
+    sensor that measures a model output is wired; the estimator scores its
+    ``measuredValue`` against ``measuredData``.  A sensor that drives the
+    model is not.  A System that needs the measurement itself connects to
+    ``measuredData``, so it never closes a loop through the model.
 
     Args:
-        filename: Path to sensor readings file.
-            Defaults to None.
-        df: DataFrame containing readings.
-            Defaults to None.
-        uuid: UUID identifying the time series in the database.  Given
-            together with ``df`` (and no ``dbconfig``) it is the sensor's
-            identity only: the sensor reads the DataFrame.
-            Defaults to None.
-        dbconfig: Configuration of the database to read sensor values from.
-            Defaults to None.
-        datecolumn: Column index containing date/time information.
-            Defaults to 0.
-        valuecolumn: Column index containing sensor values.
-            Defaults to 1.
-        use_spreadsheet: Whether to use a spreadsheet for input.
-            Defaults to False.
-        use_database: Whether to use a database for input.
-            Defaults to False.
-        use_df: Whether to use the provided DataFrame for input.
-            Defaults to False.
-        transformation: Optional function to transform the value.
-            Defaults to None.
-        scoring_mask: Which samples of the sensor's series an estimation
-            scores, see :attr:`scoring_mask`.  Defaults to None (all).
-        measurement_sd: The standard deviation the sensor is scored with,
-            see :attr:`measurement_sd`.  Defaults to None.
-        **kwargs: Additional keyword arguments passed to parent class.
+        source: The reader of the recorded series:
+            :class:`~twin4build.utils.data_loaders.sources.CsvSource`,
+            :class:`~twin4build.utils.data_loaders.sources.DataFrameSource` or
+            :class:`~twin4build.utils.data_loaders.sources.DatabaseSource`,
+            with its reading options (resampling, gap limit, fill).  A string
+            is a database point's id.  ``None``: the sensor has no data (and
+            must then be wired).
+        uuid: The id of the point the sensor stands for, named in
+            measurement results; without a ``source`` it is the database point
+            the sensor reads.
+        transformation: Applied to every value read (a unit conversion); a
+            saved model holds its ``module:qualname``.
+        allow_missing: Whether a step without a reading is an unscored sample
+            rather than an error.  ``None`` (default): yes for a sensor that
+            measures a model output, no for one that drives the model, which
+            gives its reader a ``fill`` instead.
+        scoring_mask: Which samples an estimation scores, see
+            :attr:`scoring_mask`.
+        measurement_sd: The standard deviation the sensor is scored with, in
+            the unit of its readings; used by
+            :meth:`~twin4build.estimator.estimator.Estimator.estimate` for an
+            entry of ``measurements`` that names the sensor without one.
 
-    Note:
-        A sensor must either have connections to other systems (virtual sensor) or
-        have data input through filename/df/database (physical sensor). Flags are
-        auto-detected if only one data source is provided.
+    After a run, :attr:`time_series_input` holds the reading: its ``values``,
+    the per-period series ``df`` as read and the ``filled`` steps.
     """
 
+    #: The 1.x keywords and what replaced them.
+    REMOVED_ATTRIBUTES = {
+        **{name: _READER for name in ("filename", "datecolumn", "valuecolumn", "use_spreadsheet", "use_database", "use_df")},
+        "df": "give the sensor a reader, source=DataFrameSource(df), or call set_series(series)",
+        "dbconfig": "give the sensor a reader, source=DatabaseSource(uuid, dbconfig), or call set_dbconfig(dbconfig)",
+        **{
+            name: "give the reader its reading options, CsvSource(..., resample_method=..., dt_limit=..., fill=...)"
+            for name in ("resample_method", "dt_limit", "fill")
+        },
+    }
 
-    def __init__(
-        self,
-        filename: Optional[str] = None,
-        df: Optional[pd.DataFrame] = None,
-        uuid: Optional[str] = None,
-        dbconfig: Optional[Dict[str, Any]] = None,
-        datecolumn: int = 0,
-        valuecolumn: int = 1,
-        use_spreadsheet: bool = False,
-        use_database: bool = False,
-        use_df: bool = False,
-        transformation: Optional[callable] = None,
-        transformation_ref: Optional[str] = None,
-        scoring_mask: Optional[Any] = None,
-        measurement_sd: Optional[float] = None,
-        resample_method: str = "linear",
-        dt_limit: Optional[float] = DEFAULT_DT_LIMIT,
-        fill: Optional[str] = None,
-        allow_missing: Optional[bool] = None,
-        **kwargs,
-    ) -> None:
-        """Initialize the sensor system.
+    #: The name 1.x saved the transformation under.
+    DEPRECATED_KEYWORDS = {"transformation_ref": "transformation"}
 
-        Args:
-            filename: Path to sensor readings file.
-                Defaults to None.
-            df: DataFrame containing readings.
-                Defaults to None.
-            datecolumn: Column index containing date/time information.
-                Defaults to 0.
-            valuecolumn: Column index containing sensor values.
-                Defaults to 1.
-            use_spreadsheet: Whether to use a spreadsheet for input.
-                Defaults to False.
-            use_database: Whether to use a database for input.
-                Defaults to False.
-            use_df: Whether to use the provided DataFrame for input.
-                Defaults to False.
-            transformation: Optional function to transform the value.
-                Defaults to None.
-            scoring_mask: Which samples an estimation scores.
-                Defaults to None (all).
-            measurement_sd: The standard deviation the sensor is scored
-                with.  Defaults to None.
-            resample_method: How the readings become step values:
-                ``"linear"`` (the value at the step), ``"constant"`` (the last
-                reading at or before it) or ``"mean"`` (the mean over the step,
-                for rates such as power or flow).  Defaults to ``"linear"``.
-            dt_limit: The longest stretch between two readings [s] a step
-                value may bridge; nothing beyond the first or last reading is
-                ever filled.  Defaults to six hours.
-            fill: For an input sensor (one whose readings drive the model):
-                what fills the steps its readings do not give (see
-                :class:`~twin4build.systems.utils.time_series_input_system.TimeSeriesInputSystem`).
-                ``None`` (default): such a step is an error.
-            allow_missing: Whether NaN readings are unscored samples rather
-                than an error.  ``None`` (default): yes for a scored sensor (one
-                that measures a model output), no for an input sensor, which
-                declares a ``fill`` instead.
-            **kwargs: Additional keyword arguments passed to parent class.
-
-        Note:
-            Either filename/df must be provided for physical sensors, or
-            the sensor must have connections defined for virtual sensors.
-            Flags are auto-detected if only one data source is provided.
-        """
-        for legacy_key, new_key in (
-            ("useSpreadsheet", "use_spreadsheet"),
-            ("useDatabase", "use_database"),
-            ("usedf", "use_df"),
-        ):
-            if legacy_key in kwargs:
-                raise TypeError(
-                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
-                )
-
-        # Count how many data sources are provided
-        has_df = df is not None
-        has_filename = filename is not None
-        # A uuid next to a DataFrame names the series the frame holds (the
-        # sensor's identity); it is a database source on its own or with a
-        # database configuration.
-        has_database = dbconfig is not None or (uuid is not None and not has_df)
-        n_sources = sum([has_df, has_filename, has_database])
-        n_flags = sum([use_spreadsheet, use_database, use_df])
-
-        # If multiple sources provided, user must explicitly set a flag
-        assert not (n_sources > 1 and n_flags == 0), (
-            "Multiple data sources provided (df, filename, database). "
-            "You must explicitly set one of use_df=True, use_spreadsheet=True, or use_database=True "
-            "to specify which source to use."
-        )
-
-        # Auto-detect data source if no flags are explicitly set
-        if not use_spreadsheet and not use_database and not use_df:
-            if has_df:
-                use_df = True
-            elif has_filename:
-                use_spreadsheet = True
-            elif has_database:
-                use_database = True
-
-        assert (
-            sum([use_spreadsheet, use_database, use_df]) <= 1
-        ), "Only one of use_spreadsheet, use_database, or use_df can be True."
-        super().__init__(**kwargs)
-
-        # Define inputs and outputs as private variables
-        self._input = {"measuredValue": tps.Scalar()}
-        self._output = {
-            "measuredValue": tps.Scalar(0),
-            # The historised series itself, for consumers that need the
-            # MEASUREMENT rather than the modelled value (a CO2-balance
-            # occupancy reading the room's CO2 sensor): on a virtual sensor
-            # with data, ``measuredValue`` carries the model's value (what the
-            # estimator scores) while ``measuredData`` carries the data, so a
-            # consumer of the data never closes a loop through the model.
-            # Populated only when the sensor holds data; a leaf in both
-            # engines.
-            "measuredData": tps.Scalar(0),
-        }
-
-        # Store attributes as private variables
-        self._use_spreadsheet = use_spreadsheet
-        self._use_database = use_database
-        self._use_df = use_df
-        self._filename = filename
-        self._df = df
-        self._datecolumn = datecolumn
-        self._valuecolumn = valuecolumn
-        self._uuid = uuid
-        self._dbconfig = dbconfig
-        self._is_leaf = None
-        self._time_series_input = None
-        self._transformation = transformation
-        self.resample_method = resample_method
-        self.dt_limit = dt_limit
-        self.fill = fill
-        self.allow_missing = allow_missing
-        self._scoring_mask = None
-        self._measurement_sd = None
-        self.scoring_mask = scoring_mask
-        self.measurement_sd = measurement_sd
-        if transformation is None and transformation_ref:
-            # A serialized model carries the transformation by import path.
-            self.transformation_ref = transformation_ref
-
-        self._config = {
-            "parameters": ["use_spreadsheet", "use_database", "use_df", "transformation_ref"],
-            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
-            "database": ["uuid", "dbconfig"],
-        }
+    source = Setting(None, convert=as_source, doc="The reader of the recorded series")
+    uuid = Setting(None, doc="The id of the point the sensor stands for")
+    transformation = Setting(None, convert=as_callable, doc="Applied to every value read")
+    allow_missing = Setting(None, doc="Whether a step without a reading is an unscored sample")
+    scoring_mask = Setting(None, save=False, doc="Which samples an estimation scores")
+    measurement_sd = Setting(None, convert=_standard_deviation, save=False, doc="The standard deviation it is scored with")
+    measuredData = Output(doc="The recorded series")
+    measuredValue = Input(default=measuredData, doc="The value the sensor reads; unwired, its recorded series")
+    measuredValue = Output(doc="What the sensor reads")
 
     @property
-    def config(self):
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the sensor system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "measuredValue": Measured value input for virtual sensors
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the sensor system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "measuredValue": Measured value output [units depend on sensor type]
-                - "measuredData": The historised series (data sensors only);
-                  the measurement, never the modelled value
-        """
-        return self._output
-
-    @staticmethod
-    def _names_a_new_source(current, value) -> bool:
-        """Whether assigning ``value`` to a data-source attribute that
-        holds ``current`` names a new source, which switches the sensor to
-        it.  Assigning the value the attribute already holds changes
-        nothing: ``Model.load`` restores every component's saved
-        configuration by assignment, and a sensor put on an in-memory series
-        (:meth:`set_series`) keeps the ``uuid``, ``dbconfig`` and
-        ``filename`` it had."""
-        if value is None:
-            return False
-        try:
-            return not bool(current == value)
-        except (TypeError, ValueError):
-            return True
-
-    @property
-    def filename(self) -> Optional[str]:
-        """
-        Get the path to sensor readings file.
-        """
-        return self._filename
-
-    @filename.setter
-    def filename(self, value: Optional[str]) -> None:
-        """
-        Set the path to sensor readings file.
-        Automatically sets use_spreadsheet=True if a new value is provided;
-        assigning the value the sensor already has changes nothing.
-        """
-        new = self._names_a_new_source(self._filename, value)
-        self._filename = value
-        if new:
-            self._use_spreadsheet = True
-            self._use_database = False
-            self._use_df = False
-
-    @property
-    def df(self) -> Optional[pd.DataFrame]:
-        """
-        Get the direct DataFrame input of sensor readings.
-        """
-        return self._df
-
-    @df.setter
-    def df(self, value: Optional[pd.DataFrame]) -> None:
-        """
-        Set the direct DataFrame input of sensor readings.
-        Automatically sets use_df=True if a value is provided.
-        """
-        self._df = value
-        if value is not None:
-            self._use_df = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def datecolumn(self) -> int:
-        """
-        Get the column index for date_time values.
-        """
-        return self._datecolumn
-
-    @datecolumn.setter
-    def datecolumn(self, value: int) -> None:
-        """
-        Set the column index for date_time values.
-        """
-        self._datecolumn = value
-
-    @property
-    def valuecolumn(self) -> int:
-        """
-        Get the column index for sensor readings.
-        """
-        return self._valuecolumn
-
-    @valuecolumn.setter
-    def valuecolumn(self, value: int) -> None:
-        """
-        Set the column index for sensor readings.
-        """
-        self._valuecolumn = value
+    def reader(self):
+        """The reader the recorded series comes from: ``source``, or the
+        database point ``uuid`` names; ``None`` for a sensor without data."""
+        if self.source is not None:
+            return self.source
+        if self.uuid is not None:
+            return DatabaseSource(self.uuid)
+        return None
 
     @property
     def has_data(self) -> bool:
-        """Whether the sensor holds a historised series (spreadsheet,
-        DataFrame or database), i.e. whether ``measuredData`` is populated."""
-        return bool(self.use_spreadsheet or self.use_database or self.use_df)
+        """Whether the sensor holds a recorded series (``measuredData``)."""
+        return self.reader is not None
 
     @property
     def is_leaf(self) -> bool:
-        """
-        Get whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        return self._is_leaf
-
-    @is_leaf.setter
-    def is_leaf(self, value: bool) -> None:
-        """
-        Set whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        self._is_leaf = value
+        """Whether nothing is wired to the sensor's input: it then reads its
+        recorded series (True), otherwise the value wired to it (False)."""
+        return len(self.connects_at) == 0
 
     @property
     def time_series_input(self) -> Optional[TimeSeriesInputSystem]:
-        """
-        Get the data handling system for physical sensors.
-        """
-        return self._time_series_input
+        """The reading of the last run start (``values``, ``df``,
+        ``filled``); ``None`` before it, and for a sensor without data."""
+        return self.__dict__.get("_reading")
 
-    @time_series_input.setter
-    def time_series_input(self, value: Optional[TimeSeriesInputSystem]) -> None:
-        """
-        Set the data handling system for physical sensors.
-        """
-        self._time_series_input = value
-
-    @property
-    def use_spreadsheet(self) -> bool:
-        """
-        Get whether to use a spreadsheet for input.
-        """
-        return self._use_spreadsheet
-
-    @use_spreadsheet.setter
-    def use_spreadsheet(self, value: bool) -> None:
-        """
-        Set whether to use a spreadsheet for input.
-        """
-        self._use_spreadsheet = value
-
-    @property
-    def use_database(self) -> bool:
-        """
-        Get whether to use a database for input.
-        """
-        return self._use_database
-
-    @use_database.setter
-    def use_database(self, value: bool) -> None:
-        """
-        Set whether to use a database for input.
-        """
-        self._use_database = value
-
-    @property
-    def use_df(self) -> bool:
-        """
-        Get whether to use a DataFrame for input.
-        """
-        return self._use_df
-
-    @use_df.setter
-    def use_df(self, value: bool) -> None:
-        """
-        Set whether to use a DataFrame for input.
-        """
-        self._use_df = value
-
-    @property
-    def uuid(self) -> Optional[str]:
-        """
-        Get the UUID for database operations.
-        """
-        return self._uuid
-
-    @uuid.setter
-    def uuid(self, value: Optional[str]) -> None:
-        """
-        Set the UUID for database operations.
-        Automatically sets use_database=True if a new value is provided;
-        assigning the value the sensor already has changes nothing.  To
-        name a sensor that reads an in-memory series, use :meth:`set_series`.
-        """
-        new = self._names_a_new_source(self._uuid, value)
-        self._uuid = value
-        if new:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    def set_series(
-        self, series: Union[pd.Series, pd.DataFrame], uuid: Optional[str] = None
-    ) -> None:
-        """Read an in-memory series from now on: no database, no spreadsheet.
-
-        The series replaces the sensor's data source at the next
-        ``initialize``.  Unlike the :attr:`uuid` setter, which switches the
-        sensor to database mode, ``uuid`` here is the sensor's identity only
-        (the name of the series it holds).
+    def set_series(self, series: Union[pd.Series, pd.DataFrame], uuid: Optional[str] = None) -> None:
+        """Read an in-memory series from now on (a ``DataFrameSource``).
 
         Args:
             series: The readings, a ``pandas.Series`` with a
@@ -515,398 +204,93 @@ class SensorSystem(core.System):
         elif isinstance(series, pd.DataFrame):
             if series.shape[1] != 1:
                 raise ValueError(
-                    f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: set_series takes "
-                    f"a DataFrame with one column, got {series.shape[1]}."
+                    f"SensorSystem '{self.id}': set_series takes a DataFrame with one column, got {series.shape[1]}."
                 )
             frame = series
         else:
             raise TypeError(
-                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: set_series takes a "
-                f"pandas Series or a one-column DataFrame, got {type(series).__name__}."
+                f"SensorSystem '{self.id}': set_series takes a pandas Series or a one-column DataFrame, "
+                f"got {type(series).__name__}."
             )
         if not isinstance(frame.index, pd.DatetimeIndex):
             raise TypeError(
-                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: the series must be "
-                f"indexed by time (a DatetimeIndex), got {type(frame.index).__name__}."
+                f"SensorSystem '{self.id}': the series must be indexed by time (a DatetimeIndex), "
+                f"got {type(frame.index).__name__}."
             )
-        self._df = frame
-        self._use_df = True
-        self._use_database = False
-        self._use_spreadsheet = False
+        options = {} if self.source is None else {
+            "resample_method": self.source.resample_method, "dt_limit": self.source.dt_limit, "fill": self.source.fill,
+        }
+        self.source = DataFrameSource(frame, **options)
         if uuid is not None:
-            self._uuid = uuid
-
-    @property
-    def scoring_mask(self) -> Optional[Any]:
-        """Which samples of the sensor's series an estimation scores.
-
-        A boolean ``pandas.Series`` indexed by time: ``False`` means the
-        sample is not scored (a duct sensor while its fan is off, an
-        implausible reading).  The mask is selected by the timestamps of
-        each estimated period, so one mask serves a span of several
-        periods; a time it does not cover is scored.  A plain boolean array
-        is taken as the steps of a period, in order.  ``None`` (default)
-        scores every sample.  The mask lives on the sensor, not in the
-        data, because the data loaders interpolate gaps away.  It is read
-        by the functional single-shooting objective of the estimator and by
-        :meth:`~twin4build.simulator.simulator.Simulator.measurement_errors`.
-        A batched model holds a copy of the sensor
-        (``Model.get_batched_component_info``): a mask set after
-        ``Model.batch_components`` is set on the copy.
-        """
-        return getattr(self, "_scoring_mask", None)
-
-    @scoring_mask.setter
-    def scoring_mask(self, value: Optional[Any]) -> None:
-        self._scoring_mask = value
-
-    @scoring_mask.deleter
-    def scoring_mask(self) -> None:
-        self._scoring_mask = None
-
-    @property
-    def measurement_sd(self) -> Optional[float]:
-        """The standard deviation the sensor is scored with, in the unit of
-        its readings.
-
-        Used by :meth:`~twin4build.estimator.estimator.Estimator.estimate`
-        for an entry of ``measurements`` that names the sensor without a
-        standard deviation.  ``None`` (default): the entry must give one.
-        """
-        return getattr(self, "_measurement_sd", None)
-
-    @measurement_sd.setter
-    def measurement_sd(self, value: Optional[float]) -> None:
-        if value is not None:
-            value = float(value)
-            if not value > 0:
-                raise ValueError(
-                    f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: measurement_sd "
-                    f"must be positive, got {value}."
-                )
-        self._measurement_sd = value
-
-    @property
-    def dbconfig(self) -> Optional[Dict[str, Any]]:
-        """
-        Get the database configuration parameters.
-        """
-        return self._dbconfig
-
-    @dbconfig.setter
-    def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
-        """
-        Set the database configuration parameters.
-        Automatically sets use_database=True if a new value is provided;
-        assigning the value the sensor already has changes nothing.
-        """
-        new = self._names_a_new_source(self._dbconfig, value)
-        self._dbconfig = value
-        if new:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
+            self.uuid = uuid
 
     def set_dbconfig(self, dbconfig: Optional[Dict[str, Any]]) -> None:
-        """Set the database configuration on this sensor.
-
-        Functional sibling of the ``dbconfig`` property setter, exposed
-        explicitly so model-level helpers (e.g.
-        :meth:`SimulationModel.set_dbconfigs`) can dispatch via duck-typed
-        method lookup instead of touching the ``dbconfig`` property.
-        """
-        self.dbconfig = dbconfig
-
-    @property
-    def transformation(self) -> Optional[Callable]:
-        """Unit-conversion callable applied to loaded timeseries before they
-        are emitted on the sensor's ``measuredValue`` output.  ``None`` means
-        no conversion (raw values pass through)."""
-        return self._transformation
-
-    @transformation.setter
-    def transformation(self, fn: Optional[Callable]) -> None:
-        self._transformation = fn
-
-    @property
-    def transformation_ref(self) -> Optional[str]:
-        """The transformation as an import path ``module:qualname`` -- the
-        form that survives ``Model.serialize()`` / ``Model.load(filename=...)``
-        (a callable is not a literal).  ``None`` when there is no
-        transformation, or when it cannot be named (a lambda or a closure):
-        such a model reloads without it, with a warning at serialize time."""
-        return callable_to_ref(
-            self._transformation, f"|CLASS: {self.__class__.__name__}|ID: {self.id}|"
-        )
-
-    @transformation_ref.setter
-    def transformation_ref(self, ref: Optional[str]) -> None:
-        fn = ref_to_callable(ref)
-        if fn is not None:
-            self._transformation = fn
+        """The database connection of the sensor's database reader (the hook
+        :meth:`SimulationModel.set_dbconfigs` uses); a sensor that reads the
+        point its ``uuid`` names gets a ``DatabaseSource`` with it."""
+        if self.source is None and self.uuid is not None:
+            self.source = DatabaseSource(self.uuid, dbconfig)
+        elif hasattr(self.source, "dbconfig"):
+            self.source.dbconfig = dbconfig
 
     def set_transformation(self, fn: Optional[Callable]) -> None:
-        """Set the unit-conversion callable applied to loaded timeseries.
+        """The function applied to every value read (the hook
+        :meth:`SimulationModel.set_transformations` uses); ``None`` removes
+        it."""
+        self.transformation = fn
 
-        Companion to :meth:`SimulationModel.set_transformations` (plural):
-        the bulk model-level setter dispatches a per-component call here
-        for every match.  Idempotent; subsequent calls overwrite.
-        """
-        self._transformation = fn
-
-    def validate(self, p) -> tuple[bool, bool, bool, bool]:
-        """Validate the sensor system configuration.
-
-        Checks if the sensor has proper inputs for different operational modes.
-
-        Args:
-            p: Logging function for validation messages.
-
-        Returns:
-            tuple[bool, bool, bool, bool]: Validation status for:
-                - Simulator
-                - Estimator
-                - Evaluator
-                - Monitor
-        """
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_optimizer = True
-
-        if (
-            len(self.connects_at) == 0
-            and self.filename is None
-            and self.df is None
-            and self.uuid is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Simulator, Estimator, and Optimizer."
-            p(message, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        elif (
-            len(self.connects_at) > 0
-            and self.filename is None
-            and self.df is None
-            and self.uuid is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Estimator."
-            p(message, status="WARNING")
-            validated_for_estimator = False
-
-        self.is_leaf = len(self.connects_at) == 0  # No inputs -> leaf scalar
-        self.output["measuredValue"].is_leaf = self.is_leaf
-        self.output["measuredData"].is_leaf = self.has_data
-
-        return (
-            validated_for_simulator,
-            validated_for_estimator,
-            validated_for_optimizer,
-        )
-
-    def validate_connections(self, p) -> bool:
-        validated = True
-        if (
-            self.is_leaf
-            and self.use_spreadsheet == False
-            and self.use_database == False
-            and self.use_df == False
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-            p(message, status="[WARNING]")
-            p.add_level()
-            p("measuredValue")
-            p.remove_level()
-            validated = False
-        return validated
-
-    def initialize(
-        self,
-        start_time: List[datetime.datetime],
-        end_time: List[datetime.datetime],
-        step_size: List[float],
-    ) -> None:
-        """Initialize the sensor system.
-
-        Sets up the physical or virtual sensor system and initializes the step instance.
-
-        Args:
-            start_time (Optional[datetime.datetime]): Start time for the simulation.
-            end_time (Optional[datetime.datetime]): End time for the simulation.
-            step_size (Optional[float]): Time step size in seconds.
-            model (Optional[Any]): Model object (not used in this class).
-        """
-
-        self.validate(LOGGER)
-        self.validate_connections(LOGGER)
-
-        if self.use_spreadsheet or self.use_database or self.use_df:
-            if self.use_df:
-                if self.df is None:
-                    raise ValueError("df must be provided when use_df=True.")
-            # ``allow_missing``: NaN samples in a scored sensor's series are
-            # unscored gaps, not an error (a duct sensor while the fan is off,
-            # a stretch the BMS did not log).  An input sensor's NaN would
-            # become zeros driving the model: it declares a ``fill`` instead.
-            if getattr(self, "fill", None) is not None and not self.is_leaf:
+    def series(self, timestamps, step_size):
+        """The recorded series on the run's grid, from the reader."""
+        drives = "measuredValue" in self.output_defaults()  # nothing wired: the series drives the model
+        reader = self.reader
+        if reader is None:
+            if drives:
                 raise ValueError(
-                    f'Sensor "{self.id}" ({self.uuid}) measures a model output: its gaps are '
-                    f"unscored samples, a fill would invent measurements to score (fill={self.fill!r})."
+                    f"SensorSystem '{self.id}': nothing is wired to measuredValue and the sensor has no "
+                    f"recorded series (source=...)"
                 )
-            allow_missing = getattr(self, "allow_missing", None)
-            if allow_missing is None:
-                allow_missing = not self.is_leaf
-            elif allow_missing and self.is_leaf:
-                raise ValueError(
-                    f'Sensor "{self.id}" ({self.uuid}) drives the model: its gaps cannot be '
-                    f"unscored (allow_missing); declare a fill instead (fill=...)."
-                )
-            allow_missing = bool(allow_missing)
-            sampling = (
-                getattr(self, "resample_method", "linear"),
-                getattr(self, "dt_limit", DEFAULT_DT_LIMIT),
-                getattr(self, "fill", None) if self.is_leaf else None,
+            self.__dict__["_reading"] = None
+            return {"measuredData": np.zeros(timestamps.shape)}
+        if not drives and reader.fill is not None:
+            raise ValueError(
+                f"SensorSystem '{self.id}' ({self.uuid}) measures a model output: its gaps are unscored "
+                f"samples, a fill would invent measurements to score (fill={reader.fill!r})."
             )
-            # The series input is kept while its source is unchanged: it
-            # caches by window (start, end, step), so initializing again over
-            # the same windows (every simulate of a model) skips the load.  A
-            # new frame (``set_series``), file, point, database,
-            # transformation or ``allow_missing`` builds a new input.
-            source = (
-                self.df,
-                self._transformation,
-                (
-                    self.filename,
-                    self.datecolumn,
-                    self.valuecolumn,
-                    self.use_spreadsheet,
-                    self.use_database,
-                    self.uuid,
-                    None if self.dbconfig is None else dict(self.dbconfig),
-                    allow_missing,
-                    sampling,
-                ),
+        allow_missing = self.allow_missing
+        if allow_missing is None:
+            allow_missing = not drives
+        elif allow_missing and drives:
+            raise ValueError(
+                f"SensorSystem '{self.id}' ({self.uuid}) drives the model: its gaps cannot be unscored "
+                f"(allow_missing); declare a fill on its reader instead (fill=...)."
             )
-            kept = getattr(self, "_series_source", None)
-            if (
-                self.time_series_input is None
-                or kept is None
-                or kept[0] is not source[0]
-                or kept[1] is not source[1]
-                or kept[2] != source[2]
-            ):
-                self.time_series_input = TimeSeriesInputSystem(
-                    id=f"time series input - {self.id}",
-                    source=reader_from_keywords(
-                        df=self.df,
-                        filename=self.filename,
-                        date_column=self.datecolumn,
-                        value_column=self.valuecolumn,
-                        use_spreadsheet=self.use_spreadsheet,
-                        use_database=self.use_database,
-                        uuid=self.uuid,
-                        dbconfig=self.dbconfig,
-                        resample_method=sampling[0],
-                        dt_limit=sampling[1],
-                        fill=sampling[2],
-                    ),
-                    transformation=self._transformation,
-                )
-                self.time_series_input.allow_missing = allow_missing
-                self._series_source = source
-            self.time_series_input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
+        reading = self.__dict__.get("_reading")
+        if reading is None or reading.source is not reader or reading.transformation is not self.transformation:
+            reading = TimeSeriesInputSystem(
+                id=f"time series input - {self.id}", source=reader, transformation=self.transformation
             )
+            self.__dict__["_reading"] = reading
+        reading.allow_missing = bool(allow_missing)
+        return {"measuredData": reading.series(timestamps, step_size)["value"]}
 
-        else:
-            self.time_series_input = None
-
-        assert (
-            len(self.connects_at) == 0 and self.time_series_input is None
-        ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
-
-        if self.time_series_input is not None:
-            # The data, leaf-style (pre-filled history), whether or not the
-            # sensor also models a value.
-            self.output["measuredData"].initialize(
-                n_t=self.time_series_input.n_timesteps,
-                n_s=self.time_series_input.batch_size,
-                n_c=1,
-                values=self.time_series_input.values,
-            )
-        if self.is_leaf:
-            # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
-            # They are stored in the physicalSystem object and reused here.
-            self.output["measuredValue"].initialize(
-                n_t=self.time_series_input.n_timesteps,
-                n_s=self.time_series_input.batch_size,
-                n_c=1,
-                values=self.time_series_input.values,
-            )
-        else:
-            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-                start_time, end_time, step_size
-            )
-            batch_size = len(start_time)
-            self.input["measuredValue"].initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-            )
-            self.output["measuredValue"].initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-            )
-
-    def do_step(
-        self,
-        second_time: Optional[float] = None,
-        date_time: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        step_index: Optional[int] = None,
-    ) -> None:
-        """Execute one time step of the sensor system.
-
-        Updates sensor outputs based on either physical readings or virtual calculations.
-
-        Args:
-            second_time (Optional[float]): Current simulation time in seconds.
-            date_time (Optional[datetime.datetime]): Current simulation date_time.
-            step_size (Optional[float]): Time step size in seconds.
-        """
-        if self.time_series_input is not None:
-            self.output["measuredData"]._set(i_t=step_index)
-        if self.is_leaf:
-            self.output["measuredValue"]._set(i_t=step_index)
-        else:
-            self.output["measuredValue"]._set(
-                self.input["measuredValue"].get(), step_index
-            )
+    def forward(self, x, inputs, p, step_size):
+        """What the sensor reads: its input, which is its recorded series
+        while nothing is wired."""
+        return x, {"measuredValue": inputs["measuredValue"]}
 
     def get_physical_readings(
         self,
         start_time: List[datetime.datetime],
         end_time: List[datetime.datetime],
         step_size: List[float],
-    ) -> pd.DataFrame:
-        """Retrieve physical sensor readings for a specified time period.
-
-        Args:
-            start_time (Optional[datetime.datetime]): Start time for readings.
-            end_time (Optional[datetime.datetime]): End time for readings.
-            step_size (Optional[float]): Time step size in seconds.
-
-        Returns:
-            pd.DataFrame: DataFrame containing sensor readings.
+    ) -> List[pd.Series]:
+        """The recorded series of each period, as read (NaN where the data
+        give nothing).
 
         Raises:
-            AssertionError: If called on a virtual sensor (no physical readings available).
+            ValueError: If the sensor has no recorded series.
         """
+        if not self.has_data:
+            raise ValueError(f"SensorSystem '{self.id}' has no recorded series (source=...)")
         self.initialize(start_time, end_time, step_size)
-        assert (
-            self.time_series_input is not None
-        ), f'Cannot return physical readings for Sensor with id "{self.id}" as time_series_input is None.\nEither this sensor has not been intialized or the arguments filename/df/dbconfig were not provided when the object was initialized or the sensor is virtual and has no time_series_input.'
-        self.time_series_input.initialize(start_time, end_time, step_size)
         return self.time_series_input.df

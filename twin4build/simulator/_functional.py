@@ -173,10 +173,21 @@ def _clone_recording(recording):
 def _has_real_forward(comp) -> bool:
     """True iff ``comp``'s class overrides ``forward`` (not the ``nn.Module`` base
     stub, which every ``nn.Module`` inherits).  Components without their own
-    ``forward`` (sensors, schedules, weather, occupancy, ...) are treated as
-    exogenous/pass-through by the functional_model."""
+    ``forward`` (schedules, weather, occupancy, ...) are treated as
+    exogenous/pass-through by the functional_model.  A sensor's ``forward``
+    is the identity of its input, which the functional model follows
+    instead of tracing it (:meth:`FunctionalModel._follow`)."""
+    if isinstance(comp, systems.SensorSystem):
+        return False
     f = getattr(type(comp), "forward", None)
     return f is not None and f is not nn.Module.forward
+
+
+def _is_series_output(comp, port) -> bool:
+    """An output a System's ``series`` fills at the run start (the
+    occupancy's measurements): known before the run, so it is data, never
+    produced by the System's ``forward``."""
+    return port in getattr(comp, "__dict__", {}).get("_series_outputs", ())
 
 
 def _replays_data(comp) -> bool:
@@ -436,7 +447,7 @@ class FunctionalModel:
         meas_offset = 0
         for md in measurements or []:
             src = self._trace_source(md, "measuredValue")
-            if src is not None and src[0].id in {x.id for x in self.cone}:
+            if src is not None and src[0].id in {x.id for x in self.cone} and not _is_series_output(src[0], src[1]):
                 width = self._route_width(src[2], src[0], src[1])
                 self.meas_sources.append(("fresh", src[0].id, src[1], src[2]))
             else:
@@ -458,7 +469,11 @@ class FunctionalModel:
         # every output on a fused zone would be wrongly classified external.
         for comp, out_port in outputs or []:
             resolved = self._follow(comp, out_port)
-            if resolved is not None and resolved[0].id in self.cone_ids:
+            if (
+                resolved is not None
+                and resolved[0].id in self.cone_ids
+                and not _is_series_output(resolved[0], resolved[1])
+            ):
                 width = self._route_width(resolved[2], resolved[0], resolved[1])
                 self.meas_sources.append(
                     ("fresh", resolved[0].id, resolved[1], resolved[2])
@@ -659,6 +674,9 @@ class FunctionalModel:
         namespaced port names)."""
         if _is_passthrough_sensor(producer) and out_port == "measuredValue":
             return self._trace_source(producer, "measuredValue")
+        if isinstance(producer, systems.SensorSystem) and out_port == "measuredValue":
+            # nothing wired: the sensor reads its recorded series
+            return producer, "measuredData", ()
         # A pass-through sensor's ``measuredData`` (its historised series)
         # is the sensor's own leaf output, not the modelled value.
         fused = self._fusion_alias.get(producer.id)
@@ -762,7 +780,12 @@ class FunctionalModel:
         width = self._component_n_c(comp)
         categories = []
         for src in sources:
-            in_cone = src[0].id in self.forward_ids and src[0].id in self.cone_ids
+            # a series output (filled at the run start) is data, whoever owns it
+            in_cone = (
+                src[0].id in self.forward_ids
+                and src[0].id in self.cone_ids
+                and not _is_series_output(src[0], src[1])
+            )
             if in_cone and self.pos[src[0].id] < self.pos[comp.id]:
                 categories.append("fresh")
             elif in_cone:

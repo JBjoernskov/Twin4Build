@@ -15,6 +15,7 @@ from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
     _replays_data,
     _is_passthrough_sensor,
+    _is_series_output,
     FunctionalModel,
     StateLayout,
     collect_stateful,
@@ -187,6 +188,8 @@ class FunctionalSimulationSession:
         self.recording_cache_hit = False
         self.recording_cache_hits = 0
         self.recording_cache_misses = 0
+        # per component: its unwired inputs that read its own series outputs
+        self._own_series_inputs = {}
 
     def close(self):
         """Release captured CUDA resources owned by this session."""
@@ -275,28 +278,21 @@ class FunctionalSimulationSession:
     def _unconnected_value(self, component, key, step, period):
         port_name = key[1]
         port = component.input[port_name]
+        # An unwired input that reads one of its System's own series outputs
+        # (``Input(default=<output>)``: the occupancy's measurements) holds
+        # that output's values, known since the run start.  Read from the
+        # output: the input's own history fills slot by slot below.
+        own = self._own_series_inputs.get(component.id)
+        if own is None:
+            own = component.output_defaults() if hasattr(component, "output_defaults") else {}
+            self._own_series_inputs[component.id] = own
+        if port_name in own:
+            value = self._history_value(component.output[own[port_name]], step, period)
+            if value is not None:
+                return value
         value = self._history_value(port, step, period)
         if value is not None:
             return value
-        # Occupancy's measured data are initialized into private time-series
-        # publishers. Reading them is the minimal producer closure; its
-        # state-dependent forward/do_step is never called.  An occupancy
-        # wired to sensors instead (``brick_signature_pattern_room_co2``)
-        # has no publishers: its unwired ports are plain unconnected inputs
-        # and take the generic path below.
-        if port_name in (
-            "indoorCo2Measured",
-            "previousIndoorCo2Measured",
-            "damperPositionMeasured",
-        ) and getattr(component, "_co2_ts", None) is not None:
-            if port_name == "damperPositionMeasured":
-                values = component._damper_ts.values
-            elif port_name == "previousIndoorCo2Measured":
-                values = component._co2_ts.values
-                step = max(step - 1, 0)
-            else:
-                values = component._co2_ts.values
-            return values[step, period]
         # A genuinely unconnected, non-leaf port has no producer capable of
         # changing it during object-graph execution. Its initialized value is
         # therefore a static exogenous constant. Components with private
@@ -556,6 +552,16 @@ class FunctionalSimulationSession:
                 # walk into the cone component that feeds it.
                 if port.is_leaf and port._history is not None:
                     port._tensor.copy_(port._history[-1])
+                continue
+            if (
+                component.id in functional_model.cone_ids
+                and _is_series_output(component, port_name)
+                and port._history is not None
+            ):
+                # a functional System's output that its series filled at the
+                # run start (the occupancy's measurements): known, and the
+                # System is stepped by the rollout only
+                port._tensor.copy_(port._history[-1])
                 continue
             if _replays_data(component) and port._history is not None:
                 # A replaying component that hands its history over needs
@@ -887,15 +893,23 @@ class FunctionalSimulationSession:
                 port._tensor.copy_(port._history[-1])
         # The unwired inputs nothing routes into, as the composer resolves
         # them (_resolve_inputs): one that reads another input
-        # (``Input(default=otherInput)``) held that input's values, one of no
-        # slots (an unwired "wired"-size vector) held none.
+        # (``Input(default=otherInput)``) held that input's values, one that
+        # reads one of the System's own series outputs (a sensor's recorded
+        # series) held that output's, one of no slots (an unwired
+        # "wired"-size vector) held none.
         for component in self.model.components.values():
             defaults = component.input_defaults() if hasattr(component, "input_defaults") else {}
+            own = component.output_defaults() if hasattr(component, "output_defaults") else {}
             for name, port in component.input.items():
                 if not port.log_history or port._history is None or port._history_is_populated:
                     continue
-                read = component.input[defaults[name]] if name in defaults else None
-                if read is not None and read._history_is_populated:
+                if name in defaults:
+                    read = component.input[defaults[name]]
+                elif name in own:
+                    read = component.output[own[name]]
+                else:
+                    read = None
+                if read is not None and read._history is not None and (read._history_is_populated or read.is_leaf):
                     port._history.copy_(read._history)
                     port._tensor.copy_(read._history[-1])
                     port._history_is_populated = True

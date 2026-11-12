@@ -4,6 +4,200 @@
 
 API-quality major release. Preferred forms are documented below; new soft-compat aliases warn and will be **removed in 2.1.0**.
 
+### A System is its declarations and one forward step (ADR 0001)
+
+`docs/adr/0001-system-stepping-and-declarations.md`, implemented by #282 to
+#299 and the clean-up after them.  A System is written as class-level
+declarations plus `forward(x, inputs, p, step_size)`; the base builds,
+sizes, steps and checks it.  There is no deprecation period for the System
+interface.  Where an old keyword or attribute could be translated, it is,
+with a `DeprecationWarning` until 2.1; where it cannot, reading, setting or
+passing it raises and names its replacement.
+
+#### Added
+
+- Declarations (`twin4build.systems.saref4syst.declarations`, exported from
+  `twin4build.core`): `Input`, `Output`, `State`, `Parameter`, `Setting`,
+  `Child` and `REQUIRED`, with `size=` (an int, `"wired"`, another port or a
+  setting), `default=` (a value or another input), `alias=` (a renamed
+  port's old name), `init=` (a state's or an output's start: a number, a
+  setting or a state) and `per_slot=` (a child or a value per slot of an
+  input).  One name may serve one input and one output; any other repeated
+  name raises `TypeError` at class definition (#285, #292 to #295,
+  #298).
+- `derive(p, step_size)`: what depends only on the parameters and the step
+  size, evaluated once per run (object mode) or per rollout (functional
+  engine) and handed to `forward` in `p` (#286).
+- Data sources: a System that defines `series(timestamps, step_size)` is
+  filled once at the run start and never stepped.  Readers `CsvSource`,
+  `DataFrameSource` and `DatabaseSource`
+  (`twin4build.utils.data_loaders.sources`) carry the reading options
+  (resampling, gap limit, fill, cache) (#287).
+- Optional parameters, `Parameter(None)`: absent until given, then not in
+  `p`, not estimated and not saved (#291).  Parameters of several values
+  per copy, `Parameter(..., size=...)` (#298).
+- Value settings batch per copy and reach `forward` in `p`;
+  `Setting(..., structural=True)` splits batches instead (#296).
+- `twin4build.testing.check_system(system, inputs)`, the conformance check
+  every System passes: save and reload, a deepcopy, object mode against the
+  functional engine, two batched copies against the copies stepped
+  separately, finite gradients, and CUDA when a GPU is present.
+  `twin4build/tests/test_check_system.py` holds an example per core System.
+
+#### Removed and renamed, with the migration
+
+- `forward(..., sample_time)` → `forward(x, inputs, p, step_size)` (#284);
+  `forward`'s `transform_mode`, `SUPPORTS_TRANSFORM_MODE`,
+  `step_constants` and `StepParams` → `derive(p, step_size)`; the PID's
+  per-simulation step-size tensor → one step size per run (#286).
+- `FunctionSystem` → a small System of its own (declared inputs, an output
+  and a `forward`), which also saves and loads (#290).
+- `PiecewiseLinearScheduleSystem` → `PiecewiseLinearSystem(X=..., Y=...)`,
+  output `y` (#288).  `PiecewiseLinearSystem(Y_bounds=...)` →
+  `tb.Variable(curve.Y, lb=..., ub=...)` (#298).
+- `ScheduleSystem`'s file and database keywords (`filename`, `date_column`,
+  `value_column`, `uuid`, `name`, `dbconfig`, `fill`, the `use_*` flags,
+  `source="dict"|...`) → `source=CsvSource(...)` / `DatabaseSource(...)`
+  (#288).
+- `OutdoorEnvironmentSystem`'s `df`, `filename_*`, `datecolumn_*`,
+  `valuecolumn_*`, `uuid_*`, `dbconfig_*` and `use_*` → one reader per output
+  (`outdoorTemperature_source=`, `globalIrradiation_source=`,
+  `outdoorCo2Concentration_source=`) or
+  `OutdoorEnvironmentSystem.from_dataframe(df)`; `transformation_ref_*` →
+  `outdoorTemperature_transformation` / `globalIrradiation_transformation`
+  (old saved names load, with a warning) (#289).  `TimeSeriesInputSystem`
+  takes one `source=` reader (#287).
+- `DamperSystem`'s `c_tied` and `set_c` → `damper.c = value` or
+  `DamperSystem(c=...)`; an absent `c` is tied to `-a` (#291).
+- The branch -> room maps: `AirHandlingUnitSystem._exhaust_branch_map` /
+  `_branch_room_index`, `ReturnFlowJunctionSystem.branch_temperature_slots`
+  and `partition._repair_return_junctions` → wire each room's temperature
+  into the slot of each branch serving it, `input_port_index=[...]` (#291).
+  `AirHandlingUnitSystem(n_branches=...)` → the wired supply damper slots;
+  the `*_kwargs` → the children's names (`supply_fan=dict(...)`, with a
+  warning) (#292).
+- `SpaceHeaterSystem` / `FanCoilUnitSystem` `initialize_UA` →
+  `unit.UA = unit.solve_UA()` (UA holds the nominal solve from
+  construction).  The fan-coil's `_valve` → `valve`; its flat
+  `waterFlowRateMax=` / `valveAuthority=` move into the child, with a
+  warning (#294).
+- The room's in-zone boundary wall (`C_boundary`, `R_boundary`,
+  `boundaryTemperature`, `n_boundary_temperature`) → a `WallSystem` on
+  `wallHeatGain`; `thermal_kwargs` / `mass_kwargs` → `thermal=dict(...)`,
+  `mass=dict(...)`, with a warning (#295).
+- `CascadeControllerSystem(controller_a=..., controller_b=...)` (classes) →
+  a subclass declaring other children; the flat `kp_a` ... `isReverse_b`
+  and `controller_a_kwargs` / `controller_b_kwargs` → `ctrl_a=dict(...)`,
+  `ctrl_b=dict(...)`, with a warning.  `BandGate(threshold_high=...)` →
+  `band = threshold_high - threshold` (#297).
+- `CoilSystem.specificHeatCapacityAir` (unused; the coil reads
+  `constants.CP_AIR`) (#290).
+- `SensorSystem`'s `filename`, `datecolumn`, `valuecolumn`, `df`,
+  `dbconfig`, `use_spreadsheet`, `use_database`, `use_df`, `resample_method`,
+  `dt_limit` and `fill` → one reader, `source=CsvSource(path,
+  date_column=..., value_column=...)`, `DataFrameSource(df)` or
+  `DatabaseSource(uuid, dbconfig)`, which carries the reading options;
+  `set_series(series)` and `set_dbconfig(dbconfig)` stay.  `uuid` names the
+  point (and is the database point read when there is no `source`); setting
+  it no longer switches a sensor with another reader to the database.
+  `transformation_ref` → `transformation` (old saved names load, with a
+  warning).  `del sensor.scoring_mask` → `sensor.scoring_mask = None`.
+- `ScheduleSwitchControllerSystem` and its
+  `ScheduleSwitchControllerTorchSystem` alias: no users.
+- `SpaceHeaterSystem`'s output `Power` → `toRoomPower`, and the room's input
+  `outdoorCO2` → `outdoorCo2Concentration` (on `BuildingSpaceSystem` and
+  `BuildingSpaceMassSystem`): the aliases deprecated earlier in 2.0 are
+  gone, so the old names no longer connect, read or load.  A saved
+  `instance_graph.ttl` that names them: replace the port names in the file.
+  `Output(alias=...)` / `Input(alias=...)` remain for later renames.
+- `SimulationModel.validate`, `validate_components`, `validate_connections`,
+  `_validate_ids`, the `_validated_for_*` flags, `is_validated`,
+  `Model.validate`, `Model.is_validated`, `load(validate_model=...)` and the
+  sensor's `validate` / `validate_connections` hooks → nothing to call: a
+  load checks the model and raises (below).  `Model.load(validate_model=...)`
+  raises a `TypeError` saying so.
+
+#### Changed
+
+- A load raises one `ValueError` that names every problem: an invalid
+  component id, an input without a default that nothing is wired to (a
+  `size="wired"` input is as wide as what is wired, none included), a
+  declared System wired beyond its declared sizes, a declared parameter
+  without a value.  These were warnings, and a model with a missing input
+  loaded and ran.  Wire the input, give it a default (`Input(default=...)`)
+  or give the parameter a value.
+- `SensorSystem` is declared: `measuredData`, the recorded series read once
+  at the run start, and `measuredValue`, what it reads, the value wired to
+  its input or, with nothing wired, its recorded series
+  (`measuredValue = Input(default=measuredData)`).  A System that needs the
+  measurement connects to `measuredData`.  An `Input(default=...)` may name
+  one of the System's own outputs that its `series` fills (the input then
+  holds what it reads), and a System may define both `series` (for some
+  outputs) and `forward` (for the others).
+- `Model.check(start_time, end_time, step_size)` and
+  `Simulator.simulate(..., check=True)` probe every declared System, on
+  request: one `derive` and `forward` call each on the run-start values,
+  writing nothing; one `ValueError` names every System whose `derive` gives
+  no dict or whose `forward` leaves out an output, gives one it does not
+  declare (or one `series` fills), an output at another size or a state of
+  another shape.  `check_system` makes the request.  A `series` that gives
+  an output the System does not declare, or a vector output at another
+  size, raises at every run start, where it fills the outputs.
+- `OccupancySystem` is declared and keeps its parameters estimable through
+  the inversion: the children `mass` (`V`, `G_occ`, `m_inf`),
+  `supply_damper` and `exhaust_damper` (`a`, `nominalAirFlowRate`, `c`, one
+  per damper slot) keep their paths, so `([room, occupancy], "mass.V", ...,
+  "shared")` and `([damper, occupancy.supply_damper], "a", ..., "shared")`
+  work as before.  It reads its measurements through its own readers (ADR
+  0001, decision 6, amended): `co2=` for the room's CO2 and
+  `damper_position=` for the damper positions, one reader per terminal
+  serving the room, such as the sensors' own
+  (`co2=co2_sensor.source, damper_position=damper_sensor.source`).  Its
+  `series` reads them at the run start into the outputs
+  `indoorCo2Measured`, `previousIndoorCo2Measured` (at a period's first step
+  its own, so the first step takes no change of CO2) and
+  `damperPositionMeasured`, which its inputs of the same names hand to
+  `forward`.  Its file mode goes: `co2_filename`, `damper_filename` and
+  their column keywords raise and name the readers.  Wiring those inputs
+  from the sensors' `measuredData` raises at the run start: it closes a
+  loop through the model (occupancy, room, CO2 controller, damper, damper
+  position sensor), which the loader cuts at the damper sensor, so its
+  modelled reading lagged its damper by one step.  The flat `V=`, `G_occ=`,
+  `m_inf=`, `supply_damper_a=` ... keywords move into the children
+  (`mass=dict(V=...)`), with a warning; `c_tied` / `set_c` on its dampers
+  raise (give `c` a value).  The full-workflow example, the canonical
+  benchmarks and the estimator example give the occupancy the sensors'
+  readers (the estimator example's saved model drops the file paths); the
+  canonical topology is unchanged, and those models step exactly as with
+  the file mode, in object mode, the functional engine and batched.
+- A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
+  whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
+  `(timestamps, step_size)` raises `TypeError` when it is defined (they are
+  called positionally, so the argument names are the System's own).
+- A `SensorSystem`'s input is optional: a sensor holding data reads it while
+  nothing is wired (its run start raises when it has neither); `is_leaf` is
+  whether nothing is wired to it.
+- A setting that holds a tuple (a piecewise-linear curve's points) is saved
+  as JSON and reloads; a saved model with a `PiecewiseLinearSystem` did not
+  load.  So does a setting that holds several readers (the occupancy's
+  `damper_position`).
+- `ToDegCFromDegK` and `ToDegKFromDegC` are declared Systems (they could not
+  be built before).
+- PIDs of different directions batch into one copy, each acting in its own
+  direction, and the gains are no longer `abs()`-ed (#297); walls and
+  thermal-mass nodes with different `T_init` start at their own values when
+  batched (#293, #296); a fan's flow range is saved with the model (#292).
+
+#### Not yet converted
+
+Three Systems still write their own `do_step` and `initialize`; a test keeps
+the list from growing and states each reason.  `ControllerIdentificationSystem`
+(and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
+2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
+is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
+once the numerics work lands.  Until then the base does not raise on an
+override.
+
 ### Removed
 
 Unused and untested; 2.0 drops them without a deprecation period.
@@ -73,28 +267,17 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 - `*TorchSystem` public names → prefer `*System`
 - Schedule/controller camelCase kwargs → snake_case (`weekday_ruleset`, `is_reverse`, `date_column`, …)
-- `use_spreadsheet` / `use_database` / `use_dict` → prefer `source=`
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`
 - `Model.load(simulation_model_filename=...)` → `Model.load(filename=...)`
 - `Translator.translate(systems_=...)` → `systems=`
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
-- `SpaceHeaterSystem` output `Power` → `toRoomPower`.  The old name still
-  connects (`add_connection`, `remove_connection`), loads from a saved
-  `instance_graph.ttl`, matches in signature patterns, names optimizer
-  objectives, variables and constraints, and reads (`heater.output["Power"]`),
-  each with a `DeprecationWarning`; the model holds and saves `toRoomPower`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
 - Room input `outdoorCO2` → `outdoorCo2Concentration` (#195), the name
   `OccupancySystem` and `OutdoorEnvironmentSystem` use; both default to
   400 ppmv while unwired (the occupancy's 0 ppmv default turned the whole
-  indoor concentration into people).  The old name still connects,
-  disconnects, reads (`room.input["outdoorCO2"]`), fills through
-  `fill_missing_inputs`, matches in signature patterns and loads from a
-  saved `instance_graph.ttl`, each with a `DeprecationWarning`
-  (`System.INPUT_PORT_ALIASES`, `System.resolve_input_port`, the input-side
-  counterparts of the output aliases); the model holds and saves the new
-  name.
+  indoor concentration into people).  The old name, and the space heater's
+  `Power` (→ `toRoomPower`), are removed in 2.0 (see the ADR 0001 section).
 
 ### Added
 
@@ -638,7 +821,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 1. Replace `BuildingSpaceTorchSystem` with `BuildingSpaceSystem` (etc.).
 2. Use `weekday_ruleset=` / `is_reverse=` / `date_column=` instead of camelCase.
-3. Prefer `source="spreadsheet"|"dict"|"database"|"df"`.
+3. Give a schedule, an outdoor environment, a time-series input or a sensor a reader:
+   `source=CsvSource(path, date_column=..., value_column=...)`,
+   `DataFrameSource(df)` or `DatabaseSource(...)`.
 4. Translate explicitly: `model = Translator().translate(SemanticModel(...)); model.load()`.
 5. Configure logging with `LOGGER.verbose` / `LOGGER.logfile`, not `verbose=` kwargs.
 6. Historical execution labels `object_graph`, `composed`, and `cuda_graph`

@@ -517,7 +517,7 @@ def run_multi_signal_identification_example():
     model.add_component(controller)
 
     # Actuator sensor
-    actuator_sensor = tb.SensorSystem(filename=act_file, id="actuator_sensor")
+    actuator_sensor = tb.SensorSystem(source=CsvSource(act_file), id="actuator_sensor")
     model.add_component(actuator_sensor)
 
     # Connect all sensors

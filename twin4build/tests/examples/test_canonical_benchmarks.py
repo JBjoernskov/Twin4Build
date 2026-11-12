@@ -337,7 +337,7 @@ class TestCanonicalBenchmarks(unittest.TestCase):
             len(setup["parameter_groups"]), common.CANONICAL_PARAMETER_GROUPS_PER_ZONE
         )
         self.assertEqual(len(set(sensor.id for sensor, _ in setup["measurements"])), 12)
-        self.assertTrue(all(sensor.df is not None for sensor, _ in setup["measurements"]))
+        self.assertTrue(all(sensor.has_data for sensor, _ in setup["measurements"]))
         self.assertTrue(
             all(len({row[key] for row in setup["truth"]}) == 3 for key in setup["truth"][0])
         )

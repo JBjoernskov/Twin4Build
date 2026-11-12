@@ -127,9 +127,9 @@ class TestExhaustFollowsSupply(unittest.TestCase):
 class TestOccupancyFollowsSupply(unittest.TestCase):
     def _occ(self, follows):
         occ = tb.OccupancySystem(
-            V=100.0, G_occ=5e-6, m_inf=0.001,
-            supply_damper_nominalAirFlowRate=0.5,
-            exhaust_damper_nominalAirFlowRate=0.2,
+            mass=dict(V=100.0, G_occ=5e-6, m_inf=0.001),
+            supply_damper=dict(nominalAirFlowRate=0.5),
+            exhaust_damper=dict(nominalAirFlowRate=0.2),
             exhaust_follows_supply=follows,
             exhaustFlowRatio=0.93,
             id="occ",
@@ -140,21 +140,14 @@ class TestOccupancyFollowsSupply(unittest.TestCase):
         def t(v):
             return torch.tensor([float(v)], dtype=torch.float64)
 
-        params = {
-            "mass.V": t(100.0), "mass.G_occ": t(5e-6),
-            "mass.m_inf": t(0.001),
-            "supply_damper.a": t(1.0), "supply_damper.nominalAirFlowRate": t(0.5),
-            "exhaust_damper.a": t(1.0), "exhaust_damper.nominalAirFlowRate": t(0.2),
-        }
-        if ratio_param is not None:
-            params["exhaustFlowRatio"] = t(ratio_param)
-        inputs = {
+        ratio = occ.exhaustFlowRatio.get() if ratio_param is None else t(ratio_param)
+        inputs = occ.with_defaults({
             "indoorCo2Measured": t(900.0),
             "previousIndoorCo2Measured": t(880.0),
-            "damperPositionMeasured": t(1.0),
+            "damperPositionMeasured": t(1.0).reshape(1, 1),
             "outdoorCo2Concentration": t(400.0),
-        }
-        _, out = occ.forward(None, inputs, params, 600.0)
+        })
+        _, out = occ.forward(None, inputs, occ.full_params({"exhaustFlowRatio": ratio}, 600.0), 600.0)
         return float(out["scheduleValue"])
 
     @_exact

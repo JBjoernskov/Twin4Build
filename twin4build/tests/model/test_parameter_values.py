@@ -30,6 +30,7 @@ from twin4build.utils.logger import LOGGER
 tb._IS_TESTING = True
 
 from twin4build.tests.simulator.test_fusion_batched import START, STEP, build, history, simulate
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 HOURS = 12
 END = START + datetime.timedelta(hours=HOURS)
@@ -69,7 +70,7 @@ def split(model):
     two parts (the first ones, and the last one on its own)."""
     last = max(int(cid[len("Radiator"):]) for cid in model.components if cid.startswith("Radiator"))
     radiator = model.components[f"Radiator{last}"]
-    sensor = tb.SensorSystem(id="water_sensor", df=frame([60.0] * (N_STEPS + 6)))
+    sensor = tb.SensorSystem(id="water_sensor", source=DataFrameSource(frame([60.0] * (N_STEPS + 6))))
     model.remove_connection(model.components["WaterTemp"], radiator, "scheduleValue", "supplyWaterTemperature")
     model.add_connection(sensor, radiator, "measuredValue", "supplyWaterTemperature")
     model.load(draw_semantic_model=False, draw_simulation_model=False)
@@ -421,7 +422,7 @@ class TestFitAcrossBatchings(unittest.TestCase):
     @classmethod
     def with_sensors(cls, model):
         for k in range(3):
-            sensor = tb.SensorSystem(id=f"T{k}", df=frame(cls.data[k]), uuid=f"ROOM{k}_T", measurement_sd=0.1)
+            sensor = tb.SensorSystem(id=f"T{k}", source=DataFrameSource(frame(cls.data[k])), uuid=f"ROOM{k}_T", measurement_sd=0.1)
             model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         return model

@@ -358,25 +358,17 @@ class TestSimulator(unittest.TestCase):
             ("office_damper_position_sensor", "damper_position_sensor.csv"),
             ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
         ]:
-            model.components[sensor_id].filename = utils.get_path(
+            model.components[sensor_id].source = CsvSource(utils.get_path(
                 ["estimator_example", csv_name]
-            )
-            model.components[sensor_id].datecolumn = 2
-            model.components[sensor_id].valuecolumn = 3
+            ), date_column=2, value_column=3)
 
         model.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"]), date_column=2, value_column=3)
         model.components["outdoor_environment"].outdoorTemperature_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=1)
         model.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
         model.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
-
-        # OccupancySystem reads CO2 / damper time series directly from disk;
-        # redirect to the example CSVs so the test runs on any machine.
-        model.components["office_occupancy"].co2_filename = utils.get_path(
-            ["estimator_example", "co2_sensor.csv"]
-        )
-        model.components["office_occupancy"].damper_filename = utils.get_path(
-            ["estimator_example", "damper_position_sensor.csv"]
-        )
+        # the occupancy reads the measured CO2 and damper position through the sensors' readers
+        model.components["office_occupancy"].co2 = model.components["office_co2_sensor"].source
+        model.components["office_occupancy"].damper_position = model.components["office_damper_position_sensor"].source
 
         return model
 

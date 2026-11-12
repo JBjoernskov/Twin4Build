@@ -89,7 +89,7 @@ def _room_model(fuse=True, model_id="infiltration", m_inf=0.004, people=0.0, int
         ("globalIrradiation", 0.0),
         ("numberOfPeople", people),
         ("heatGain", 500.0),
-        ("outdoorCO2", 400.0),
+        ("outdoorCo2Concentration", 400.0),
     ):
         model.add_connection(_schedule(value, f"S_{port}"), room, "scheduleValue", port)
     if interior is not None:
@@ -103,7 +103,7 @@ def _room_model(fuse=True, model_id="infiltration", m_inf=0.004, people=0.0, int
             ("globalIrradiation", 0.0),
             ("numberOfPeople", 0.0),
             ("heatGain", 0.0),
-            ("outdoorCO2", 400.0),
+            ("outdoorCo2Concentration", 400.0),
         ):
             model.add_connection(_schedule(value, f"I_{port}"), zone, "scheduleValue", port)
         model.add_connection(_schedule(0.0, "I_exhaust"), zone, "scheduleValue", "exhaustAirFlowRate", input_port_index=0)

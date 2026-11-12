@@ -29,6 +29,7 @@ from __future__ import annotations
 
 # Standard library imports
 import functools
+import inspect
 import itertools
 from typing import Any, Dict, Optional, Sequence
 
@@ -105,7 +106,10 @@ class Input(Declaration):
         default: What an unwired input holds: a number, or another input of
             the class, whose value it then reads (a make-up air stream that is
             outdoor air unless something says otherwise:
-            ``makeUpAirTemperature = Input(default=outdoorTemperature)``).
+            ``makeUpAirTemperature = Input(default=outdoorTemperature)``), or
+            one of the class's own outputs that its ``series`` fills (a
+            sensor reads its recorded series while nothing is wired:
+            ``measuredValue = Input(default=measuredData)``).
             ``None``: the input must be wired.
         alias: An old name of the port that still connects, with a
             ``DeprecationWarning``.
@@ -117,10 +121,12 @@ class Input(Declaration):
     def __init__(self, size=None, default=None, alias: Optional[str] = None, doc: str = ""):
         super().__init__(doc)
         _check_size(size, "Input")
-        if default is not None and not isinstance(default, Input) and (
+        if default is not None and not isinstance(default, (Input, Output)) and (
             isinstance(default, bool) or not isinstance(default, (int, float))
         ):
-            raise TypeError(f"Input: default= takes a number or another input of the class, got {default!r}")
+            raise TypeError(
+                f"Input: default= takes a number, another input or an output of the class, got {default!r}"
+            )
         self.size = size
         self.default = default
         self.alias = alias
@@ -387,6 +393,11 @@ def _check_references(cls, merged) -> None:
             raise TypeError(
                 f"{cls.__qualname__}.{name}: default= refers to {ref!r}, which the class does not declare"
             )
+        if isinstance(ref, Declaration) and ref.kind == "output" and getattr(cls, "series", None) is None:
+            raise TypeError(
+                f"{cls.__qualname__}.{name}: default= names the output {ref.name!r}, but the class has no "
+                f"series to fill it"
+            )
     for kind in ("output", "state"):
         for name, decl in merged[kind].items():
             ref = decl.init
@@ -408,6 +419,32 @@ def _check_references(cls, merged) -> None:
                     raise TypeError(
                         f"{cls.__qualname__}.{name}: {keyword}= refers to {ref!r}, which the class does not declare"
                     )
+
+
+#: What the base calls a System's own stepping methods with (ADR 0001,
+#: decision 1): positionally, so the names are the System's own.
+SIGNATURES = {
+    "forward": ("x", "inputs", "p", "step_size"),
+    "derive": ("p", "step_size"),
+    "series": ("timestamps", "step_size"),
+}
+
+
+def _check_signatures(cls, namespace) -> None:
+    """``forward``, ``derive`` and ``series``, where the class body defines
+    them, take the arguments the base calls them with."""
+    for name, arguments in SIGNATURES.items():
+        method = namespace.get(name)
+        if not inspect.isfunction(method):
+            continue
+        signature = inspect.signature(method)
+        try:
+            signature.bind(None, *arguments)
+        except TypeError:
+            raise TypeError(
+                f"{cls.__qualname__}.{name}{signature}: a System's {name} takes "
+                f"(self, {', '.join(arguments)})"
+            ) from None
 
 
 def _starts_a_run(initialize):
@@ -446,6 +483,7 @@ class SystemMeta(type):
         cls._own_declarations = {k: dict(v) for k, v in (declarations or {}).items() if v}
         merged = _merge(cls)
         _check_references(cls, merged)
+        _check_signatures(cls, namespace)
         cls._declarations = merged
         cls._is_declared = any(merged[kind] for kind in KINDS)
         if cls._is_declared and "PARAM_NAMES" not in cls.__dict__:

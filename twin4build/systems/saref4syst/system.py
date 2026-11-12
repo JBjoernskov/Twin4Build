@@ -414,6 +414,14 @@ class System(nn.Module, metaclass=SystemMeta):
             current = self.__dict__.get(name)
             if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
                 return  # the reader it already holds (a DataFrame reader's dict has no data)
+            if (
+                isinstance(value, (dict, list))
+                and isinstance(current, tuple)
+                and current
+                and all(hasattr(reader, "to_config") for reader in current)
+                and [reader.to_config() for reader in current] == (value if isinstance(value, list) else [value])
+            ):
+                return  # the readers it already holds (a saved list of one is read back as its item)
             value = setting.convert(value)
         if isinstance(value, (list, tuple, np.ndarray)) and name in type(self).value_settings():
             # one value per copy (a batched System's saved config holds a list)
@@ -570,6 +578,13 @@ class System(nn.Module, metaclass=SystemMeta):
         defines ``series(timestamps, step_size)`` and no ``forward``."""
         return getattr(cls, "series", None) is not None and getattr(cls, "forward", None) is nn.Module.forward
 
+    @classmethod
+    def _has_series(cls) -> bool:
+        """A System that defines ``series``: a data source, or a System whose
+        ``series`` fills some outputs and ``forward`` the others (a sensor's
+        recorded series and what it reads)."""
+        return getattr(cls, "series", None) is not None
+
     @staticmethod
     def _declared_port(decl, leaf: bool = False):
         default = getattr(decl, "default", None)
@@ -629,11 +644,16 @@ class System(nn.Module, metaclass=SystemMeta):
         return out
 
     def _setting_size(self, name: str) -> int:
+        """The size a setting gives: an int, the length of a sequence, none
+        for ``None``, and one for a factor while it is nonzero (a smoothing
+        factor sizes the memory of its filter)."""
         value = getattr(self, name)
         if value is None:
             return 0
         if isinstance(value, int) and not isinstance(value, bool):
             return value
+        if isinstance(value, float):
+            return int(value != 0.0)
         return len(value)
 
     def declared_size(self, kind: str, name: str, _seen=None) -> Optional[int]:
@@ -691,12 +711,13 @@ class System(nn.Module, metaclass=SystemMeta):
     def _initialize_declared(self, n_t: int, n_s: int, n_c: int, run=None) -> None:
         """Run start of a declared System: size and allocate the ports,
         expand the parameters to one value per copy, start the states, and
-        fill a data source's outputs from its ``series`` (``run`` is the
-        run's ``(timestamps, own steps per period, step size)``)."""
+        fill the outputs a ``series`` gives (``run`` is the run's
+        ``(timestamps, own steps per period, step size)``)."""
         self.n_c = n_c
         self.size_declared_ports()
         data_source = type(self)._is_data_source()
         self.__dict__["_input_defaults"] = self.input_defaults()
+        self.__dict__["_output_defaults"] = self.output_defaults()
         for name, decl in type(self)._declarations["output"].items():
             if decl.init is not None:
                 value = self._initial_value(decl.init)
@@ -706,7 +727,7 @@ class System(nn.Module, metaclass=SystemMeta):
                     self.output[name].init_value = value
         for ports in (self.input, self.output):
             for port in ports.values():
-                if data_source and ports is self.output:
+                if ports is self.output and (data_source or port.is_leaf):
                     continue  # filled from ``series`` below
                 if isinstance(port, tps.Vector):
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=port._n_v)
@@ -731,7 +752,7 @@ class System(nn.Module, metaclass=SystemMeta):
                         child.input[port]._n_v = self.input[port]._n_v
                 child._initialize_declared(n_t, n_s, n_c * self.slots_per_copy(decl), run)
         self._share_unit_params()
-        if data_source:
+        if type(self)._has_series():
             self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
 
@@ -763,17 +784,34 @@ class System(nn.Module, metaclass=SystemMeta):
         declared = type(self).__dict__.get("_declarations") or getattr(type(self), "_declarations", {})
         inputs = declared.get("input", {})
         out = {}
+        def reads_an_input(decl):
+            return isinstance(decl.default, Declaration) and decl.default.kind == "input"
+
         for name, decl in inputs.items():
-            if not isinstance(decl.default, Declaration) or is_wired(self, name):
+            if not reads_an_input(decl) or is_wired(self, name):
                 continue
             source, seen = decl.default.name, {name}
-            while source not in seen and isinstance(inputs[source].default, Declaration) and not is_wired(self, source):
+            while source not in seen and reads_an_input(inputs[source]) and not is_wired(self, source):
                 seen.add(source)
                 source = inputs[source].default.name
             if source in seen:
                 raise TypeError(f"{type(self).__name__} '{self.id}': {name!r} reads itself through its defaults")
             out[name] = source
         return out
+
+    def output_defaults(self) -> dict:
+        """The unwired inputs that read one of the System's own outputs, which
+        its ``series`` fills (``Input(default=<output>)``): ``{input: the
+        output it reads}``.  A sensor with nothing wired reads its recorded
+        series."""
+        from twin4build.utils.slots import is_wired
+
+        declared = type(self).__dict__.get("_declarations") or getattr(type(self), "_declarations", {})
+        return {
+            name: decl.default.name
+            for name, decl in declared.get("input", {}).items()
+            if isinstance(decl.default, Declaration) and decl.default.kind == "output" and not is_wired(self, name)
+        }
 
     def _share_unit_params(self) -> None:
         """Point every shared child parameter (``SHARED_UNIT_PARAMS``, e.g. a
@@ -851,12 +889,35 @@ class System(nn.Module, metaclass=SystemMeta):
             )
 
     def _fill_from_series(self, n_t, n_s, n_c, timestamps, own_steps, step_size) -> None:
-        """Call ``series`` and fill every output with its values for the whole
-        run. A period's steps past its own end hold its last value."""
+        """Call ``series`` and fill the outputs it gives with their values for
+        the whole run: every output of a data source, the others of a System
+        whose ``forward`` gives the rest.  A period's steps past its own end
+        hold its last value."""
+        cls_name = type(self).__name__
         values = self.series(timestamps, step_size)
-        for name, port in self.output.items():
-            if name not in values:
-                raise KeyError(f"{type(self).__name__} '{self.id}': series() gave no values for the output {name!r}")
+        if not isinstance(values, dict):
+            raise TypeError(f"{cls_name} '{self.id}': series() gave a {type(values).__name__}, not a dict")
+        extra = sorted(set(values) - set(self.output))
+        if extra:
+            raise ValueError(
+                f"{cls_name} '{self.id}': series() gave {', '.join(extra)}, "
+                f"which the System does not declare as outputs"
+            )
+        if type(self)._is_data_source():
+            for name in self.output:
+                if name not in values:
+                    raise KeyError(f"{cls_name} '{self.id}': series() gave no values for the output {name!r}")
+        for name, decl in type(self)._declarations["input"].items():
+            default = decl.default
+            if isinstance(default, Declaration) and default.kind == "output" and default.name not in values:
+                raise ValueError(
+                    f"{cls_name} '{self.id}': {name!r} reads the output {default.name!r} while unwired, "
+                    f"which series() does not give"
+                )
+        self.__dict__["_series_outputs"] = tuple(name for name in self.output if name in values)
+        for name in self.__dict__["_series_outputs"]:
+            port = self.output[name]
+            port.is_leaf = True
             v = values[name]
             v = v.to(tps.float_dtype()) if isinstance(v, torch.Tensor) else torch.as_tensor(
                 np.asarray(v, dtype=float), dtype=tps.float_dtype()
@@ -873,6 +934,12 @@ class System(nn.Module, metaclass=SystemMeta):
                     v[b, own:] = v[b, own - 1]
             if isinstance(port, tps.Vector):
                 n_v = v.shape[2] if v.dim() == 3 else 1
+                size = self.declared_size("output", name) if name in type(self)._declarations["output"] else None
+                if size and n_v != size:
+                    raise ValueError(
+                        f"{type(self).__name__} '{self.id}': series() gave {name!r} with {n_v} values a step, "
+                        f"its size is {size}"
+                    )
                 v = v.reshape(n_s, n_t, n_v).permute(1, 0, 2).unsqueeze(2).expand(n_t, n_s, n_c, n_v)
                 port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=n_v, values=v)
             else:
@@ -936,15 +1003,91 @@ class System(nn.Module, metaclass=SystemMeta):
         inputs = {name: self._fold(port.get(), n_s, n_c) for name, port in self.input.items()}
         for name, source in self.__dict__.get("_input_defaults", {}).items():
             inputs[name] = inputs[source]
+        for name, source in self.__dict__.get("_output_defaults", {}).items():
+            value = self.output[source].get()
+            # the input holds what it reads, as a wired one does: the
+            # functional engine records an unwired input from its port
+            self.input[name]._set(value, i_t=step_index)
+            inputs[name] = self._fold(value, n_s, n_c)
         params = self._fold_tree(self._forward_params(step_size), n_s, n_c)
         stateful = bool(self.collect_states())
         x = self._fold(self.get_state(), n_s, n_c) if stateful else None
         x_next, outs = self.forward(x, inputs, params, self._scalar_step_size(step_size))
+        series = self.__dict__.get("_series_outputs", ())
         for name, port in self.output.items():
+            if name in series:
+                continue  # filled at the run start
             value = outs[name]
             port._set(value.reshape(n_s, n_c, *value.shape[1:]), i_t=step_index)
         if stateful:
             self.set_state(x_next.reshape(n_s, n_c, x_next.shape[-1]))
+
+    def _probe(self, step_size) -> List[str]:
+        """The run-start probe of a declared System (ADR 0001, decision 10):
+        one call of ``derive`` and ``forward`` on the ports' values at the
+        run start, as the first object-mode step makes them, writing
+        nothing.  ``derive`` must give a dict, and ``forward`` every output
+        and nothing else, each at its size, and a state of the state's
+        shape.  A data source's ``series`` is checked where it fills the
+        outputs (:meth:`_fill_from_series`).
+
+        Returns:
+            List[str]: What is wrong, one line each; empty when nothing is.
+        """
+        cls = type(self)
+        if not cls._is_declared or cls._is_data_source():
+            return []
+        name = f"{cls.__name__} '{self.id}'"
+        step = self._scalar_step_size(step_size)
+        params = {}
+        for path in getattr(self, "PARAM_NAMES", ()):
+            value = rgetattr(self, path)
+            if value is not None:  # an absent (optional) parameter
+                params[path] = value.get()
+        params.update(self.value_setting_params())
+        if getattr(cls, "derive", None) is not None:
+            derived = self.derive(params, step)
+            if not isinstance(derived, dict):
+                return [f"{name}: derive returned a {type(derived).__name__}, not a dict"]
+            params = {**params, **derived}
+        n_c = self.n_c
+        n_s = next(iter({**self.input, **self.output}.values())).n_s
+        inputs = {key: self._fold(port.get(), n_s, n_c) for key, port in self.input.items()}
+        for key, source in self.input_defaults().items():
+            inputs[key] = inputs[source]
+        for key, source in self.output_defaults().items():
+            inputs[key] = self._fold(self.output[source].get(), n_s, n_c)
+        stateful = bool(self.collect_states())
+        x = self._fold(self.get_state(), n_s, n_c) if stateful else None
+        with torch.no_grad():
+            x_next, outs = self.forward(x, inputs, self._fold_tree(params, n_s, n_c), step)
+        if not isinstance(outs, dict):
+            return [f"{name}: forward gave its outputs as a {type(outs).__name__}, not a dict"]
+        problems = []
+        # every output from exactly one of series and forward
+        stepped = set(self.output) - set(self.__dict__.get("_series_outputs", ()))
+        missing, extra = sorted(stepped - set(outs)), sorted(set(outs) - stepped)
+        if missing:
+            problems.append(f"{name}: forward gave no value for the output(s) {', '.join(missing)}")
+        if extra:
+            problems.append(
+                f"{name}: forward gave {', '.join(extra)}, which the System does not declare as outputs "
+                f"its forward fills"
+            )
+        copies = n_s * n_c
+        for key in sorted(stepped & set(outs)):
+            value, port = outs[key], self.output[key]
+            width = int(port._n_v or 0) if isinstance(port, tps.Vector) else 1
+            if not (isinstance(value, torch.Tensor) and value.dim() > 0 and value.shape[0] == copies
+                    and value[0].numel() == width):
+                shape = tuple(value.shape) if isinstance(value, torch.Tensor) else type(value).__name__
+                problems.append(
+                    f"{name}: forward gave the output {key!r} as {shape}, not {copies} copies of {width} value(s)"
+                )
+        if stateful and not (isinstance(x_next, torch.Tensor) and tuple(x_next.shape) == tuple(x.shape)):
+            shape = tuple(x_next.shape) if isinstance(x_next, torch.Tensor) else type(x_next).__name__
+            problems.append(f"{name}: forward gave a state of {shape}, not {tuple(x.shape)}")
+        return problems
 
     @property
     def config(self) -> dict:
@@ -1160,7 +1303,7 @@ class System(nn.Module, metaclass=SystemMeta):
         batch_size = len(start_time)
         if type(self)._is_declared:
             n_c = int(getattr(self, "_n_c_batched", 1) or 1)
-            run = self.run_timestamps(start_time, end_time, step_size) if type(self)._is_data_source() else None
+            run = self.run_timestamps(start_time, end_time, step_size) if type(self)._has_series() else None
             self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c), run)
             self._start_run(step_size)
             return
@@ -1189,6 +1332,8 @@ class System(nn.Module, metaclass=SystemMeta):
             for port in self.output.values():
                 port._set(i_t=step_index)
         elif type(self)._is_declared:
+            for name in self.__dict__.get("_series_outputs", ()):
+                self.output[name]._set(i_t=step_index)
             self._declared_do_step(step_size, step_index)
 
     # -- Continuous state (multiple-shooting / collocation estimation) --------
@@ -1656,6 +1801,9 @@ class System(nn.Module, metaclass=SystemMeta):
                 # A reader (a data source's ``source``): the dict it is
                 # rebuilt from.
                 return value.to_config()
+            if isinstance(value, (list, tuple)) and value and all(hasattr(v, "to_config") for v in value):
+                # Several readers (the occupancy's damper positions): theirs.
+                return [v.to_config() for v in value]
             if callable(value) and not isinstance(value, (torch.nn.Module, type)):
                 # A function (a transformation): its module:qualname
                 # reference (None for one that cannot be imported again).

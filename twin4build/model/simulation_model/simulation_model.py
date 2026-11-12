@@ -345,12 +345,7 @@ class SimulationModel:
         "enable_fusion",
         "_device",
         "_is_loaded",
-        "_is_validated",
         "_result",
-        "_validated_for_simulator",
-        "_validated_for_estimator",
-        "_validated_for_optimizer",
-        "_validated_for_monitor",
         "_dir_conf",
         "_semantic_model",
         "_translator",
@@ -432,7 +427,6 @@ class SimulationModel:
         self._custom_initial_dict = None
         self._device = torch.device("cpu")
         self._is_loaded = False
-        self._is_validated = False
         self._rewire_reports = {}
         self._system_registry = system_registry
 
@@ -526,10 +520,6 @@ class SimulationModel:
     @property
     def is_loaded(self) -> bool:
         return self._is_loaded
-
-    @property
-    def is_validated(self) -> bool:
-        return self._is_validated
 
     @property
     def rewire_reports(self) -> dict:
@@ -1995,278 +1985,88 @@ class SimulationModel:
         # Check for missing initial values AFTER all components are initialized
         self.check_for_missing_initial_values()
 
-    def validate(self) -> None:
-        """
-        Validate the model by checking IDs and connections.
-        """
-        LOGGER.add_level()
+    def check(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
+        """Probe every declared System the model steps, on request (ADR
+        0001, decision 10): the model is initialized for the period, as a run
+        starts, and each System's ``derive`` and ``forward`` are called once
+        on the run-start values, writing nothing (:meth:`System._probe`).  A
+        data source's ``series`` is checked where it fills its outputs, at
+        every run start.  ``Simulator.simulate(check=True)`` probes the run it
+        starts.
 
-        LOGGER.task("Validating components")
-        LOGGER.add_level()
-        (
-            validated_for_simulator_components,
-            validated_for_estimator_components,
-            validated_for_optimizer_components,
-        ) = self.validate_components()
-        if (
-            validated_for_simulator_components
-            and validated_for_estimator_components
-            and validated_for_optimizer_components
-        ) == False:
-            LOGGER.error("Validating components", change_status=True)
-        else:
-            LOGGER.ok("Validating components", change_status=True)
-        LOGGER.remove_level()
-
-        LOGGER.task("Validating connections")
-        LOGGER.add_level()
-        (
-            validated_for_simulator_connections,
-            validated_for_estimator_connections,
-            validated_for_optimizer_connections,
-        ) = self.validate_connections()
-        if (
-            validated_for_simulator_connections
-            and validated_for_estimator_connections
-            and validated_for_optimizer_connections
-        ) == False:
-            LOGGER.error("Validating connections", change_status=True)
-        else:
-            LOGGER.ok("Validating connections", change_status=True)
-        LOGGER.remove_level()
-
-        self._validated_for_simulator = (
-            validated_for_simulator_components and validated_for_simulator_connections
-        )
-        self._validated_for_estimator = (
-            validated_for_estimator_components and validated_for_estimator_connections
-        )
-        self._validated_for_optimizer = (
-            validated_for_optimizer_components and validated_for_optimizer_connections
-        )
-        self._is_validated = (
-            self._validated_for_simulator
-            and self._validated_for_estimator
-            and self._validated_for_optimizer
-        )
-
-        if self._validated_for_simulator:
-            LOGGER.ok("Validated for simulator")
-        else:
-            LOGGER.error("Validated for simulator.")
-        if self._validated_for_estimator:
-            LOGGER.ok("Validated for estimator")
-        else:
-            LOGGER.error("Validated for estimator.")
-        if self._validated_for_optimizer:
-            LOGGER.ok("Validated for optimizer")
-        else:
-            LOGGER.error("Validated for optimizer.")
-        LOGGER.remove_level()
-
-        # assert validated, "The model is not valid. See the warnings above."
-
-    def validate_components(self) -> None:
-        """
-        Validate the parameters of all components in the model.
+        Args:
+            start_time: Start time of each period.
+            end_time: End time of each period.
+            step_size: Step size of each period [s].
 
         Raises:
-            AssertionError: If any component has invalid parameters.
+            ValueError: Naming every System whose ``derive`` gives no dict, or
+                whose ``forward`` leaves out an output, gives one it does not
+                declare, gives an output at another size or a state of
+                another shape.
         """
-        component_instances = list(self._components.values())
-        _validated_for_simulator = True
-        _validated_for_estimator = True
-        _validated_for_optimizer = True
+        self.initialize(start_time, end_time, step_size)
+        self._probe_components(step_size)
 
-        for component in component_instances:
-            if hasattr(component, "validate"):  # Check if component has validate method
-                (
-                    validated_for_simulator_,
-                    validated_for_estimator_,
-                    validated_for_optimizer_,
-                ) = component.validate(LOGGER)
-                _validated_for_simulator = (
-                    _validated_for_simulator and validated_for_simulator_
-                )
-                _validated_for_estimator = (
-                    _validated_for_estimator and validated_for_estimator_
-                )
-                _validated_for_optimizer = (
-                    _validated_for_optimizer and validated_for_optimizer_
-                )
-            else:
-                # Validate parameters
-                config = component.config.copy()
-                parameters = {
-                    attr: rgetattr(component, attr) for attr in config["parameters"]
-                }
-                is_none = [k for k, v in parameters.items() if v is None]
-                if any(is_none):
-                    LOGGER.warning(
-                        "Class: %s, id: %s: missing values for the following parameters to enable use of simulator and optimizer.",
-                        component.__class__.__name__,
-                        component.id,
-                    )
-                    LOGGER.add_level()
-                    for par in is_none:
-                        LOGGER.info("%s", par)
-                    LOGGER.remove_level()
+    def _probe_components(self, step_size) -> None:
+        """The probe of :meth:`check`, on the model as initialized."""
+        problems = []
+        for component in self._flat_execution_order:
+            problems.extend(component._probe(step_size))
+        if problems:
+            raise ValueError(f"The model '{self._id}' does not run:" + "".join(f"{chr(10)}  {p}" for p in problems))
 
-                    _validated_for_simulator = False
-                    _validated_for_optimizer = False
+    def _check_loaded(self) -> None:
+        """The checks of a load, which raise (ADR 0001, decision 10).
 
-                # Validate model definitions
-                for input in component.input.values():
-                    assert isinstance(
-                        input, (tps.Scalar, tps.Vector)
-                    ), "Only vectors and scalars can be used as input to components"
-
-                for output in component.output.values():
-                    assert isinstance(
-                        output, (tps.Scalar, tps.Vector)
-                    ), "Only vectors and scalars can be used as output from components"
-
-                if len(component.connects_at) == 0:
-                    for key in component.output.keys():
-                        output = component.output[key]
-                        if isinstance(
-                            output, tps.Scalar
-                        ):  # TODO: Add support for vectors
-                            if output.is_leaf == False:
-                                LOGGER.warning(
-                                    'Class: %s, id: %s: the output "%s" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.',
-                                    component.__class__.__name__,
-                                    component.id,
-                                    key,
-                                )
-                                _validated_for_optimizer = False
-
-                            # assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
-
-                else:
-                    for key in component.output.keys():
-                        output = component.output[key]
-                        if isinstance(
-                            output, tps.Scalar
-                        ):  # TODO: Add support for vectors
-                            if output.is_leaf:
-                                LOGGER.warning(
-                                    'Class: %s, id: %s: the output "%s" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.',
-                                    component.__class__.__name__,
-                                    component.id,
-                                    key,
-                                )
-                                _validated_for_optimizer = False
-                            # assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
-        (
-            __validated_for_simulator,
-            __validated_for_estimator,
-            __validated_for_optimizer,
-        ) = self._validate_ids()
-
-        _validated_for_simulator = (
-            _validated_for_simulator and __validated_for_simulator
-        )
-        _validated_for_estimator = (
-            _validated_for_estimator and __validated_for_estimator
-        )
-        _validated_for_optimizer = (
-            _validated_for_optimizer and __validated_for_optimizer
-        )
-
-        return (
-            _validated_for_simulator,
-            _validated_for_estimator,
-            _validated_for_optimizer,
-        )
-
-    def _validate_ids(self) -> None:
-        """
-        Validate the IDs of all components in the model.
+        After the parameters are read: every component's id is valid
+        (:func:`_check_id`); every input without a default is
+        wired (a declared ``size="wired"`` input is as wide as what is wired,
+        none included); a declared System's wired slots lie within its
+        declared sizes (:meth:`System.size_declared_ports`); and every
+        parameter of a declared System has a value, unless it is an optional
+        one (``Parameter(None)``) left absent.  Every problem of the model
+        is reported at once.
 
         Raises:
-            AssertionError: If any component has an invalid ID.
+            ValueError: Naming each component and what it misses.
         """
-        validated = True
-        component_instances = list(self._components.values())
-        for component in component_instances:
-            # Length check — mirrors the one in ``SimulationModel.__init__``
-            # / ``_check_id`` but downgraded to a logged validation
-            # failure (matches the existing style here: invalid chars set
-            # ``validated=False`` rather than raising, so callers can
-            # collect all offenders in one pass).
-            if len(component.id) > MAX_ID_LEN:
-                LOGGER.error(
-                    "Class: %s, id: %s: id length %d exceeds the maximum "
-                    "of %d characters; this will trip Windows MAX_PATH "
-                    "when the id is used as a filename component.",
-                    component.__class__.__name__,
-                    component.id,
-                    len(component.id),
-                    MAX_ID_LEN,
-                )
-                validated = False
-            isvalid = np.array(
-                [x.isalnum() or x in INVALID_ID_CHARS for x in component.id]
-            )
-            np_id = np.array(list(component.id))
-            violated_characters = list(np_id[isvalid == False])
-            if not all(isvalid):
-                LOGGER.error(
-                    'Class: %s, id: %s: invalid id, the characters "%s" are not allowed.',
-                    component.__class__.__name__,
-                    component.id,
-                    ", ".join(violated_characters),
-                )
-                validated = False
-        return (validated, validated, validated)
-
-    def validate_connections(self) -> None:
-        """
-        Validate the connections between components in the model.
-
-        Raises:
-            AssertionError: If any required connections are missing.
-        """
-        component_instances = list(self._components.values())
-        validated = True
-        for component in component_instances:
-
-            if hasattr(
-                component, "validate_connections"
-            ):  # Check if component has validate method
-                validated = component.validate_connections(LOGGER)
-            else:
-                if (
-                    len(component.connected_through) == 0
-                    and len(component.connects_at) == 0
-                ):
-                    LOGGER.warning(
-                        "Class: %s, id: %s: the component is not connected to any other components.",
-                        component.__class__.__name__,
-                        component.id,
-                    )
-
-                input_labels = [cp.input_port for cp in component.connects_at]
-                first_input = True
-                for req_input_label in component.input.keys():
-                    if (
-                        req_input_label not in input_labels
-                        and component.input[req_input_label].optional == False
-                    ):
-                        if first_input:
-                            LOGGER.warning(
-                                "Class: %s, id: %s: missing connections for the following inputs to enable use of simulator, estimator, and optimizer.",
-                                component.__class__.__name__,
-                                component.id,
-                            )
-                            first_input = False
-                            LOGGER.add_level()
-                        LOGGER.info("%s", req_input_label)
-                        validated = False
-                if first_input == False:
-                    LOGGER.remove_level()
-        return (validated, validated, validated)
+        problems = []
+        for component in self._components.values():
+            name = f"{type(component).__name__} '{component.id}'"
+            try:
+                _check_id(component.id, kind="component")
+            except AssertionError as error:
+                problems.append(str(error))
+            declared = getattr(type(component), "_declarations", {}) if type(component)._is_declared else {}
+            wired = {point.input_port for point in component.connects_at}
+            unwired = [
+                port
+                for port, value in component.input.items()
+                if port not in wired
+                and not value.optional
+                and getattr(declared.get("input", {}).get(port), "size", None) != "wired"
+            ]
+            if unwired:
+                problems.append(f"{name}: nothing is wired to the input(s) {', '.join(unwired)}, which have no default")
+            if not declared:
+                continue
+            try:
+                component.size_declared_ports()
+            except ValueError as error:
+                problems.append(str(error))
+            values = {path: rgetattr(component, path) for path in component.PARAM_NAMES}
+            absent = set(self._absent_optional_parameters(component, {"parameters": values}))
+            missing = [path for path, value in values.items() if value is None and path not in absent]
+            if missing:
+                problems.append(f"{name}: the parameter(s) {', '.join(missing)} have no value")
+        if problems:
+            raise ValueError(f"The model '{self._id}' does not load:\n  " + "\n  ".join(problems))
 
     @staticmethod
     def _absent_optional_parameters(component, config: dict) -> list:
@@ -2364,7 +2164,6 @@ class SimulationModel:
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
         # verbose: Union[int, None] = None,
-        validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
     ) -> None:
@@ -2374,7 +2173,6 @@ class SimulationModel:
         Args:
             rdf_file: Path to a serialized model.
             fcn: Custom function to be applied during model loading.
-            validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
@@ -2383,7 +2181,6 @@ class SimulationModel:
             self._load(
                 rdf_file=rdf_file,
                 fcn=fcn,
-                validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 # verbose=verbose,
                 logfile=logfile,
@@ -2394,8 +2191,7 @@ class SimulationModel:
                 self._load(
                     rdf_file=rdf_file,
                     fcn=fcn,
-                    validate_model=validate_model,
-                    force_config_overwrite=force_config_overwrite,
+                        force_config_overwrite=force_config_overwrite,
                     # verbose=verbose,
                     logfile=logfile,
                 )
@@ -2406,7 +2202,6 @@ class SimulationModel:
         rdf_file: Optional[str],
         fcn: Optional[Callable],
         # verbose: int,
-        validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
     ) -> None:
@@ -2418,7 +2213,6 @@ class SimulationModel:
         Args:
             rdf_file: Path to a serialized model.
             fcn: Custom function to be applied during model loading.
-            validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
@@ -2469,10 +2263,9 @@ class SimulationModel:
         self._load_parameters(force_config_overwrite=force_config_overwrite)
         LOGGER.ok("Loading parameters", change_status=True)
 
-        if validate_model:
-            LOGGER.task("Validating model")
-            self.validate()
-            LOGGER.ok("Validating model", change_status=True)
+        LOGGER.task("Checking model")
+        self._check_loaded()
+        LOGGER.ok("Checking model", change_status=True)
 
         LOGGER.remove_level()
         LOGGER.ok("Loading simulation model", change_status=True)
@@ -2533,7 +2326,6 @@ class SimulationModel:
 
         # Reset the loaded state
         self._is_loaded = False  ###
-        self._is_validated = False  ###
 
         # Reset any estimation results
         self._result = None  ###
@@ -3306,7 +3098,7 @@ class SimulationModel:
 
     def _component_lookup(self) -> Dict[str, Any]:
         """The model's components by id, with the nested sub-objects that
-        carry an id of their own (e.g. ``OccupancySystem._DamperParams``).
+        carry an id of their own (e.g. ``OccupancySystem.supply_damper``).
         ``nn.Module`` keeps child modules in ``_modules`` rather than
         ``__dict__``, so ``.modules()`` walks the hierarchy."""
         lookup = dict(self._components)
@@ -3667,7 +3459,7 @@ class SimulationModel:
         result_x = self._result["result_x"]
 
         # Extended lookup including nested sub-objects (e.g.
-        # OccupancySystem._DamperParams) that have their own id but are
+        # OccupancySystem.supply_damper) that have their own id but are
         # not registered as top-level components.
         component_lookup = self._component_lookup()
 
@@ -3884,8 +3676,9 @@ class SimulationModel:
                         (component_uri, predicate, Literal(recorded[key]))
                     )
             for key, value in flatten_dict(component.populate_config(), component):
-                if isinstance(value, (dict, list)):
-                    # Serialize dicts and lists as JSON with datatype
+                if isinstance(value, (dict, list, tuple)):
+                    # Serialize dicts, lists and tuples (a setting's points)
+                    # as JSON with datatype
                     value_ = json.dumps(value)
                     datatype = core.namespace.RDF.JSON
                 else:

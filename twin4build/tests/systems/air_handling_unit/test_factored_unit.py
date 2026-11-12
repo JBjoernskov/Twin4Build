@@ -34,6 +34,7 @@ from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
 from twin4build.tests.model.test_batching_vector_slots import Sink
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -63,7 +64,7 @@ def Series(values, **kwargs):
     values = [float(v) for v in values]
     index = pd.DatetimeIndex([START + datetime.timedelta(seconds=STEP * k) for k in range(len(values) + 2)], name="time")
     values = values + [values[-1]] * 2
-    return tb.SensorSystem(df=pd.DataFrame({"value": values}, index=index), use_df=True, **kwargs)
+    return tb.SensorSystem(source=DataFrameSource(pd.DataFrame({"value": values}, index=index)), **kwargs)
 
 
 def _leaves(model, prefix=""):

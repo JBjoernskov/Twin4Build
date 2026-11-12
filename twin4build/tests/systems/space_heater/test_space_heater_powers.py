@@ -1,4 +1,4 @@
-"""The two powers of ``SpaceHeaterSystem``, and the deprecated ``Power``.
+"""The two powers of ``SpaceHeaterSystem``.
 
 ``toRoomPower`` is the heat the radiator gives to the room,
 ``UA/n * sum_i (T_i - T_zone)``; ``toRadiatorPower`` is the heat it takes
@@ -12,24 +12,17 @@ Covered:
 2. energy balance over a transient: the integral of their difference is the
    change of the stored heat, within the error of the discrete sum;
 3. zero flow: ``toRadiatorPower`` is zero while ``toRoomPower`` decays;
-4. the deprecated ``Power`` connects, reads, is an objective and a pattern
-   output, warns, and the model holds ``toRoomPower``;
-5. a model saved with ``Power`` loads, simulates as before and saves
-   ``toRoomPower``;
-6. fused against unfused;
-7. batched against unbatched, two radiators with different parameters;
-8. the functional rollout against the object path, and the gradient of the
+4. ``Power``, the old name of ``toRoomPower``, is no port of the radiator;
+5. fused against unfused;
+6. batched against unbatched, two radiators with different parameters;
+7. the functional rollout against the object path, and the gradient of the
    summed water-side power with respect to UA through the rollout;
-9. a ``WeightedSumSystem`` over ``toRadiatorPower`` feeding a
+8. a ``WeightedSumSystem`` over ``toRadiatorPower`` feeding a
    ``SensorSystem``, fused, batched and as a measurement with a gradient.
 """
 
 # Standard library imports
 import datetime
-import os
-import re
-import shutil
-import tempfile
 import unittest
 import warnings
 
@@ -39,12 +32,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
-import twin4build.core as core
-import twin4build.examples.utils as example_utils
-from twin4build.examples import patterns as example_patterns
-from twin4build.optimizer.optimizer import _resolve_port_names
 from twin4build.utils import constants
-from twin4build.utils.logger import LOGGER
 
 tb._IS_TESTING = True
 
@@ -133,7 +121,7 @@ def _zone(sid):
     )
 
 
-def _rooms(n, fuse=True, model_id="rooms", total=False, room_port="toRoomPower"):
+def _rooms(n, fuse=True, model_id="rooms", total=False):
     """``n`` zones with a radiator each (different parameters); the valves
     open at hour 1.  With ``total`` a ``WeightedSumSystem`` sums the
     radiators' ``toRadiatorPower`` into a ``SensorSystem`` (a heat meter on
@@ -154,7 +142,7 @@ def _rooms(n, fuse=True, model_id="rooms", total=False, room_port="toRoomPower")
         model.add_connection(water, radiator, "scheduleValue", "supplyWaterTemperature")
         model.add_connection(flow, radiator, "scheduleValue", "waterFlowRate")
         model.add_connection(zone, radiator, "indoorTemperature", "indoorTemperature")
-        model.add_connection(radiator, zone, room_port, "heatGain")
+        model.add_connection(radiator, zone, "toRoomPower", "heatGain")
         if total:
             model.add_connection(radiator, total_sum, "toRadiatorPower", "inputs", input_port_index=k)
     if total:
@@ -267,187 +255,22 @@ class TestZeroFlow(unittest.TestCase):
         self.assertLess(float(to_room[-1]), 0.5 * float(to_room[0]))
 
 
-class TestDeprecatedPower(unittest.TestCase):
-    def test_connection_through_power_holds_to_room_power(self):
-        model = tb.Model(id="powers_alias")
+class TestPowerIsGone(unittest.TestCase):
+    def test_power_is_no_port_of_the_radiator(self):
+        """``Power``, the old name of ``toRoomPower``, is gone in 2.0."""
+        model = tb.Model(id="powers_gone")
         radiator, zone = _radiator("Rad"), _zone("Zone")
-        with self.assertWarnsRegex(DeprecationWarning, "SpaceHeaterSystem.toRoomPower") as caught:
-            model.add_connection(radiator, zone, "Power", "heatGain")
-        self.assertEqual(caught.filename, __file__)  # points at the caller
-        ports = [c.output_port for c in radiator.connected_through]
-        self.assertEqual(ports, ["toRoomPower"])
-        (point,) = zone.connects_at
-        self.assertEqual([c.output_port for c in point.connects_system_through], ["toRoomPower"])
-        with self.assertWarns(DeprecationWarning):
-            model.remove_connection(radiator, zone, "Power", "heatGain")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self.assertEqual(radiator.resolve_output_port("Power"), "Power")
+            self.assertNotIn("Power", radiator.output)
+            self.assertEqual(tb.SpaceHeaterSystem.OUTPUT_PORT_ALIASES, {})
+            with self.assertRaises(AssertionError):
+                model.add_connection(radiator, zone, "Power", "heatGain")
+        self.assertEqual(set(radiator.output), {"outletWaterTemperature", "toRoomPower", "toRadiatorPower"})
         self.assertEqual(radiator.connected_through, [])
-
-    def test_output_mapping_answers_to_power(self):
-        radiator = _radiator("Rad")
-        with self.assertWarnsRegex(DeprecationWarning, "toRoomPower") as caught:
-            port = radiator.output["Power"]
-        self.assertEqual(caught.filename, __file__)
-        self.assertIs(port, radiator.output["toRoomPower"])
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            self.assertIn("Power", radiator.output)  # no warning
-            self.assertNotIn("Power", list(radiator.output))
-            self.assertEqual(
-                set(radiator.output), {"outletWaterTemperature", "toRoomPower", "toRadiatorPower"}
-            )
-        with self.assertWarns(DeprecationWarning):
-            self.assertIs(radiator.output.get("Power"), port)
-        self.assertIsNone(radiator.output.get("NoSuchPort"))
-        with self.assertRaises(KeyError):
-            radiator.output["NoSuchPort"]
-        # Only the radiator renamed ``Power``: a fan's is its own.
-        fan = tb.FanSystem(id="Fan")
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            self.assertEqual(fan.resolve_output_port("Power"), "Power")
-            self.assertIn("Power", fan.output)
-
-    def test_optimizer_tuples_outputs_and_history_through_power(self):
-        with self.assertWarnsRegex(DeprecationWarning, "toRoomPower"):
-            model = _rooms(1, model_id="powers_alias_rooms", room_port="Power")
-        radiator = model.components["Radiator0"]
-        self.assertEqual([c.output_port for c in radiator.connected_through], ["toRoomPower"])
-        self.assertEqual(len(model.simulation_model._fused_components), 1)
-        with self.assertWarnsRegex(DeprecationWarning, "toRoomPower"):
-            entries = _resolve_port_names([(radiator, "Power", "min"), [radiator, "toRadiatorPower", "max"]])
-        self.assertEqual(entries, [(radiator, "toRoomPower", "min"), (radiator, "toRadiatorPower", "max")])
-        _simulate(model, hours=3, step=600)
-        with self.assertWarns(DeprecationWarning):
-            old = radiator.output["Power"].history()
-        reference = _series(radiator.output["toRoomPower"])
-        torch.testing.assert_close(old, radiator.output["toRoomPower"].history())
-        # A functional map asked for the fused radiator's ``Power``.
-        with self.assertWarnsRegex(DeprecationWarning, "toRoomPower"):
-            run = _rollout(model, 600, 3, [], outputs=[(radiator, "Power")])
-        out = run(torch.zeros(0, dtype=torch.float64))
-        torch.testing.assert_close(out[:, 0], reference.double(), rtol=1e-9, atol=1e-7)
-
-    def test_pattern_written_with_power_connects_to_room_power(self):
-        """A signature pattern that reads the radiator's ``Power`` (an add-on
-        package's pattern) still translates, into the same connections."""
-        filename = example_utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
-
-        def connections(model):
-            ids = lambda c: re.sub(r"\[N[0-9a-f]{32}\]", "[bnode]", c.id)
-            return sorted(
-                (ids(c), connection.output_port, ids(point.connection_point_of), point.input_port)
-                for c in model.components.values()
-                for connection in c.connected_through
-                for point in connection.connects_system_at
-            )
-
-        current = tb.Translator().translate(
-            core.SemanticModel(rdf_file=filename, id="powers_pattern_new"),
-            patterns=example_patterns.default_patterns(),
-            id="powers_pattern_new",
-        )
-        old_patterns = example_patterns.default_patterns()
-        renamed = 0
-        for sp in old_patterns:
-            if sp.system is tb.BuildingSpaceSystem and "heatGain" in sp.inputs:
-                node, ports, out_index, in_index = sp.inputs["heatGain"]
-                sp.inputs["heatGain"] = (node, {c: "Power" for c in ports}, out_index, in_index)
-                renamed += 1
-        self.assertGreater(renamed, 0)
-        with self.assertWarnsRegex(DeprecationWarning, "SpaceHeaterSystem.toRoomPower"):
-            old = tb.Translator().translate(
-                core.SemanticModel(rdf_file=filename, id="powers_pattern_old"),
-                patterns=old_patterns,
-                id="powers_pattern_old",
-            )
-        self.assertIn("toRoomPower", {c[1] for c in connections(old)})
-        self.assertNotIn("Power", {c[1] for c in connections(old) if "heater" in c[0]})
-        self.assertEqual(connections(old), connections(current))
-
-
-class TestModelSavedWithPower(unittest.TestCase):
-    MODEL_ID = "powers_saved"
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
-        for suffix in ("", "_old", "_resaved"):
-            shutil.rmtree(os.path.join("generated_files", "models", self.MODEL_ID + suffix), ignore_errors=True)
-
-    def _build(self):
-        model = tb.Model(id=self.MODEL_ID)
-        room = tb.BuildingSpaceSystem(
-            id="room",
-            thermal=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
-            mass=dict(V=100.0),
-        )
-        heater = _radiator("heater", C=2e5, UA=45.0)
-        for port, value in (
-            ("outdoorTemperature", 5.0), ("numberOfPeople", 0.0), ("globalIrradiation", 0.0),
-            ("supplyAirFlowRate", 0.0), ("supplyAirTemperature", 18.0),
-        ):
-            model.add_connection(_schedule(value, f"s_{port}"), room, "scheduleValue", port)
-        model.add_connection(_schedule(FLOW, "water"), heater, "scheduleValue", "waterFlowRate")
-        model.add_connection(_schedule(T_SUPPLY, "t_water"), heater, "scheduleValue", "supplyWaterTemperature")
-        model.add_connection(room, heater, "indoorTemperature", "indoorTemperature")
-        model.add_connection(heater, room, "toRoomPower", "heatGain")
-        model.load(draw_semantic_model=False, draw_simulation_model=False)
-        return model
-
-    @staticmethod
-    def _run(model):
-        _simulate(model, hours=3, step=600, execution_mode="object")
-        return {
-            port: _series(model.components[cid].output[port])
-            for cid, port in (("room", "indoorTemperature"), ("heater", "toRoomPower"), ("heater", "toRadiatorPower"))
-        }
-
-    @staticmethod
-    def _output_ports(path):
-        with open(path, encoding="utf-8") as handle:
-            return re.findall(r't4b:output_port "([^"]+)"', handle.read())
-
-    def test_old_file_loads_simulates_and_resaves_the_new_name(self):
-        model = self._build()
-        reference = self._run(model)
-        model.serialize()
-        path, _ = model._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
-        self.assertIn("toRoomPower", self._output_ports(path))
-        self.assertNotIn("toRadiatorPower", self._output_ports(path))  # nothing reads it here
-
-        # A file written before the rename records the radiator's ``Power``.
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-        old_text = text.replace('t4b:output_port "toRoomPower"', 't4b:output_port "Power"')
-        self.assertNotEqual(old_text, text)
-        old_path = os.path.join(self.tmp, "instance_graph.ttl")
-        with open(old_path, "w", encoding="utf-8") as handle:
-            handle.write(old_text)
-
-        loaded = tb.Model(id=self.MODEL_ID + "_old")
-        # a quiet load (LOGGER.verbose 0, as an example run elsewhere in the
-        # suite leaves it) silences every warning: load verbosely here
-        verbose = LOGGER.verbose
-        LOGGER.verbose = 3
-        try:
-            with self.assertWarnsRegex(DeprecationWarning, "SpaceHeaterSystem.toRoomPower"):
-                loaded.load(filename=old_path, draw_semantic_model=False, draw_simulation_model=False)
-        finally:
-            LOGGER.verbose = verbose
-        heater = loaded.components["heater"]
-        self.assertEqual([c.output_port for c in heater.connected_through], ["toRoomPower"])
-        self.assertEqual(len(loaded.simulation_model._fused_components), 1)
-        result = self._run(loaded)
-        for port, series in reference.items():
-            torch.testing.assert_close(result[port], series, msg=port)
-
-        loaded.serialize()
-        resaved, _ = loaded._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
-        ports = self._output_ports(resaved)
-        self.assertIn("toRoomPower", ports)
-        self.assertNotIn("Power", ports)
+        # A fan's ``Power`` is its own.
+        self.assertIn("Power", tb.FanSystem(id="Fan").output)
 
 
 class TestFusedAgainstUnfused(unittest.TestCase):

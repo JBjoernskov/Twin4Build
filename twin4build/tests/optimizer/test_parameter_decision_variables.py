@@ -116,7 +116,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
         optimizer.optimize(
             start_time=self.start, end_time=self.end, step_size=2400,
             variables=[(curve, "Y", 12.0, 24.0)],
-            objectives=[(heater, "Power", "min"), (discomfort, "output", "min")],
+            objectives=[(heater, "toRoomPower", "min"), (discomfort, "output", "min")],
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 1},
         )
@@ -165,7 +165,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
         optimizer.optimize(
             start_time=starts, end_time=ends, step_size=2400,
             variables=[(self.curve, "Y", 12.0, 24.0)],
-            objectives=[(self.heater, "Power", "min"), (self.discomfort, "output", "min")],
+            objectives=[(self.heater, "toRoomPower", "min"), (self.discomfort, "output", "min")],
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 1},
             n_warmup=n_warmup,
@@ -220,7 +220,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
             optimizer.optimize(
                 start_time=starts, end_time=ends, step_size=2400,
                 variables=[(model.components["Waterflow"], "scheduleValue", 0.0, 0.02)],
-                objectives=[(heater, "Power", "min")],
+                objectives=[(heater, "toRoomPower", "min")],
                 method=("scipy", "SLSQP", "ad"),
                 options={"maxiter": 1},
                 n_warmup=6,
@@ -246,14 +246,14 @@ class TestParameterDecisionVariables(unittest.TestCase):
                     if route == "optimize":
                         optimizer.optimize(
                             start_time=starts, end_time=ends, step_size=2400,
-                            variables=[(curve, "Y", 12.0, 24.0)], objectives=[(heater, "Power", "min")],
+                            variables=[(curve, "Y", 12.0, 24.0)], objectives=[(heater, "toRoomPower", "min")],
                             method=method, options={"maxiter": 1}, n_warmup=n_warmup,
                         )
                     else:
                         optimizer.pareto_front(
                             start_time=starts, end_time=ends, step_size=2400,
                             variables=[(curve, "Y", 12.0, 24.0)],
-                            objective1=(heater, "Power", "min"), objective2=(discomfort, "output", "min"),
+                            objective1=(heater, "toRoomPower", "min"), objective2=(discomfort, "output", "min"),
                             n_points=3, method=method, options={"maxiter": 1}, n_warmup=n_warmup,
                         )
 
@@ -291,7 +291,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
         optimizer.optimize(
             start_time=starts, end_time=ends, step_size=2400,
             variables=[(curve, "Y", 12.0, 24.0)],
-            objectives=[(heater, "Power", "min"), (discomfort, "output", "min")],
+            objectives=[(heater, "toRoomPower", "min"), (discomfort, "output", "min")],
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 1},
         )

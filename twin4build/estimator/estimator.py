@@ -1492,15 +1492,9 @@ class Estimator:
                     break
             if not has_non_sensor_driver:
                 continue
-            # ``has_data_source`` covers spreadsheet/database/df without
-            # depending on private attrs; ``time_series_input`` is set
-            # by ``initialize`` and may not exist yet on the first
-            # ``"auto"`` resolution.
-            has_data = any(
-                bool(getattr(component, flag, False))
-                for flag in ("use_database", "use_spreadsheet", "use_df")
-            )
-            if not has_data:
+            # ``time_series_input`` is set by the run start and may not
+            # exist yet on the first ``"auto"`` resolution.
+            if not component.has_data:
                 continue
 
             sd = AUTO_SD_FLOOR

@@ -561,12 +561,6 @@ t4b:office_exhaust_damper a t4b:DamperTorchSystem ;
     s4syst:connectsAt t4b:136778860870 .
 
 t4b:office_occupancy a t4b:OccupancySystem ;
-    t4b:co2_datecolumn 2 ;
-    t4b:co2_filename "C:\\Users\\jabj\\Documents\\python\\Twin4build-Case-Studies\\DP37\\model\\data\\Time series\\Rooms\\OD095_01_011A\\OD095_01_011A_L95_LC02_BQA001_S2.plc_SENSOR_VALUE.csv" ;
-    t4b:co2_valuecolumn 4 ;
-    t4b:damper_datecolumn 2 ;
-    t4b:damper_filename "C:\\Users\\jabj\\Documents\\python\\Twin4build-Case-Studies\\DP37\\model\\data\\Time series\\Rooms\\OD095_01_011A\\OD095_01_011A_L95_LC02_QNB001_C1.plc_ACTUATOR_VALUE.csv" ;
-    t4b:damper_valuecolumn 4 ;
     t4b:exhaust_damper.a "[1.0]"^^rdf:JSON ;
     t4b:exhaust_damper.nominalAirFlowRate "[0.001]"^^rdf:JSON ;
     t4b:mass.G_occ "[5e-06]"^^rdf:JSON ;
