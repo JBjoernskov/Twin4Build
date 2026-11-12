@@ -51,7 +51,10 @@ from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSyst
 from twin4build.utils.deprecation import deprecate_name
 from twin4build.utils.device import ensure_cuda_available, move_object_tensors
 
-INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
+#: The characters an id may hold besides letters and digits (despite the name).  ``+`` is the translator's: a
+#: composite's id capped at its name budget ends in ``+N``, the members left out
+#: (``Translator._composite_component_id``), and a model holding one must load.
+INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]", "+"]
 
 # Hard cap on id length. Ids are used as filename components under
 # ``model_parameters/<class>/<id>.json`` and similar; on Windows the full
