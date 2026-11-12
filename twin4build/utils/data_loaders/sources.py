@@ -63,6 +63,17 @@ class Reading:
     n_t: int
 
 
+def _without_reading(start_time, end_time, step_size, name=None) -> pd.Series:
+    """A period the data give no reading in: NaN on each of its steps, on the
+    grid a window is read on (``sample_on_grid``, ``[start, end)``)."""
+    start, end = (
+        t if t.tzinfo is not None else t.astimezone(tz=datetime.timezone.utc)
+        for t in (pd.Timestamp(start_time).to_pydatetime(), pd.Timestamp(end_time).to_pydatetime())
+    )
+    index = pd.date_range(start, end, freq=pd.Timedelta(seconds=float(step_size)))
+    return pd.Series(np.nan, index=index[index < end], name=name, dtype=float)
+
+
 class Source:
     """Base class of the readers.
 
@@ -159,6 +170,11 @@ class Source:
         for b, series in enumerate(raw):
             size = len(series.index)
             if size == 0 and (self.fill is not None or allow_missing):
+                # a period without a reading (a database point gives no row in
+                # it): its steps are NaN in the series kept, as a gap is
+                # (load_from_database gives pd.DataFrame() for a window without a row)
+                name = series.name if isinstance(series, pd.Series) else getattr(self, "uuid", None)
+                raw[b] = _without_reading(start_time[b], end_time[b], step_size[b], name)
                 continue
             if size == 0:
                 raise ValueError(
