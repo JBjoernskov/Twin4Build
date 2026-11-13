@@ -1856,6 +1856,35 @@ class FunctionalModel:
                 out[start + i_c * ss : start + (i_c + 1) * ss] = block
         return out
 
+    def prepare_trace(self) -> None:
+        """Fill what a traced step reads but cannot work out while traced:
+        the state width of every component and of the systems it owns
+        (``System.state_size`` walks ``vars(self)``, which Dynamo cannot
+        trace, and an ``initialize()`` drops the cached width).  Called
+        whenever a compiled step is asked for, so a compile, or a retrace
+        after the model was initialized again, never depends on an eager
+        step having run first."""
+        from twin4build.systems.saref4syst.system import System
+
+        seen = set()
+
+        def fill(system):
+            if id(system) in seen:
+                return
+            seen.add(id(system))
+            system.state_size()
+            for owned in vars(system).values():
+                if isinstance(owned, System):
+                    fill(owned)
+            children = getattr(system, "named_children", None)
+            for _, child in (children() if callable(children) else ()):
+                if isinstance(child, System):
+                    fill(child)
+
+        for component in self.order:
+            if isinstance(component, System):
+                fill(component)
+
     def step(self, kind, compiled=False):
         """The transform-mode step of a kind (:data:`STEP_KINDS`):
         ``step(y, theta, u, constants=None) -> (y_next, meas)``, cached on the
@@ -1884,6 +1913,8 @@ class FunctionalModel:
         assembled with ``scatter`` / ``scatter_add`` since).
         """
         batched = STEP_KINDS[kind]
+        if compiled:
+            self.prepare_trace()
         name = f"_step_{kind}_{'compiled' if compiled else 'eager'}"
         step = self.__dict__.get(name)
         if step is None:

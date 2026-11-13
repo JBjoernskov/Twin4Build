@@ -199,6 +199,37 @@ class TestStepKinds(unittest.TestCase):
         for got, want in zip(compiled, eager):
             torch.testing.assert_close(got, want, rtol=1e-11, atol=1e-11)
 
+    def test_asking_for_a_compiled_step_fills_the_state_widths_a_trace_reads(self):
+        """A traced forward reads each system's cached state width and cannot
+        work it out (``collect_states`` walks ``vars(self)``); an
+        ``initialize()`` drops it.  A compiled step asked for right after one,
+        with no eager step in between, must find every width, the owned
+        systems' too."""
+        from twin4build.systems.saref4syst.system import System
+
+        fm = self.fm
+
+        def owned(system, seen):
+            if id(system) in seen:
+                return
+            seen[id(system)] = system
+            for value in vars(system).values():
+                if isinstance(value, System):
+                    owned(value, seen)
+            for _, child in system.named_children():
+                if isinstance(child, System):
+                    owned(child, seen)
+
+        systems = {}
+        for component in fm.order:
+            owned(component, systems)
+        self.assertGreater(len(systems), len(fm.order))  # composites own systems
+        for system in systems.values():
+            system.__dict__.pop("_state_size_cache", None)  # as an initialize() leaves them
+        fm.step("rows", compiled=True)  # asked for, not called: nothing is compiled here
+        missing = [type(s).__name__ for s in systems.values() if "_state_size_cache" not in s.__dict__]
+        self.assertEqual(missing, [])
+
     def test_the_old_names_are_the_factory_steps(self):
         fm = self.fm
         self.assertIs(fm.rows_step, fm.step("rows"))
