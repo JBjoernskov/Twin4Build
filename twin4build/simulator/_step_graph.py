@@ -57,12 +57,16 @@ class StepGraph:
     the recording, one replay and a replay-against-eager parity check
     (:func:`~twin4build.utils._cuda_graph.check_replay_matches_eager`).
     Outputs are the graph's static buffers: the caller clones what it keeps.
+    ``joined`` names the outputs that are several tensors laid end to end:
+    their length is no sum's length, and the parity check's ``n`` leaves it
+    out (the tensors they join have their own shapes among the inputs).
     """
 
-    def __init__(self, fn: Callable, n_static: int, name: str = "step"):
+    def __init__(self, fn: Callable, n_static: int, name: str = "step", joined: Sequence[int] = ()):
         self.fn = fn
         self.n_static = int(n_static)
         self.name = name
+        self.joined = frozenset(joined)
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.static: Optional[Tuple[torch.Tensor, ...]] = None
         self.dynamic: Optional[Tuple[torch.Tensor, ...]] = None
@@ -99,8 +103,9 @@ class StepGraph:
         # the replay may sum in another order than the eager run (atomic
         # accumulation, other kernels): it must agree within the bound on
         # reordered sums, n the widest dimension of the step's tensors
+        summed = [r for i, r in enumerate(reference) if i not in self.joined]
         check_replay_matches_eager(
-            self.outputs, reference, n=largest_dimension(inputs, reference),
+            self.outputs, reference, n=largest_dimension(inputs, summed),
             label=f"{self.name}: CUDA graph replay",
         )
         self.capture_seconds += time.perf_counter() - started
@@ -128,9 +133,12 @@ class StepGraphs:
     ``step(y, theta, u, constants)`` is the (compiled) transform-mode step;
     ``constants`` is the pytree the rollout hoists (``None`` for the batched
     step, which rebuilds its matrices).  ``static`` = ``(theta, *leaves)``.
-    The adjoint's outputs are ``(ybar, thetabar, *leafbars)``, and with
+    The adjoint's outputs are ``(ybar, thetabar, leafbar)``, and with
     ``tape_grad`` the cotangent of the step's input row ``u`` after them;
-    :meth:`adjoint` captures the variant a backward needs, once.
+    ``leafbar`` is the floating leaves' cotangents as one vector, in the
+    leaves' order (:meth:`leafbars` splits it), so the sweep adds one tensor
+    per step, not one per leaf.  :meth:`adjoint` captures the variant a
+    backward needs, once.
     """
 
     def __init__(self, step: Callable, spec, n_leaves: int, name: str = "step"):
@@ -154,8 +162,7 @@ class StepGraphs:
             theta_ = theta.detach().requires_grad_(True)
             u_ = u.detach().requires_grad_(True) if tape_grad else u
             # An integer leaf (a sparse bilinear term's positions) takes no
-            # gradient: only the floating leaves are differentiated, and an
-            # integer one gets a zero cotangent of its own dtype.
+            # gradient: only the floating leaves are differentiated.
             floating = [l.is_floating_point() for l in leaves]
             leaves_ = [l.detach().requires_grad_(True) if f else l for l, f in zip(leaves, floating)]
             diff = [l for l, f in zip(leaves_, floating) if f]
@@ -164,9 +171,8 @@ class StepGraphs:
                 y_next, meas = step(y_, theta_, u_, unflatten(leaves_))
                 grads = torch.autograd.grad((y_next, meas), wrt, grad_outputs=(ybar_next, mbar), allow_unused=True)
             grads = [g if g is not None else torch.zeros_like(x) for g, x in zip(grads, wrt)]
-            diff_bars = iter(grads[2 : 2 + len(diff)])
-            leafbars = [next(diff_bars) if f else torch.zeros_like(l) for l, f in zip(leaves_, floating)]
-            return (grads[0], grads[1], *leafbars) + ((grads[-1],) if tape_grad else ())
+            leafbar = torch.cat([g.reshape(-1) for g in grads[2 : 2 + len(diff)]]) if diff else theta.new_zeros(0)
+            return (grads[0], grads[1], leafbar) + ((grads[-1],) if tape_grad else ())
 
         self.fwd = StepGraph(fwd_fn, n_static, name=f"{name}:forward")
         self._adj_fn = adj_fn
@@ -178,12 +184,24 @@ class StepGraphs:
         graph = self._adjoints.get(bool(tape_grad))
         if graph is None:
             fn = self._adj_fn if not tape_grad else (lambda *a: self._adj_fn(*a, tape_grad=True))
-            graph = StepGraph(fn, self._n_static, name=f"{self.name}:adjoint{':tape' if tape_grad else ''}")
+            # leafbar (output 2) is the leaves' cotangents laid end to end
+            graph = StepGraph(fn, self._n_static, name=f"{self.name}:adjoint{':tape' if tape_grad else ''}", joined=(2,))
             self._adjoints[bool(tape_grad)] = graph
         return graph
 
     def set_static(self, theta: torch.Tensor, leaves: Sequence[torch.Tensor]) -> None:
         self.fwd.set_static(theta, *leaves)
+
+    @staticmethod
+    def leafbars(leafbar: Optional[torch.Tensor], leaves: Sequence[torch.Tensor]) -> List[Optional[torch.Tensor]]:
+        """The adjoint's ``leafbar`` vector as one cotangent per leaf
+        (``None`` for an integer leaf, zeros when nothing was swept)."""
+        floating = [l for l in leaves if l.is_floating_point()]
+        if leafbar is None:
+            pieces = iter([torch.zeros_like(l) for l in floating])
+        else:
+            pieces = iter([p.reshape(l.shape) for p, l in zip(leafbar.split([l.numel() for l in floating]), floating)])
+        return [next(pieces) if l.is_floating_point() else None for l in leaves]
 
 
 class _StepGraphRollout(torch.autograd.Function):
@@ -221,7 +239,7 @@ class _StepGraphRollout(torch.autograd.Function):
         ybar = torch.zeros_like(states[0])
         thetabar = torch.zeros_like(theta)
         tapebar = torch.zeros_like(tape) if tape_grad else None
-        leafbars = [torch.zeros_like(l) for l in leaves]
+        leafbar = None
         with torch.no_grad():
             for t in range(n_t - 1, -1, -1):
                 if sbar is not None:
@@ -229,14 +247,12 @@ class _StepGraphRollout(torch.autograd.Function):
                 out = adj(states[t], tape[t], ybar, mbar[t])
                 ybar = out[0].clone()
                 thetabar += out[1]
-                for i in range(len(leaves)):
-                    leafbars[i] += out[2 + i]
+                leafbar = out[2].clone() if leafbar is None else leafbar.add_(out[2])
                 if tape_grad:
                     tapebar[t] = out[-1]
             if sbar is not None:
                 ybar = ybar + sbar[0]
-        # an integer leaf has no gradient
-        return (None, ybar, thetabar, tapebar, *[b if l.is_floating_point() else None for b, l in zip(leafbars, leaves)])
+        return (None, ybar, thetabar, tapebar, *StepGraphs.leafbars(leafbar, leaves))
 
 
 def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = False, kind: Optional[str] = None):
