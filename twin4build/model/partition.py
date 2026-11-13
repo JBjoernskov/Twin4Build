@@ -912,8 +912,12 @@ def _edges_between(sender, receiver, conn, cp) -> List[Edge]:
 
 
 def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable] = None) -> SensorSystem:
-    """A data leaf with ``sensor``'s reader (database, DataFrame or file),
-    optionally with ``transform`` composed onto its unit conversion."""
+    """A data leaf that reads what ``sensor`` reads (database, DataFrame or
+    file) with the sensor's reading options as they are now, optionally with
+    ``transform`` composed onto its unit conversion.  The leaf has a reader
+    of its own: it drives the model, and what is decided for it afterwards (a
+    fill for its gaps) is not the sensor's, whose gaps stay unscored
+    samples."""
     base = sensor.transformation
     if transform is None:
         transformation = base
@@ -922,7 +926,7 @@ def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable
     else:
         def transformation(x, _base=base, _t=transform):
             return _t(_base(x))
-    return SensorSystem(id=leaf_id, uuid=sensor.uuid, source=sensor.reader, transformation=transformation)
+    return SensorSystem(id=leaf_id, uuid=sensor.uuid, source=_copy.deepcopy(sensor.reader), transformation=transformation)
 
 
 def cut_measured_edges(

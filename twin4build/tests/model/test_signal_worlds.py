@@ -115,6 +115,25 @@ class TestMemberIds(unittest.TestCase):
         self.assertTrue(member_id(short_cid, "in", long_world).startswith(short_cid + "__in_"))  # the component still named
 
 
+class TestReplayLeaf(unittest.TestCase):
+    def test_the_leaf_reads_the_same_data_with_a_reader_of_its_own(self):
+        """A replayed input may get a fill for its gaps; the sensor it mirrors measures a model output, where a
+        fill would invent measurements to score.  The leaf takes the sensor's reading options as they are and
+        keeps its own afterwards."""
+        from twin4build.model.partition import replay_leaf
+        from twin4build.utils.data_loaders.sources import DataFrameSource
+
+        index = pd.date_range("2024-01-01", periods=6, freq="600s", tz="UTC")
+        sensor = tb.SensorSystem(id="T", source=DataFrameSource(pd.DataFrame({"value": range(6)}, index=index)))
+        sensor.reader.resample_method = "mean"
+        leaf = replay_leaf(sensor, "T__world_replay")
+        self.assertIsNot(leaf.reader, sensor.reader)
+        self.assertEqual(leaf.reader.signature(), sensor.reader.signature())
+        self.assertEqual(leaf.reader.resample_method, "mean")
+        leaf.reader.fill = "constant"
+        self.assertIsNone(sensor.reader.fill)
+
+
 class TestHallway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
