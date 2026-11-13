@@ -85,6 +85,36 @@ def build_junction(model_id):
     return model, sensors + [meter]
 
 
+class TestMemberIds(unittest.TestCase):
+    """A copy is named after its component and its world; a model takes no id longer than ``MAX_ID_LEN``, and
+    batched components' ids are long."""
+
+    def test_a_short_name_is_the_plain_one(self):
+        from twin4build.model.partition import member_id
+
+        self.assertEqual(member_id("A_damper", "in", "H"), "A_damper__in_H")
+        self.assertEqual(member_id("W", "projection_in", "M"), "W__projection_in_M")
+
+    def test_a_long_name_fits_stays_distinct_and_is_the_same_every_time(self):
+        from twin4build.model.partition import member_id
+        from twin4build.model.simulation_model.simulation_model import MAX_ID_LEN, _check_id
+
+        long_world = "[ZoneA][ZoneB][ZoneC][ZoneD][ZoneE]_0123456789abcdef"
+        short_cid, long_cid = "terminal_" + "x" * 40, "[a][b][c]_" + "y" * 95
+        ids = set()
+        for cid in (short_cid, long_cid, long_cid + "z"):
+            for world in (long_world, long_world + "_b"):
+                for role in ("in", "projection_in"):
+                    made = member_id(cid, role, world)
+                    self.assertLessEqual(len(made), MAX_ID_LEN)
+                    _check_id(made, "component")
+                    self.assertEqual(made, member_id(cid, role, world))
+                    self.assertIn(f"__{role}_", made)
+                    ids.add(made)
+        self.assertEqual(len(ids), 12)
+        self.assertTrue(member_id(short_cid, "in", long_world).startswith(short_cid + "__in_"))  # the component still named
+
+
 class TestHallway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
