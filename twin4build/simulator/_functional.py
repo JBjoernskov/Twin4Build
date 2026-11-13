@@ -74,6 +74,53 @@ from twin4build.utils.rgetattr import rgetattr
 _ORDER_UNSET = "order-unset"
 
 
+def _contiguous(index) -> Optional[Tuple[int, int]]:
+    """``(start, stop)`` of an index that is one entry or a contiguous slice
+    with explicit, non-negative ends; ``None`` for any other index (a list, a
+    tensor, a stepped or open slice)."""
+    if isinstance(index, bool):
+        return None
+    if isinstance(index, int):
+        return (index, index + 1) if index >= 0 else None
+    if isinstance(index, slice):
+        start = 0 if index.start is None else index.start
+        if index.step in (None, 1) and isinstance(start, int) and isinstance(index.stop, int) and 0 <= start < index.stop:
+            return (start, index.stop)
+    return None
+
+
+def _theta_pieces(theta_by_comp):
+    """How ONE split of theta gives the parameters their entries: ``(sizes,
+    end, {component id: {attr: piece}})``.  Every index that is one entry or a
+    contiguous slice, and overlaps no other, is a piece (a shared parameter's
+    readers share theirs); the gaps between them are pieces nobody reads, and
+    what theta holds beyond ``end`` is one more.  An index of another kind is
+    read from theta directly."""
+    ranges = {
+        (cid, attr): _contiguous(index) for cid, attrs in theta_by_comp.items() for attr, index in attrs.items()
+    }
+    keep, end = [], 0
+    for a, b in sorted({r for r in ranges.values() if r is not None}):
+        if a < end:  # overlaps the one before: neither is a piece
+            if keep and keep[-1][1] > a:
+                keep.pop()
+        else:
+            keep.append((a, b))
+        end = max(end, b)
+    sizes, number, at = [], {}, 0
+    for a, b in keep:
+        if a > at:
+            sizes.append(a - at)
+        number[(a, b)] = len(sizes)
+        sizes.append(b - a)
+        at = b
+    piece_of: Dict[str, Dict[str, int]] = {}
+    for (cid, attr), r in ranges.items():
+        if r in number:
+            piece_of.setdefault(cid, {})[attr] = number[r]
+    return sizes, at, piece_of
+
+
 def _route_cut(route):
     """A route's ``detached``: ``False``, ``True`` or one flag per pair."""
     return route[6] if len(route) > 6 else False
@@ -390,6 +437,7 @@ class FunctionalModel:
             comp, attr = spec[0], spec[1]
             idx = spec[2] if len(spec) > 2 else i
             self.theta_by_comp.setdefault(comp.id, {})[attr] = idx
+        self._theta_split = _theta_pieces(self.theta_by_comp)
 
         # Which components must be evaluated by F: the stateful ones (plus any
         # requested-output producers) plus every forward-component
@@ -1210,10 +1258,38 @@ class FunctionalModel:
             result = result + value
         return result
 
-    def _params_for(self, comp, theta, use_cache=True):
+    def _theta_reader(self, theta):
+        """``read(component id, attr)``: theta's entries for a parameter, for
+        one step or one derivation.
+
+        The parameters are pieces of ONE ``torch.split`` of theta
+        (:func:`_theta_pieces`), as the states and the exogenous row are of
+        theirs.  Its backward is one concatenation of the pieces' cotangents.
+        Indexed one by one (``theta[index]`` per parameter), every read's
+        backward is a theta-sized vector of zeros with that read's entries
+        filled in, and the step's adjoint sums one such vector per parameter:
+        with 1,800 parameters among 225,000 entries (occupancy profiles), 4e8
+        element operations per step, most of a fit's time."""
+        sizes, end, piece_of = self._theta_split
+        pieces = None
+
+        def read(cid, attr):
+            nonlocal pieces
+            k = piece_of.get(cid, {}).get(attr)
+            if k is None:
+                return theta[self.theta_by_comp[cid][attr]]
+            if pieces is None:
+                tail = theta.shape[-1] - end
+                pieces = torch.split(theta, sizes + [tail] if tail else sizes, dim=-1)
+            return pieces[k]
+
+        return read
+
+    def _params_for(self, comp, theta, use_cache=True, read=None):
         """Physical-parameter dict for ``comp``: estimated entries from ``theta``
-        (a 1-D tensor in theta_spec order), the rest from the component's
-        defaults (``getattr(comp, name).get()``).
+        (a 1-D tensor in theta_spec order, through ``read``:
+        :meth:`_theta_reader`), the rest from the component's defaults
+        (``getattr(comp, name).get()``).
 
         Cached per ``theta`` object: a sequential rollout calls ``F`` hundreds
         of times with the SAME theta tensor, and rebuilding the dict each step
@@ -1235,13 +1311,15 @@ class FunctionalModel:
                 return hit
         p = {}
         est = self.theta_by_comp.get(comp.id, {})
+        if read is None and est:
+            read = self._theta_reader(theta)
         # For composites the attrs are prefixed (thermal.C_air); pass them
         # through and let the composite's forward route/resolve.  For leaf
         # components fill PARAM_NAMES.
         if hasattr(comp, "PARAM_NAMES"):
             for name in comp.PARAM_NAMES:
                 if name in est:
-                    p[name] = theta[est[name]].reshape(-1)
+                    p[name] = read(comp.id, name).reshape(-1)
                 elif name in self._default_params[comp.id]:
                     p[name] = self._default_params[comp.id][name]
             for name, value in self._default_params[comp.id].items():
@@ -1249,7 +1327,7 @@ class FunctionalModel:
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():
             if "." in attr:
-                p[attr] = theta[idx].reshape(-1)
+                p[attr] = read(comp.id, attr).reshape(-1)
         if cache is not None:
             cache[1][comp.id] = p
         return p
@@ -1262,10 +1340,11 @@ class FunctionalModel:
         tensor for the whole rollout instead of one per step on the autograd
         tape."""
         out = {}
+        read = self._theta_reader(theta)
         for c in self.cone:
             if getattr(type(c), "derive", None) is None:
                 continue
-            out[c.id] = c.derive(self._params_for(c, theta, use_cache=False), self.step_size)
+            out[c.id] = c.derive(self._params_for(c, theta, use_cache=False, read=read), self.step_size)
         return out
 
     def _with_derived(self, c, params, theta, constants, use_cache):
@@ -1330,6 +1409,9 @@ class FunctionalModel:
             for i, c in enumerate(self.stateful):
                 n_c, state_size = self.state_shapes[i]
                 states[c.id] = pieces[i].reshape(n_c, state_size)
+
+        # The parameters likewise: one split of theta (:meth:`_theta_reader`).
+        read_theta = self._theta_reader(theta)
 
         produced: Dict[str, Dict[str, torch.Tensor]] = {}
         x_next_parts = [None] * len(self.stateful)
@@ -1404,7 +1486,7 @@ class FunctionalModel:
                     inputs[port] = torch.stack(vals, dim=-1)
                 else:
                     inputs[port] = _input_value(spec)
-            params = self._params_for(c, theta, use_cache=not transform_mode)
+            params = self._params_for(c, theta, use_cache=not transform_mode, read=read_theta)
             params = self._with_derived(c, params, theta, constants, use_cache=not transform_mode)
             st = states.get(c.id, None)
             x_next_c, outs = c.forward(st, inputs, params, self.step_size)
