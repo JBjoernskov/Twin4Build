@@ -35,6 +35,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import torch
 from torch.utils import _pytree as pytree
 
+from twin4build.simulator._functional import STEP_KINDS
 from twin4build.utils._cuda_graph import check_replay_matches_eager, largest_dimension
 
 
@@ -247,17 +248,18 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
     returns the input rows' cotangents).  ``kind``:
 
     * ``"scalar"`` (default): ``y0 (D_aug,)``, ``theta (n_theta,)``,
-      ``tape (n_t, n_exogenous)``; the compiled step with the hoisted
-      matrices.
+      ``tape (n_t, n_exogenous)``.
     * ``"batched"`` (or ``batched=True``): a batch of parameter starts,
-      ``y0 (B, D_aug)``, ``theta (B, n_theta)``, one shared tape; the
-      compiled batched step.
+      ``y0 (B, D_aug)``, ``theta (B, n_theta)``, one shared tape.
     * ``"windows"``: one parameter vector over a batch of windows, ``y0 (P,
-      D_aug)``, ``theta (n_theta,)``, ``tape (n_t, P, n_exogenous)``; the
-      compiled window step with the hoisted matrices shared.
+      D_aug)``, ``theta (n_theta,)``, ``tape (n_t, P, n_exogenous)``.
     * ``"rows"``: rows with their own state, parameters and inputs, ``y0
-      (N, D_aug)``, ``theta (N, n_theta)``, ``tape (n_t, N, n_exogenous)``;
-      the compiled rows step.
+      (N, D_aug)``, ``theta (N, n_theta)``, ``tape (n_t, N, n_exogenous)``.
+
+    Every kind captures the compiled step of its kind
+    (:meth:`FunctionalModel.step`) with the values hoisted out of it
+    (:meth:`FunctionalModel.derived_values`: shared for one theta, per row for
+    a batch) as the graph's static inputs.
 
     The graphs are cached on the model per kind and input shapes.
     """
@@ -267,32 +269,20 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
     # every kind captures a compiled step: the batched kinds compile the vmap
     # of ``F_aug`` (correct since #241's scatter assembly), a few fused
     # kernels per step instead of the eager vmap's thousands
-    if kind == "batched":
-        bstep = functional_model.compiled_batched_step
-
-        def step(y, th, u, constants):
-            return bstep(y, th, u)
-
-        leaves, spec = [], None
-    elif kind == "rows":
-        rstep = functional_model.compiled_rows_step
+    if kind not in STEP_KINDS:
+        raise ValueError(f"unknown step kind {kind!r}")
+    step = functional_model.step(kind, compiled=True)
+    if kind == "rows":
+        rows_step = step
 
         def step(y, th, u, constants):
             # a step's rows may come as (B, P, n_exogenous), one broadcast
             # tape for B rows over P windows
-            return rstep(y, th, u.reshape(-1, u.shape[-1]))
+            return rows_step(y, th, u.reshape(-1, u.shape[-1]), constants)
 
-        leaves, spec = [], None
-    elif kind == "windows":
-        step = functional_model.compiled_window_step
-        constants = functional_model.derived_values(theta)
-        leaves, spec = pytree.tree_flatten(constants)
-    elif kind == "scalar":
-        step = functional_model.compiled_step
-        constants = functional_model.derived_values(theta)
-        leaves, spec = pytree.tree_flatten(constants)
-    else:
-        raise ValueError(f"unknown step kind {kind!r}")
+    # hoisted once per rollout: shared for one theta, per row for a batch
+    constants = functional_model.derived_values(theta)
+    leaves, spec = pytree.tree_flatten(constants)
     key = (kind, tuple(y0.shape), tuple(theta.shape), tuple(tape.shape[1:]), tuple(tuple(l.shape) for l in leaves))
     # A captured step reads every tensor it touches at its address at capture;
     # an initialize() of the model reallocates the components' tensors, and a

@@ -51,13 +51,14 @@ over segments.
 from __future__ import annotations
 
 import hashlib
-from types import SimpleNamespace
+from types import FunctionType, SimpleNamespace
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
 import torch
 import torch.utils.checkpoint
+from torch.utils import _pytree as pytree
 
 import twin4build.systems.utils.discrete_statespace_system as _dss
 import torch.nn as nn
@@ -72,6 +73,37 @@ from twin4build.utils.rgetattr import rgetattr
 #: ``False``, ``True`` or one flag per pair, the connection read without its
 #: gradient, ``ConnectionPoint.detached_of``).
 _ORDER_UNSET = "order-unset"
+
+
+#: The step kinds: which of (state, theta, exogenous row) carry a leading batch
+#: dimension.  What is hoisted out of the step (:meth:`FunctionalModel.derived_values`)
+#: follows theta: shared where theta is one vector, one per row where theta is.
+STEP_KINDS = {
+    "scalar": (False, False, False),  # one trajectory
+    "windows": (True, False, True),  # one parameter vector over windows of their own state and inputs
+    "batched": (True, True, False),  # parameter starts sharing one input row
+    "rows": (True, True, True),  # rows of their own state, parameters and inputs
+}
+
+
+def _own_code(fn, name):
+    """``fn`` under ``name`` with a code object of its own.
+
+    Dynamo keeps a function's compiled variants per code object and refuses to
+    compile once there are more than a few (``recompile_limit``, 8; a hard
+    failure with ``fullgraph=True``).  The step of every model is one function
+    body, so on one code object the steps of different models, and one
+    model's kinds, would count against each other, and a process that
+    compiles the steps of several models would fail at the ninth.  A copy of
+    the code object gives each compiled step a cache, and a limit, of its own.
+    """
+    return FunctionType(fn.__code__.replace(co_name=name), fn.__globals__, name, fn.__defaults__, fn.__closure__)
+
+
+def _row_dim(leaf):
+    """The ``vmap`` dimension of a per-row constant: a floating tensor carries
+    the rows; an index tensor or a flag is the structure's, shared."""
+    return 0 if isinstance(leaf, torch.Tensor) and leaf.is_floating_point() else None
 
 
 def _contiguous(index) -> Optional[Tuple[int, int]]:
@@ -1338,14 +1370,41 @@ class FunctionalModel:
         values}``): the rollouts pass this into the step and :meth:`F` merges
         each component's entry into its params, so the derived values are one
         tensor for the whole rollout instead of one per step on the autograd
-        tape."""
+        tape.
+
+        ``theta (n_theta,)`` gives the values of one parameter vector; a batch
+        ``(B, n_theta)`` gives them per row: every floating tensor gains the
+        leading row dimension, while index tensors and flags, which the
+        model's structure decides, stay shared (:func:`_row_dim`).  Every
+        tensor is on theta's device (a component's value settings are built
+        on the CPU): a captured step cannot copy across devices."""
+        if theta.dim() == 2:
+            return self._derived_values_rows(theta)
         out = {}
         read = self._theta_reader(theta)
         for c in self.cone:
             if getattr(type(c), "derive", None) is None:
                 continue
             out[c.id] = c.derive(self._params_for(c, theta, use_cache=False, read=read), self.step_size)
-        return out
+        return pytree.tree_map(
+            lambda v: v.to(theta.device) if isinstance(v, torch.Tensor) and v.device != theta.device else v, out
+        )
+
+    def _derived_values_rows(self, Theta):
+        """:meth:`derived_values` of every row of ``Theta``, in one ``vmap``."""
+        found = {}
+
+        def leaves_of(theta):
+            leaves, found["spec"] = pytree.tree_flatten(self.derived_values(theta))
+            found["leaves"] = leaves
+            found["tensors"] = [i for i, leaf in enumerate(leaves) if isinstance(leaf, torch.Tensor)]
+            return tuple(leaves[i] for i in found["tensors"])
+
+        rows = torch.func.vmap(leaves_of)(Theta)
+        leaves = list(found["leaves"])  # what is no tensor is the same for every row
+        for i, value in zip(found["tensors"], rows):
+            leaves[i] = value if value.is_floating_point() else value[0]
+        return pytree.tree_unflatten(leaves, found["spec"])
 
     def _with_derived(self, c, params, theta, constants, use_cache):
         """``params`` plus what ``c`` derives from them: the rollout's entry,
@@ -1790,149 +1849,102 @@ class FunctionalModel:
                 out[start + i_c * ss : start + (i_c + 1) * ss] = block
         return out
 
-    @property
-    def compiled_batched_step(self):
-        """``vmap`` of the transform-mode ``F_aug`` over a batch, compiled.
+    def step(self, kind, compiled=False):
+        """The transform-mode step of a kind (:data:`STEP_KINDS`):
+        ``step(y, theta, u, constants=None) -> (y_next, meas)``, cached on the
+        model.
 
-        ``step(Y, Theta, u) -> (Y_next, meas)`` with ``Y (B, D_aug)``,
-        ``Theta (B, n_theta)`` and one shared exogenous row ``u``.  The vmap
-        sits *inside* ``torch.compile`` -- Dynamo inlines it -- because
-        ``vmap`` applied from eager code to a compiled function is not
-        supported.  One compiled object serves every batch size (Dynamo
-        re-specializes per shape).  Used by the batched single-shooting
-        bundles (multi-start SQP) instead of ``vmap`` over the scalar rollout.
+        One signature for every kind.  ``kind`` says which of the state, theta
+        and the exogenous row carry a leading batch dimension; the step is the
+        ``vmap`` of ``F_aug`` over those.  ``constants`` are the values hoisted
+        out of the step (:meth:`derived_values` of the same theta: shared for
+        one vector, per row for a batch); without them the step derives them
+        itself, every call.
+
+        ``compiled`` wraps it in ``torch.compile``, the ``vmap`` inside the
+        compiled function (Dynamo inlines it; ``vmap`` applied from eager code
+        to a compiled function is not supported).  The whole step traces as
+        one Dynamo graph (``fullgraph=True`` guards against silent
+        fallbacks; ``dynamic=False``: every call has the same shapes, and
+        Dynamo re-specializes per shape).  Inductor fuses the step's
+        elementwise chains into a few hundred Triton kernels instead of the
+        thousands of ATen kernels of the eager step, which shrinks the
+        captured CUDA graph and its replay time several-fold (issue #134).
+        Compiled on first use (cached on disk by Inductor); it needs a
+        Triton-capable torch build on a GPU.  The compiled steps are the ones
+        the per-step CUDA graphs capture (``compile`` over ``vmap`` was
+        numerically wrong on torch 2.11 until #241: the vector inputs are
+        assembled with ``scatter`` / ``scatter_add`` since).
         """
-        step = self.__dict__.get("_compiled_batched_step")
+        batched = STEP_KINDS[kind]
+        name = f"_step_{kind}_{'compiled' if compiled else 'eager'}"
+        step = self.__dict__.get(name)
         if step is None:
             model = self
 
-            def _step(y, theta, u):
-                return model.F_aug(y, theta, u, transform_mode=True)
+            def one(y, theta, u, constants=None):
+                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
 
-            batched = torch.func.vmap(_step, in_dims=(0, 0, None))
-            step = torch.compile(batched, fullgraph=True, dynamic=False)
-            self.__dict__["_compiled_batched_step"] = step
+            if not any(batched):
+                step = one
+            else:
+                dims = tuple(0 if b else None for b in batched)
+                rows_of_theta = batched[1]
+
+                def step(y, theta, u, constants=None):
+                    if constants is None:
+                        return torch.func.vmap(one, in_dims=dims)(y, theta, u)
+                    constant_dims = pytree.tree_map(_row_dim, constants) if rows_of_theta else None
+                    return torch.func.vmap(one, in_dims=(*dims, constant_dims))(y, theta, u, constants)
+
+            if compiled:
+                step = torch.compile(_own_code(step, f"step_{kind}"), fullgraph=True, dynamic=False)
+            self.__dict__[name] = step
         return step
+
+    # The kinds by name, as the rollouts and the step graphs ask for them.
+    @property
+    def compiled_step(self):
+        """:meth:`step` ``("scalar", compiled=True)``: ``step(y, theta, u, constants=None)``."""
+        return self.step("scalar", compiled=True)
 
     @property
     def window_step(self):
-        """``vmap`` of the transform-mode ``F_aug`` over a batch of WINDOWS:
-        ``step(Y, theta, U, constants) -> (Y_next, meas)`` with ``Y (P,
-        D_aug)`` and ``U (P, n_exogenous)`` per window, ``theta (n_theta,)``
-        and the hoisted matrices (:meth:`derived_values`) shared.  One
-        rollout then advances every shooting window of one parameter vector
-        at once (:func:`functional_rollout_windows`).
-
-        The eager vmap; :attr:`compiled_window_step` is the compiled one, which
-        the per-step CUDA graphs capture (``compile`` over ``vmap`` was
-        numerically wrong on torch 2.11 until #241: the vector inputs are
-        assembled with ``scatter`` / ``scatter_add`` since)."""
-        step = self.__dict__.get("_window_step")
-        if step is None:
-            model = self
-
-            def _step(y, theta, u, constants):
-                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
-
-            step = torch.func.vmap(_step, in_dims=(0, None, 0, None))
-            self.__dict__["_window_step"] = step
-        return step
-
-    @property
-    def batched_step(self):
-        """``vmap`` of the transform-mode ``F_aug`` over a batch of parameter
-        starts sharing one exogenous row: ``step(Y, Theta, u)`` with ``Y (B,
-        D_aug)``, ``Theta (B, n_theta)``, ``u (n_exogenous,)``: the eager
-        counterpart of :attr:`compiled_batched_step`, which the per-step CUDA
-        graphs capture."""
-        step = self.__dict__.get("_batched_step")
-        if step is None:
-            model = self
-
-            def _step(y, theta, u):
-                return model.F_aug(y, theta, u, transform_mode=True)
-
-            step = torch.func.vmap(_step, in_dims=(0, 0, None))
-            self.__dict__["_batched_step"] = step
-        return step
-
-    @property
-    def rows_step(self):
-        """``vmap`` of the transform-mode ``F_aug`` over rows that each carry
-        their own state, parameters AND exogenous row: ``step(Y, Theta, U)``
-        with ``Y (N, D_aug)``, ``Theta (N, n_theta)``, ``U (N, n_exogenous)``:
-        a batch of parameter starts times a batch of windows, flattened
-        (:func:`functional_rollout_rows`).  The eager vmap;
-        :attr:`compiled_rows_step` is the compiled one, which the per-step
-        CUDA graphs capture."""
-        step = self.__dict__.get("_rows_step")
-        if step is None:
-            model = self
-
-            def _step(y, theta, u):
-                return model.F_aug(y, theta, u, transform_mode=True)
-
-            step = torch.func.vmap(_step, in_dims=(0, 0, 0))
-            self.__dict__["_rows_step"] = step
-        return step
+        """:meth:`step` ``("windows")``: ``step(Y, theta, U, constants)`` with
+        ``Y (P, D_aug)`` and ``U (P, n_exogenous)`` per window, one
+        ``theta (n_theta,)`` and its hoisted values shared
+        (:func:`functional_rollout_windows`)."""
+        return self.step("windows")
 
     @property
     def compiled_window_step(self):
-        """:attr:`window_step` compiled: ``torch.compile(vmap(F_aug))`` over a
-        batch of windows sharing one parameter vector and the hoisted
-        matrices, the vmap inside the compiled function as in
-        :attr:`compiled_batched_step`."""
-        step = self.__dict__.get("_compiled_window_step")
-        if step is None:
-            model = self
+        """:meth:`step` ``("windows", compiled=True)``."""
+        return self.step("windows", compiled=True)
 
-            def _step(y, theta, u, constants):
-                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
+    @property
+    def batched_step(self):
+        """:meth:`step` ``("batched")``: ``step(Y, Theta, u, constants=None)``
+        with ``Y (B, D_aug)``, ``Theta (B, n_theta)`` and one shared exogenous
+        row ``u`` (the batched single-shooting bundles, multi-start SQP)."""
+        return self.step("batched")
 
-            step = torch.compile(torch.func.vmap(_step, in_dims=(0, None, 0, None)), fullgraph=True, dynamic=False)
-            self.__dict__["_compiled_window_step"] = step
-        return step
+    @property
+    def compiled_batched_step(self):
+        """:meth:`step` ``("batched", compiled=True)``."""
+        return self.step("batched", compiled=True)
+
+    @property
+    def rows_step(self):
+        """:meth:`step` ``("rows")``: ``step(Y, Theta, U, constants=None)``
+        with ``Y (N, D_aug)``, ``Theta (N, n_theta)``, ``U (N, n_exogenous)``:
+        a batch of parameter starts times a batch of windows, flattened
+        (:func:`functional_rollout_rows`)."""
+        return self.step("rows")
 
     @property
     def compiled_rows_step(self):
-        """:attr:`rows_step` compiled: ``torch.compile(vmap(F_aug))`` over rows
-        with their own state, parameters and exogenous row, the vmap inside
-        the compiled function as in :attr:`compiled_batched_step`."""
-        step = self.__dict__.get("_compiled_rows_step")
-        if step is None:
-            model = self
-
-            def _step(y, theta, u):
-                return model.F_aug(y, theta, u, transform_mode=True)
-
-            step = torch.compile(torch.func.vmap(_step, in_dims=(0, 0, 0)), fullgraph=True, dynamic=False)
-            self.__dict__["_compiled_rows_step"] = step
-        return step
-
-    @property
-    def compiled_step(self):
-        """``F_aug`` in transform mode, compiled once with ``torch.compile``.
-
-        The whole step traces as one Dynamo graph (no graph breaks), so
-        ``fullgraph=True`` guards against silent fallbacks; ``dynamic=False``
-        because every call has the same shapes.  Inductor fuses the step's
-        elementwise chains into a few hundred Triton kernels instead of the
-        ~2000 ATen kernels of the eager step, which shrinks the captured CUDA
-        graph and its replay time several-fold (issue #134).  Compiled on
-        first use (tens of seconds, cached on disk by Inductor); the callable
-        is cached on the model.  Requires a Triton-capable torch build
-        (``torch.utils._triton.has_triton()``).
-        """
-        step = self.__dict__.get("_compiled_step")
-        if step is None:
-            model = self
-
-            def _step(y, theta, u, constants=None):
-                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
-
-            step = torch.compile(_step, fullgraph=True, dynamic=False)
-            self.__dict__["_compiled_step"] = step
-        return step
+        """:meth:`step` ``("rows", compiled=True)``."""
+        return self.step("rows", compiled=True)
 
     @property
     def D_aug(self) -> int:
@@ -2197,10 +2209,11 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
                 functional_model, y0, th, exogenous_tape, transform_mode=True
             )
         )(Y0, Theta)
+    constants = functional_model.derived_values(Theta)
     Y = Y0
     rows = []
     for t in range(exogenous_tape.shape[0]):
-        Y, meas = step(Y, Theta, exogenous_tape[t])
+        Y, meas = step(Y, Theta, exogenous_tape[t], constants)
         rows.append(meas)
     if not rows:
         return torch.zeros(
@@ -2230,10 +2243,7 @@ def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, s
     functional_model.prepare_routes(theta.device)
     constants = functional_model.derived_values(theta)
     if step is None:
-        def base(y_, theta_, u_, constants_, _fm=functional_model):
-            return _fm.F_aug(y_, theta_, u_, transform_mode=True, constants=constants_)
-
-        step = torch.func.vmap(base, in_dims=(0, None, 0, None))
+        step = functional_model.step("windows")
     Y = Y0
     low = high = Y0
     rows = []
@@ -2258,18 +2268,18 @@ def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step
     n_exogenous)``, a broadcast view flattened per step); returns ``(N, n_t, n_meas)``,
     or with ``return_end`` ``(outputs, Y_end (N, D_aug))``.  A batch of
     parameter starts over a batch of windows, flattened.  ``step`` defaults
-    to :attr:`FunctionalModel.rows_step` (an eager vmap)."""
+    to :attr:`FunctionalModel.rows_step` (an eager vmap); it is called as
+    ``step(Y, Theta, U, constants)`` with every row's hoisted values
+    (:meth:`FunctionalModel.derived_values`)."""
     functional_model.prepare_routes(Theta.device)
     if step is None:
-        def base(y_, theta_, u_, _fm=functional_model):
-            return _fm.F_aug(y_, theta_, u_, transform_mode=True)
-
-        step = torch.func.vmap(base, in_dims=(0, 0, 0))
+        step = functional_model.step("rows")
+    constants = functional_model.derived_values(Theta)
     Y = Y0
     rows = []
     for t in range(exogenous_tape.shape[0]):
         u = exogenous_tape[t]
-        Y, meas = step(Y, Theta, u.reshape(-1, u.shape[-1]))
+        Y, meas = step(Y, Theta, u.reshape(-1, u.shape[-1]), constants)
         rows.append(meas)
     if not rows:
         out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
