@@ -1000,6 +1000,13 @@ class FunctionalModel:
         device = torch.device(device)
         if getattr(self, "_routes_device", None) == device:
             return
+        # A component's value settings (a controller's direction of action)
+        # are built on the CPU: on the step's device like everything else the
+        # step reads, so no step copies them there.
+        for params in self._default_params.values():
+            for name, value in params.items():
+                if isinstance(value, torch.Tensor) and value.device != device:
+                    params[name] = value.to(device)
 
         def idx(value):
             return value.reshape(-1).to(device) if isinstance(value, torch.Tensor) else value

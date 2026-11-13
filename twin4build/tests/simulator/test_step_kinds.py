@@ -212,6 +212,10 @@ class TestStepKinds(unittest.TestCase):
 class TestDerivedValuesDevice(unittest.TestCase):
     def test_every_derived_tensor_is_on_thetas_device(self):
         fm, y0, tape, theta0, _ = _fused(device="cuda", model_id="step_kinds_cuda")
+        for params in fm._default_params.values():  # after prepare_routes: the value settings too
+            for value in params.values():
+                if isinstance(value, torch.Tensor):
+                    self.assertEqual(value.device.type, "cuda")
         for theta in (theta0, torch.stack([theta0, theta0 * 1.1])):
             for leaf in pytree.tree_leaves(fm.derived_values(theta)):
                 if isinstance(leaf, torch.Tensor):
