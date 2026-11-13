@@ -71,138 +71,166 @@ def _small_matmul(a, b):
     return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2)
 
 
-def _expm_ss_fused(M, order=8, squarings=18):
-    """:func:`_expm_ss` with every product written for kernel fusion.
+#: The scaled 1-norm above which the exponential refuses (NaN): the degree-8
+#: series is not an exponential there, and squaring would amplify the error.
+_EXPM_REFUSE_NORM = 2.0
+#: Osborne sweeps of the balancing: fixed, so the step traces and vmaps.  Two
+#: reach the norm more sweeps do to within a tenth (simultaneous sweeps
+#: alternate; an odd count lands on the worse side).
+_BALANCE_SWEEPS = 2
 
-    Same schedule and arithmetic as :func:`_expm_ss` (Horner-form Taylor
-    part tracking ``exp(Ms) - I``, then ``squarings`` doublings); differs only
-    in expressing the products through :func:`_small_matmul`.  Selected
-    automatically inside :func:`_expm_ss` while ``torch.compile`` traces the
-    functional step; exposed for tests.
+
+def _balance(M):
+    """A diagonal ``d`` ``(..., N)`` for which ``D^-1 M D`` is balanced: every
+    row's off-diagonal 1-norm near its column's (Osborne's iteration, a fixed
+    number of simultaneous sweeps).
+
+    A balance equation's matrix ``C^-1 K`` (capacities times conductances) is
+    badly scaled, not stiff: its 1-norm is far above its spectral radius (a
+    210-state block of thermal zones and their walls: 3,400 against 200).  The
+    scaling and squaring of :func:`_expm_ss` is sized by the norm, so the
+    balanced matrix needs fewer doublings for the same accuracy.  The
+    exponential is the same for any ``d``, ``exp(M) = D exp(D^-1 M D) D^-1``,
+    so ``d`` carries no gradient; it is rounded to powers of two (scaling by
+    it is exact) and kept only where it lowers the 1-norm.  A zero row (the
+    augmented block's last) or column is scaled to the mean norm.
     """
-    N = M.shape[-1]
-    Ms = M / (2.0**squarings)
-    I = torch.eye(N, dtype=M.dtype, device=M.device)
-    q = I.expand_as(Ms)
-    for k in range(order, 1, -1):
-        q = I + _small_matmul(Ms, q) / k
-    delta = _small_matmul(Ms, q)
-    for _ in range(squarings):
-        delta = 2.0 * delta + _small_matmul(delta, delta)
-    return I + delta
+    M = M.detach()
+    n = M.shape[-1]
+    tiny = torch.finfo(M.dtype).tiny
+    magnitude = M.abs()
+    off = magnitude * (1.0 - torch.eye(n, dtype=M.dtype, device=M.device))
+    d = torch.ones(M.shape[:-1], dtype=M.dtype, device=M.device)
+    for _ in range(_BALANCE_SWEEPS):
+        scaled = off * d.unsqueeze(-2) / d.unsqueeze(-1)
+        c, r = scaled.sum(dim=-2), scaled.sum(dim=-1)
+        mean = 0.5 * (c.sum(dim=-1, keepdim=True) + r.sum(dim=-1, keepdim=True)) / n
+        f = torch.where((c > 0) & (r > 0), torch.sqrt(r / c.clamp_min(tiny)), torch.ones_like(c))
+        f = torch.where((c > 0) & (r == 0), (mean / c.clamp_min(tiny)).clamp(max=1.0), f)
+        f = torch.where((c == 0) & (r > 0), (r / mean.clamp_min(tiny)).clamp(min=1.0), f)
+        d = (d * f).clamp(2.0**-40, 2.0**40)
+    d = torch.exp2(torch.round(torch.log2(d)))
+    before = magnitude.sum(dim=-2).amax(dim=-1, keepdim=True)
+    after = (magnitude * d.unsqueeze(-2) / d.unsqueeze(-1)).sum(dim=-2).amax(dim=-1, keepdim=True)
+    return torch.where(after < before, d, torch.ones_like(d))
 
 
-def _expm_ss(M, order=8, squarings=18):
-    """Matrix exponential via scaling-and-squaring + a Taylor series.
+def _expm_ss(M, squarings=None, *, phi1=False, fused=None):
+    """Matrix exponential by scaling and squaring with a Taylor series:
+    ``exp(M)``, or with ``phi1`` the pair ``(exp(M), phi1(M))``, ``phi1(M) =
+    sum_k M^k / (k+1)!``.
 
     ``torch.matrix_exp`` has no ``vmap`` batching rule, so under ``vmap`` (the
     collocation fast path maps ``F`` over segments) it silently falls back to a
     sequential Python loop over the batch -- and its VJP, hit by ``jacrev``, is
-    slower still.  This re-expression is *pure* matmul/add, so ``vmap`` batches
-    it natively and autograd differentiates it cleanly.
+    slower still.  This is *pure* matmul/add, so ``vmap`` batches it natively
+    and autograd differentiates it cleanly.
 
-    ``exp(M) = (exp(M / 2^s))^(2^s)``; the scaled ``M/2^s`` has small norm so a
-    low-order Taylor series is accurate, then ``s`` repeated squarings recover
-    ``exp(M)``.
+    ``exp(M) = (exp(M / 2^s))^(2^s)``, in four steps:
 
-    ``squarings`` is a FIXED count (data-dependent counts aren't ``vmap``-safe),
-    so it must cover the *stiffest* matrix reachable over the parameter bounds --
-    a heater/RC system with tiny heat capacity + large UA/flow gives ``‖M‖`` up
-    to ~3e5.  With too few squarings ``‖M/2^s‖`` stays large, the truncated Taylor
-    sum overflows (huge entries), and the squarings then amplify it to NaN -- even
-    though the true ``exp(M)`` is bounded (the block matrix has non-positive
-    eigenvalues).  s=18 keeps ``‖M/2^s‖`` < ~1.5 across the bounds, so the Taylor
-    sum stays O(1) and squaring is stable.  (s=6 was enough for mid-range params
-    but NaN'd at bound-hitting optima -- e.g. warm-starting collocation at the
-    SLSQP solution.)  Extra squarings of an O(1) stable matrix cost a few small
-    matmuls and only *improve* accuracy for well-scaled matrices.
+    1. **Balance** (:func:`_balance`): the similar matrix ``D^-1 M D`` has the
+       smaller norm.
+    2. **Scale** by ``2^-s`` with ``s = squarings`` (the ``expm_squarings``
+       setting).  ``s`` is a FIXED count (a data-dependent one is not
+       ``vmap``-safe and cannot be traced), so it must cover the stiffest
+       matrix a run reaches: the balanced norm over ``2^s`` should stay below
+       about 0.5 for float32 accuracy and 0.05 for float64.  Too few doublings
+       once made a bounded exponential overflow in the series and come out NaN
+       at bound-hitting optima; a matrix whose scaled norm exceeds
+       ``_EXPM_REFUSE_NORM`` now comes out NaN by design, never as a wrong
+       finite value.
+    3. **Series**: the degree-8 Taylor polynomial of ``exp(Ms) - I`` in four
+       products (Paterson-Stockmeyer: ``Ms^2``, ``Ms^3``, ``Ms^4`` and one
+       more) instead of Horner's eight.  Tracking ``exp(Ms) - I`` keeps the
+       small non-identity part at full relative precision instead of rounding
+       it against one, which matters through the doublings.  ``phi1`` shares
+       the powers (one product more).
+    4. **Square** ``s`` times: ``exp(2Y) - I = 2 D + D @ D`` for ``D = exp(Y) -
+       I``, and ``phi1(2Y) = (I + exp(Y)) phi1(Y) / 2``.
+
+    The ZOH discretisation with ``phi1`` is ``Ad = exp(A T)``, ``Bd = phi1(A T)
+    B T``: no inverse of ``A`` (a zero-flow mass balance is singular) and no
+    augmented block.
+
+    ``fused`` writes the products as broadcast multiply and sum, which
+    Inductor fuses into few kernels; cuBLAS calls would not fuse.  ``None``
+    (the default) does so while ``torch.compile`` traces a matrix up to the
+    ``small_matmul_max`` setting: the exponential's products were 79 % of the
+    kernels left in a compiled rollout step (issue #134), but a broadcast
+    product moves n times a product's memory, so a large matrix keeps ``bmm``
+    (measured on a laptop GPU, float32, 960 matrices per call, forward and
+    backward: the broadcast form wins up to 13 x 13 and loses from 17 x 17 on).
     """
-    if torch.compiler.is_compiling() and M.shape[-1] <= _settings.value("small_matmul_max"):
-        # Inductor: pointwise products fuse; cuBLAS calls would not.  The
-        # exponential's ~25 products per call were 79 % of the kernels left
-        # in a compiled rollout step (issue #134).  A broadcast multiply and
-        # sum moves n times a product's memory, so a large matrix keeps bmm
-        # (the ``small_matmul_max`` setting): measured on a laptop GPU,
-        # float32, 960 matrices per call, one step forward and backward, the
-        # broadcast form wins up to 13 x 13 and loses from 17 x 17 on (33 x 33:
-        # 54 vs 7.7 ms; a 159-state fused block 26 vs 5.8 ms).
-        return _expm_ss_fused(M, order=order, squarings=squarings)
     N = M.shape[-1]
     lead = M.shape[:-2]
-    # Work on a (batch, N, N) view so every step is ONE fused ``baddbmm``
-    # kernel.  Written as separate mul / matmul / add ops this routine cost
-    # ~100 tiny kernels per call, and it runs once per state-space component
-    # per rollout step: on the captured shooting graph it was ~2/3 of all
-    # nodes (issue #134).  ``baddbmm`` has vmap, forward-AD and reverse-AD
-    # rules, so the collocation ``vmap`` path and ``jacfwd``/``hessian`` keep
-    # working.
-    Ms = (M / (2.0**squarings)).reshape(-1, N, N)
+    if squarings is None:
+        squarings = _settings.value("expm_squarings")
+    if fused is None:
+        fused = torch.compiler.is_compiling() and N <= _settings.value("small_matmul_max")
+    if fused:
+
+        def mul(a, b):
+            return _small_matmul(a, b)
+
+        def addmul(base, a, b, alpha=1.0, beta=1.0):
+            return beta * base + alpha * _small_matmul(a, b)
+
+    else:
+        # One fused ``baddbmm`` kernel per doubling on a (batch, N, N) view;
+        # it has vmap, forward-AD and reverse-AD rules, so the collocation
+        # ``vmap`` path and ``jacfwd``/``hessian`` keep working.
+        mul = torch.bmm
+
+        def addmul(base, a, b, alpha=1.0, beta=1.0):
+            return torch.baddbmm(base, a, b, beta=beta, alpha=alpha)
+
+    X = M.reshape(-1, N, N)
+    d = _balance(X)
+    row, col = d.unsqueeze(-1), d.unsqueeze(-2)
+    Xb = X * col / row  # D^-1 X D
+    refuse = Xb.detach().abs().sum(dim=-2).amax(dim=-1) / (2.0**squarings) > _EXPM_REFUSE_NORM
+    Xs = Xb / (2.0**squarings)
     I = torch.eye(N, dtype=M.dtype, device=M.device)
-    I_b = I.expand(Ms.shape[0], N, N)
-    # Truncated Taylor series in Horner form:
-    #   exp(Ms) - I = Ms @ q,   q = I + Ms/2 @ (I + Ms/3 @ (... (I + Ms/order)))
-    # Tracking ``delta = exp(Ms) - I`` keeps the small non-identity part at
-    # full relative precision instead of rounding it against one; the fixed
-    # overscaling makes ``Ms`` tiny, so this matters through the squarings.
-    q = I_b
-    for k in range(order, 1, -1):
-        q = torch.baddbmm(I, Ms, q, alpha=1.0 / k)  # I + Ms @ q / k
-    delta = torch.bmm(Ms, q)
-    # If exp(A) = I + D, then exp(2A) - I = 2D + D@D  (one fused kernel each).
+    X2 = mul(Xs, Xs)
+    X3 = mul(X2, Xs)
+    X4 = mul(X2, X2)
+    # exp(Xs) - I = Xs + Xs^2/2! + ... + Xs^8/8!
+    delta = Xs + X2 / 2.0 + X3 / 6.0 + mul(X4, I / 24.0 + Xs / 120.0 + X2 / 720.0 + X3 / 5040.0 + X4 / 40320.0)
+    if phi1:
+        # phi1(Xs) = I + Xs/2! + ... + Xs^8/9!
+        phi = (
+            I
+            + Xs / 2.0
+            + X2 / 6.0
+            + X3 / 24.0
+            + mul(X4, I / 120.0 + Xs / 720.0 + X2 / 5040.0 + X3 / 40320.0 + X4 / 362880.0)
+        )
     for _ in range(squarings):
-        delta = torch.baddbmm(delta, delta, delta, beta=2.0)
-    return (I + delta).reshape(*lead, N, N)
+        if phi1:
+            phi = addmul(phi, delta, phi, alpha=0.5)
+        delta = addmul(delta, delta, delta, beta=2.0)
+    bad = refuse.reshape(-1, 1, 1)
+    nan = torch.full((), float("nan"), dtype=M.dtype, device=M.device)
+    expM = torch.where(bad, nan, (I + delta) * row / col).reshape(*lead, N, N)  # D exp(D^-1 X D) D^-1
+    if not phi1:
+        return expM
+    return expM, torch.where(bad, nan, phi * row / col).reshape(*lead, N, N)
 
 
-def _expm_phi1_ss_fused(X, order=8, squarings=18):
-    """:func:`_expm_phi1_ss` with every product through :func:`_small_matmul`
-    (Inductor fuses them; see :func:`_expm_ss_fused`)."""
-    N = X.shape[-1]
-    Xs = X / (2.0**squarings)
-    I = torch.eye(N, dtype=X.dtype, device=X.device)
-    q = I.expand_as(Xs)
-    p = I.expand_as(Xs)
-    for k in range(order, 1, -1):
-        q = I + _small_matmul(Xs, q) / k
-        p = I + _small_matmul(Xs, p) / (k + 1)
-    delta = _small_matmul(Xs, q)  # exp(Xs) - I
-    phi = I + _small_matmul(Xs, p) / 2.0  # phi1(Xs)
-    for _ in range(squarings):
-        phi = phi + 0.5 * _small_matmul(delta, phi)  # phi1(2Y) = (I + exp(Y)) phi1(Y) / 2
-        delta = 2.0 * delta + _small_matmul(delta, delta)
-    return I + delta, phi
+def _expm_ss_fused(M, squarings=None):
+    """:func:`_expm_ss` with every product written for kernel fusion, whatever
+    the matrix's size and whether or not ``torch.compile`` traces; for tests."""
+    return _expm_ss(M, squarings, fused=True)
 
 
-def _expm_phi1_ss(X, order=8, squarings=18):
-    """``(exp(X), phi1(X))`` with ``phi1(X) = sum_k X^k / (k+1)!``, by the
-    scaling and squaring of :func:`_expm_ss` carried on the pair:
-    ``exp(2Y) = exp(Y)^2`` and ``phi1(2Y) = (I + exp(Y)) phi1(Y) / 2``.
+def _expm_phi1_ss(X, squarings=None):
+    """``(exp(X), phi1(X))`` (:func:`_expm_ss` with ``phi1``)."""
+    return _expm_ss(X, squarings, phi1=True)
 
-    The ZOH discretisation is ``Ad = exp(A T)``, ``Bd = phi1(A T) B T``,
-    which needs no inverse of ``A`` (a zero-flow mass balance is singular)
-    and no augmented block: the matrices stay n x n.  Same fixed order and
-    squarings as :func:`_expm_ss` (``vmap``-safe, sized for the stiffest
-    ``A T`` over the bounds; the input matrix, which the block form folds
-    into the scaled norm, enters here linearly).
-    """
-    if torch.compiler.is_compiling() and X.shape[-1] <= _settings.value("small_matmul_max"):
-        return _expm_phi1_ss_fused(X, order=order, squarings=squarings)
-    N = X.shape[-1]
-    lead = X.shape[:-2]
-    Xs = (X / (2.0**squarings)).reshape(-1, N, N)
-    I = torch.eye(N, dtype=X.dtype, device=X.device)
-    I_b = I.expand(Xs.shape[0], N, N)
-    q = I_b
-    p = I_b
-    for k in range(order, 1, -1):
-        q = torch.baddbmm(I, Xs, q, alpha=1.0 / k)
-        p = torch.baddbmm(I, Xs, p, alpha=1.0 / (k + 1))
-    delta = torch.bmm(Xs, q)
-    phi = torch.baddbmm(I, Xs, p, alpha=0.5)
-    for _ in range(squarings):
-        phi = torch.baddbmm(phi, delta, phi, alpha=0.5)
-        delta = torch.baddbmm(delta, delta, delta, beta=2.0)
-    return (I + delta).reshape(*lead, N, N), phi.reshape(*lead, N, N)
+
+def _expm_phi1_ss_fused(X, squarings=None):
+    """:func:`_expm_phi1_ss` with every product written for kernel fusion; for tests."""
+    return _expm_ss(X, squarings, phi1=True, fused=True)
 
 
 def _functorch_active() -> bool:

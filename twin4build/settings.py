@@ -227,6 +227,21 @@ _register(
 )
 _register(
     _Setting(
+        name="expm_squarings",
+        env="T4B_EXPM_SQUARINGS",
+        kind=int,
+        default=18,
+        doc="The doublings of a state-space step's matrix exponential in "
+        "transform mode (scaling and squaring): fixed for every block, so it "
+        "covers the stiffest one a run reaches.  The matrix is balanced first; "
+        "its 1-norm over 2^squarings should stay below about 0.5 in float32 "
+        "and 0.05 in float64.  Each doubling is a matrix product per block "
+        "per step, three in a reverse-mode gradient.  A matrix beyond the "
+        "series' range comes out NaN, never as a wrong finite value.",
+    )
+)
+_register(
+    _Setting(
         name="small_matmul_max",
         env="T4B_SMALL_MATMUL_MAX",
         kind=int,

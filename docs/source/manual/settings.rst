@@ -57,8 +57,9 @@ Numerics
    ``phi1(A T) = sum (A T)^k / (k+1)!`` through the same scaling and squaring,
    ``Bd = phi1(A T) B T``. ``block`` exponentiates the (n + m) x (n + m) block
    ``[[A T, B T], [0, 0]]``, a matrix as wide as the inputs are many (a zone of
-   6 states and 11 inputs: 17 x 17), whose saved products (about 26 per
-   component per step) are the tape of an unrolled rollout. ``aug`` needs the
+   6 states and 11 inputs: 17 x 17), whose saved products (four for the series
+   and one per doubling, ``expm_squarings``, per component per step) are the
+   tape of an unrolled rollout. ``aug`` needs the
    next state only: it folds the input into a vector, ``b = B T u``, and reads
    ``x_next = exp(A T) x + phi1(A T) b`` off one exponential of the (n + 1) x
    (n + 1) matrix ``[[A T, b], [0, 0]]`` -- about half the products of
@@ -70,6 +71,25 @@ Numerics
    only; ``discretize_onestep``, which returns the discrete matrices, uses
    ``block`` with it. All three are the same zero-order-hold step; their
    results differ at rounding level.
+
+``expm_squarings``
+   ``T4B_EXPM_SQUARINGS`` -- a whole number, 18 by default.
+
+   The doublings of a state-space step's matrix exponential in transform mode.
+   The exponential is computed by scaling and squaring: the matrix is balanced
+   (a diagonal similarity that brings its norm towards its spectral radius),
+   divided by ``2^expm_squarings``, exponentiated by a degree-8 series, and
+   squared ``expm_squarings`` times. The count is the same for every block and
+   every step, since a traced step cannot choose it from the data, so it must
+   cover the stiffest block a run reaches: the balanced matrix's 1-norm over
+   ``2^expm_squarings`` should stay below about 0.5 for float32 accuracy and
+   0.05 for float64. Each doubling is one matrix product per block per step,
+   and three in a reverse-mode gradient, so a fit on a model with large blocks
+   pays for every doubling it does not need (a 214-state block, float32, 8 per
+   call on a laptop GPU: 18 doublings 7.2 ms forward and backward, 10
+   doublings 3.8 ms). 18 covers norms up to about 1e5 without balancing. A
+   matrix beyond the series' range (scaled norm above 2) comes out as NaN, never
+   as a wrong finite value: raise the count.
 
 ``small_matmul_max``
    ``T4B_SMALL_MATMUL_MAX`` -- a whole number, 16 by default.
