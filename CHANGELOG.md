@@ -1,8 +1,33 @@
 # Changelog
 
-## 2.0.0
+## 2.0.0rc1
+
+The first release candidate of 2.0.0: every change since 1.1.2.  PyPI
+holds it as a pre-release, so `pip install twin4build` keeps 1.1.2 and
+`pip install --pre twin4build` (or `twin4build==2.0.0rc1`) installs it.
 
 API-quality major release. Preferred forms are documented below; new soft-compat aliases warn and will be **removed in 2.1.0**.
+
+In short:
+
+- A System is its declarations plus one `forward` step; the base sizes,
+  steps, saves and checks it, and every core System passes
+  `twin4build.testing.check_system` (ADR 0001, the next section).
+- Two engines that agree: object mode and the functional engine
+  (`execution_mode="functional"`), with batched copies
+  (`Model.batch_components`), fused state-space blocks, compiled and
+  CUDA-graph steps, and models on a GPU (`Model.to`).
+- Estimation by automatic differentiation only: SciPy, IPOPT through CasADi,
+  collocation and multiple shooting, batched multi-start solvers, plug-in
+  solvers, identifiability reports and one variable form (`tb.Variable`) for
+  the estimator and the optimizer, which also traces Pareto fronts.
+- Large buildings fitted in parts: `measured_partition` and `keep_groups`
+  (groups of rooms cut at measured signals) and `split_worlds` (a world per
+  group, with copies of what several groups read).
+- Data sources read through readers (`CsvSource`, `DataFrameSource`,
+  `DatabaseSource`); the library's knobs live in `twin4build.settings`.
+- Python 3.10 or later; reading a PostgreSQL database is the `[database]`
+  extra.
 
 ### A System is its declarations and one forward step (ADR 0001)
 
@@ -116,6 +141,28 @@ passing it raises and names its replacement.
   sensor's `validate` / `validate_connections` hooks → nothing to call: a
   load checks the model and raises (below).  `Model.load(validate_model=...)`
   raises a `TypeError` saying so.
+- `DiscreteStatespaceSystem` written the old way → declarations plus
+  `forward(x, inputs, p, step_size)`, which the base calls: its own
+  `do_step`, `initialize` and `discretize_system` go.  `forward` takes the
+  state `x` (copies, n) and `inputs["u"]` (copies, m) and returns
+  `(x_next, {"y": ...})`; `p` holds no parameter (the matrices are
+  settings, never estimated).
+  - Matrices with a leading copy dimension (`A` of shape `(n_c, n, n)`:
+    several systems in one) → one System per copy, which
+    `Model.batch_components` batches (copies holding equal matrices batch).
+    Such a matrix raises at the run start, naming the shapes.
+  - `state_names=` → nothing: the state is `x`, and `System.state_names()`
+    names its entries.  `sample_time=` (1.x) and `step_size=` → the run's
+    step size.  `batch_size`, `sim_batch_size` and `system_batch_size` →
+    the copies of a batched meta.  `discretize_system` →
+    `discretize_onestep(A, B, E, F, u, step_size)`.  Each raises and names
+    its replacement.  `add_noise=`, which 1.x ignored, raises as any
+    keyword the constructor does not take.
+  - The input `u` is as wide as what is wired into it (it held `B`'s
+    columns whatever was wired): wire every column; a run start with
+    another width raises.
+  - `system.x` is the declared state (a `tps.State`, not its tensor);
+    `get_state()` / `set_state()` read and write the tensor.
 
 #### Changed
 
@@ -183,6 +230,13 @@ passing it raises and names its replacement.
   `damper_position`).
 - `ToDegCFromDegK` and `ToDegKFromDegC` are declared Systems (they could not
   be built before).
+- `DiscreteStatespaceSystem` is declared (the migration above): the
+  settings `A`, `B`, `C`, `D` (absent: zeros), `E`, `F` (absent: linear),
+  held and saved as nested lists of numbers, and `x0`; the input `u`, the
+  output `y` (one slot per row of `C`) and the state `x`.  It steps with the
+  same `bilinear_onestep` as before: against the System written the old
+  way, the same bits in object mode and the functional engine.
+  `check_system` has an example.
 - PIDs of different directions batch into one copy, each acting in its own
   direction, and the gains are no longer `abs()`-ed (#297); walls and
   thermal-mass nodes with different `T_init` start at their own values when
@@ -190,12 +244,11 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-Three Systems still write their own `do_step` and `initialize`; a test keeps
+Two Systems still write their own `do_step` and `initialize`; a test keeps
 the list from growing and states each reason.  `ControllerIdentificationSystem`
 (and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
 2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
-is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
-once the numerics work lands.  Until then the base does not raise on an
+is exempt: the loader builds it.  Until then the base does not raise on an
 override.
 
 ### Removed
@@ -242,14 +295,17 @@ Unused and untested; 2.0 drops them without a deprecation period.
   names one of the removed classes no longer loads; replace that node with
   a `PIDControllerSystem`.  The controller identification's `onOffSignal`
   gate input is unchanged.
+- `RulebasedSetpointInputControllerSystem` and `SequenceControllerSystem`
+  (exported in 1.1.2) and the `rulebased_controller` module's rule-based
+  controller; use a `PIDControllerSystem` or a System of your own.
 
 ### Removed (previously deprecated)
 
 - camelCase kwargs already routed through deprecation helpers (`startTime` / `endTime` / `stepSize`, `useSpreadsheet` / `useDatabase` / `usedf` / `usedict`, …)
-- `Optimizer` option `fast`; select composed execution with
-  `Simulator(model, execution_mode="composed")`
-- Estimator options `fast` and `fast_validate`; select composed execution on
-  `Simulator`
+- `Optimizer` option `fast`; select the functional engine with
+  `Simulator(model, execution_mode="functional")`
+- Estimator options `fast` and `fast_validate`; select the functional engine
+  on `Simulator`
 - Estimator `lambda_schedule`; use the unified `schedule` argument
 - `plot_component`, the old `Entry(attribute=...)` form, and tuple plot entries;
   use `plot(..., entries=[Entry(data=..., label=...)])`
@@ -261,7 +317,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
   ignored, component constructors included (`System.__init__` dropped any
   keyword it did not know: `PIDControllerSystem(isReverse=True)` built a
   direct-acting loop, `BuildingSpaceSystem(C_air=...)` kept the default; the
-  room's submodel values go in `thermal_kwargs` / `mass_kwargs`); removed
+  room's submodel values go in `thermal=dict(...)` / `mass=dict(...)`); removed
   camelCase time/source keywords now raise `TypeError`.  The translator and the
   model loader pass a component only the keywords its constructor takes
   (`System.constructor_keywords`), so a graph's other literals and keys an
@@ -277,6 +333,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
+- The translator's signature rules: `Exact` / `ExactRule` → `StepRule`,
+  `NoExactRule` → `NoStepRule`, `SinglePath` / `UniPathRule` → `PathRule`,
+  `MultiPath` / `MultiPathRule` → `AnyPathRule`, `Optional_` →
+  `OptionalRule`;
+  `SignaturePattern.add_input` → `add_connection`
 - Room input `outdoorCO2` → `outdoorCo2Concentration` (#195), the name
   `OccupancySystem` and `OutdoorEnvironmentSystem` use; both default to
   400 ppmv while unwired (the occupancy's 0 ppmv default turned the whole
@@ -377,9 +438,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
   (a few rooms of a building) and removes the rest of the model: the groups
   named, with `with_senders` the groups that send into them over a measured
   edge (not followed into the groups of `stop_at`, e.g. the air handling
-  unit's), and every leaf that feeds a kept component.  A
-  `ReturnFlowJunctionSystem`'s `branch_temperature_slots` follow the
-  surviving connections.
+  unit's), and every leaf that feeds a kept component.
 
 - `Simulator.measurement_frames()` and
   `Simulator.measurement_errors(skip=0)` compare the simulation that just
@@ -420,13 +479,8 @@ Unused and untested; 2.0 drops them without a deprecation period.
   boolean Series indexed by time) and `measurement_sd` (the standard
   deviation the sensor is scored with) are declared attributes and
   constructor arguments, and `Model.batch_components` carries them to the
-  sensor's copy in the batched model.  `set_series(series, uuid=None)` puts
-  a sensor on an in-memory series and names it without switching it to
-  database mode, and `SensorSystem(df=frame, uuid="X")` is an in-memory
-  sensor named "X".  Assigning `uuid`, `dbconfig` or `filename` the value
-  the sensor already has no longer switches its source (`Model.load`
-  restores the saved configuration by assignment and used to switch a
-  sensor on a series back to the database); a new value switches as before.
+  sensor's copy in the batched model.  Where a sensor reads its series
+  from: one reader (`source=`, the ADR 0001 section).
 - `Estimator.estimate`: an entry of `measurements` may be the sensor alone
   or `(sensor, None)`, in which case the sensor's `measurement_sd` is used;
   an entry with neither raises a `ValueError` that names the sensor.
@@ -451,9 +505,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
   partition to the composed map as its theta, exactly as the Estimator does
   with estimated parameters, and `pareto_front` sweeps over it unchanged.
   Parameter decision variables need the functional objective.
-- `PiecewiseLinearSystem`: the Y points are a `tps.Parameter` (with
-  optional `Y_bounds` making them estimable) and the interpolation is a
-  pure, differentiable function of them, so an outdoor-temperature
+- `PiecewiseLinearSystem`: the Y points are a `tps.Parameter` (bounded for
+  a fit with `tb.Variable(curve.Y, lb=..., ub=...)`) and the interpolation
+  is a pure, differentiable function of them, so an outdoor-temperature
   compensation curve can be estimated or optimized.
 
 - Example patterns (`twin4build/examples/patterns`): the AHU pattern reads
@@ -501,52 +555,6 @@ Unused and untested; 2.0 drops them without a deprecation period.
   measured-vs-predicted CO2 uninformative about `V`, `G_occ` and `m_inf`
   (only their effect through `N_occ -> Q_occ N_occ -> T` identifies them,
   and only the product `Q_occ V / G_occ` unless one factor is pinned).
-- Room air models balance their ventilation flows. `BuildingSpaceThermalSystem`
-  and `BuildingSpaceMassSystem` used to charge the supply at supply state and
-  the exhaust at room state independently, so a mismatch between the two
-  measured flows left a fictitious `(m_sup - m_exh) * cp * T_i` storage term
-  (an exhaust meter reading 20% low heated the room out of nothing).  The room
-  air mass is constant, so every stream entering is balanced by air leaving at
-  room state: the supply term is `m_sup * cp * (T_sup - T_i)`, and the exhaust
-  enters only as the outdoor **make-up flow** `max(m_exh - m_sup, 0)` drawn
-  through the envelope, `m_mu * cp * (T_out - T_i)` (same for CO2).  Supply in
-  excess of the exhaust leaves through the envelope and the exhaust flow drops
-  out; the CO2 balance can no longer be driven below outdoor by ventilation.
-  Ports are unchanged; the transform is applied to the `exhaustAirFlowRate`
-  slot at input assembly on the object, functional and fused paths
-  (`twin4build/systems/building_space/air_balance.py`; state-space units may
-  declare `_ss_transform_inputs` / `SS_TRANSFORM_PORTS`, which
-  `FusedStateSpaceSystem` applies before stacking the joint input).  The
-  constant infiltration parameter `m_inf` stays additive (EnergyPlus
-  convention).
-  `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
-  the people it books reproduce the measured CO2 through the forward model
-  for any supply/exhaust pair.
-- `System.get_estimable_parameters` skips parameters the owner reports as
-  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
-  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
-  so rooms without the deprecated in-zone boundary wall no longer put two
-  dead entries per room into theta.
-- `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
-  node stands for air plus furniture, and 1e6 was binding on classrooms.
-- `Simulator(compile_step=...)`: the functional transform-mode step can be
-  compiled with `torch.compile` (Inductor) before it is captured or run
-  eagerly.  `"auto"` (default) enables it on CUDA when the torch build has
-  Triton (Linux wheels; Windows wheels have none and keep the eager step),
-  `True` requires it, `False` disables it.  Inside `torch.compile` the
-  state-space matrix exponential uses pointwise products (`_expm_ss_fused`)
-  so Inductor fuses them; eager keeps the cuBLAS form.  On the one-zone
-  shooting benchmark the captured graph replays in 0.35 s instead of 1.41 s,
-  its driver-side executable shrinks from 1.9 GiB to 0.36 GiB, and values
-  and gradients match eager to 1e-15 (issue #134); the first call pays a
-  one-time compile of about 45 s.  `System.state_size()` is cached after the
-  first call (Dynamo cannot trace the `vars()` walk it used every step).
-  The batched single-shooting bundles (multi-start SQP, its line search)
-  roll the batch out with a compiled `vmap` of the step
-  (`FunctionalModel.compiled_batched_step`, `Simulator.rollout_functional_batched`)
-  because `vmap` applied from eager code to a compiled function is not
-  supported; functorch transforms over a compiled step fall back to the
-  eager step automatically.
 - `OccupancySystem`: optional `fanSpeedMeasured` input gating its damper
   flows (the inverse balance sees no air when the fan is off), optional
   smoothing of the inverted occupancy, and the damper flows derived from
@@ -559,8 +567,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
   AHU-level flow meters; `exhaust_ratio_per_branch=True` gives
   `exhaustFlowRatio` one entry per branch (sized at `initialize`, like the
   other per-branch parameters) instead of one per AHU.
-- `DamperSystem.set_c(...)` unties the damper characteristic's offset `c`
-  from `a` so a minimum flow at a closed damper is an estimable parameter;
+- A damper characteristic's offset `c` can be untied from `a`
+  (`damper.c = value` or `DamperSystem(c=...)`; an absent `c` is tied to
+  `-a`), so a minimum flow at a closed damper is an estimable parameter;
   the AHU lists a supply damper's untied `c` among its estimable parameters
   and the offset survives serialization.
 - `FanSystem`: the temperature rise across the fan is bounded.
@@ -662,6 +671,68 @@ Unused and untested; 2.0 drops them without a deprecation period.
   `_functional.ROLLOUT_CHECKPOINT`, the translator's `_MATCH_DIAG_PATH` and
   `_MATCH_DIAG_PATTERN_FILTER`, `_cuda_graph.SYNC_PHASES_ENV`) are gone.
 
+The following were not listed when they landed:
+
+- New Systems: `AirHandlingUnitSystem`, `AirHandlingUnitCoreSystem`,
+  `FanCoilUnitSystem`, `WallSystem`, `CascadeControllerSystem`,
+  `SATLinearRuleSystem`, `SATCompensatedControllerSystem`,
+  `ControllerIdentificationSystem` / `ControllerIdentificationPISystem`,
+  `WeightedSumSystem`, `ScalarProductSystem`, `OccupancyDetectorSystem`,
+  `SigmoidGate` and `AirImbalanceSystem`.
+- `Simulator.simulate(iteration_method="gauss-seidel" | "jacobi")`: how the
+  components are iterated within a step; `"gauss-seidel"` (the default) is
+  the 1.x behaviour.
+- `twin4build.utils.print_estimation_result.print_estimation_result(result)`
+  prints the estimated parameters of a result, or of the path of a saved
+  one, as a table grouped by component id.
+- Estimator methods: IPOPT through CasADi, `("casadi", "ipopt", "ad")`, and
+  the collocation transcription `("casadi", "ipopt", "ad", "collocation")`
+  with `options={"boundary_state_init": ...}`; the global optimizers
+  `("scipy", "dual_annealing" | "basinhopping", "ad")`; the batched
+  multi-start solvers `("custom", "batched-sqp" | "batched-bfgs" |
+  "batched-lm" | "batched-newton", "ad")`.  `parameters="auto"`,
+  `measurements="auto"` and a multi-phase `schedule=[{...}, ...]`.
+- State-space fusion: zones and walls joined through fusable ports are
+  merged at load into one `FusedStateSpaceSystem` and stepped together with
+  no lag, stable at any step size; `Model.load(enable_fusion=False)` turns it
+  off.
+- `Model.to(device, dtype)`, with `model.device` and `model.dtype`: the
+  simulator, the estimator and the optimizer compute there.  The default
+  stays the CPU and float64.
+- `Optimizer.pareto_front(objective1=..., objective2=..., n_points=11,
+  delta=1e-3)` traces a two-objective front by the augmented
+  epsilon-constraint method; a batched prepass (`batched_prepass=True`)
+  starts the points.
+- A shared estimator parameter takes a seventh entry, `member_index`, so one
+  shared vector can address different slots of different components.
+- `Model.factor_air_handling_units()` rewrites a translated composite air
+  handling unit into an `AirHandlingUnitCoreSystem` and its terminal
+  dampers, keeping parameters and fitted submodels.  `DamperSystem` gains a
+  `fanSpeed` input, an `exhaustFlowRatio` parameter and an
+  `exhaustAirFlowRate` output.  `twin4build.model.partition` gains
+  `measured_partition` and `cut_measured_edges`.
+- `Optimizer.optimize` / `pareto_front(n_warmup=...)` simulate warm-up steps
+  that the objectives and constraints leave out; the functional objective
+  rolls equal-length periods out side by side.
+- `tb.Variable(target, lb=, ub=, x0=, components="private" | "shared",
+  periods="shared" | "per_period")`: one way to state a variable for
+  `Estimator.estimate(parameters=...)` and for `Optimizer.optimize` /
+  `pareto_front(variables=...)`; tuples still work.
+- Size quantities (nominal flows, powers, `UA`, a room's `V`, capacities,
+  resistances) declare bounds relative to a sized value:
+  `System.size_parameter(path, value)` sets the value and its bounds, and
+  the translator sizes the parameters it maps.  An unsized one keeps its
+  absolute bounds and warns once.
+- Rooms: the outputs `surplusAirFlowRate` and `makeUpAirFlowRate` and the
+  inputs `supplyAirCO2` and `infiltrationAirFlowRate`.  The signal
+  declarations `OUTPUT_DEPENDENCIES` / `STATE_DEPENDENCIES`,
+  `System.state_output_ports()` and
+  `SignaturePattern.add_parameter(..., transformation=...)`.
+- Readers resample with `resample_method="linear" | "constant" | "mean"`; a
+  gap longer than `dt_limit` (default 6 h) stays NaN unless `fill=` fills
+  it, and the estimator and `Simulator.measurement_frames` do not score the
+  samples that depend on a filled step.
+
 ### Changed
 
 - Translator: a list sender whose slots come from another list of the same
@@ -733,10 +804,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
   the people it books reproduce the measured CO2 through the forward model
   for any supply/exhaust pair.
 - `System.get_estimable_parameters` skips parameters the owner reports as
-  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
-  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
-  so rooms without the deprecated in-zone boundary wall no longer put two
-  dead entries per room into theta.
+  inactive (`_inactive_parameters()`: the parameters the current wiring
+  leaves without effect, such as the air handling unit's and the
+  occupancy's), so they put no dead entries into theta.
 - `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
   node stands for air plus furniture, and 1e6 was binding on classrooms.
 - `Simulator(compile_step=...)`: the functional transform-mode step can be
@@ -795,6 +865,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
   so an asynchronous CUDA fault is attributed to the phase that launched it.
+- A CUDA graph's first replay is checked against the eager run within the
+  bound on reordered floating-point sums, `8 * n * u * scale` element-wise
+  (`n` the widest dimension of the function's tensors, `u` the dtype's unit
+  roundoff, `scale` the output tensor's largest magnitude), instead of a
+  fixed `rtol=1e-9, atol=1e-11`.  In float32 a replay that sums in another
+  order (atomic accumulation) differs by a few ulp, which the fixed
+  tolerance rejected at random; float64 stays strict (about `1e-13`
+  relative at `n = 100`).  The error names the difference observed and the
+  one allowed; a passing check logs both at debug level.  The per-step
+  graphs (`cuda_graph_scope="step"`) and `CudaGraphCallable` both use it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's
@@ -835,13 +915,239 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - `LOGGER.is_interactive()` asks `sys.stdout.isatty()` instead of inspecting
   `__main__`; `LOGGER.interactive = True | False` overrides it.
 - Top-level `tb.types` / `Vector` / `Scalar` / `Parameter` / `State`
-- Package version `2.0.0`
+- Package version `2.0.0rc1` (the first release candidate of 2.0.0)
 - Canonical simulation, estimation, optimization, and scaling benchmarks now
   use the complete translated `full_workflow` topology; batching parity covers
   batched full-workflow controls, nested parameters, and data-source settings.
 - The constrained optimization matrix compares AD SLSQP and trust-constr.
   Pareto scaling uses one shared broadcast valve schedule and reports exact
   decision/constraint dimensions plus convergence and comfort violations.
+- A port that does not log (`set_save_simulation_result(False)`) and holds
+  no data keeps its current value only: it allocates no time history at its
+  next `initialize`, scalar and vector ports alike, in object and functional
+  runs.  `set_save_simulation_result` now sets vector ports too (it set the
+  scalar ones only).  An estimation logs its measuring devices only, so the
+  histories of every other port no longer take memory; a functional run
+  still fills the history of an output wired into a logged input (a
+  sensor's `measuredValue`).  What is logged is unchanged, bit for bit.
+- `Estimator.estimate` puts every port's logging back as it was when it
+  returns or raises.  Its simulations log the measuring devices only, and it
+  left them so: a simulation after it kept no history of any other port,
+  vector ports included now that `set_save_simulation_result` sets them
+  (`history()` raised "History is not populated").
+- A fused state-space block builds its matrices unit by unit, each unit its
+  own rows, and holds its bilinear terms (`E`, `F`) as their entries
+  (`discrete_statespace_system.SparseBilinear`): a few thousand of the tens
+  of millions a dense `(n_c, m, n, n)` / `(n_c, m, n, m)` tensor has for a
+  storey-wide block, where padding every term to the joint shape ran an
+  8 GB GPU out of memory and broadcasting the inputs over the dense terms
+  took most of a step.  The entries' indices and the fixed order they are
+  summed in (`bilinear_plan`) are built once from the block's structure, so
+  a step gives the same bits on every call and in a CUDA graph, and also
+  when the first assembly runs inside a `torch.func` transform.  The new
+  `fused_sparse` setting (`T4B_FUSED_SPARSE`, on) switches back to dense
+  terms; the matrices are the same.  The per-step CUDA graphs' adjoint
+  gives an integer constant a zero cotangent instead of asking for its
+  gradient.
+- `zoh_expm="aug"` (`T4B_ZOH_EXPM=aug`): a transform-mode state-space step
+  reads the next state off ONE matrix exponential of size `n + 1`,
+  `exp([[A T, B T u], [0, 0]])`, instead of the `phi1` pair and an `n x m`
+  product: about half the products, and the most accurate of the three on
+  stiff blocks (about 1e-15 of the state against `torch.matrix_exp`, `phi1`
+  about 1e-6).  The default stays `phi1`.
+- The `small_matmul_max` setting (`T4B_SMALL_MATMUL_MAX`, 16): while
+  `torch.compile` traces, a matrix exponential up to that size is written
+  with broadcast products for Inductor to fuse, a larger one with `bmm` (a
+  159-state fused block's step took 26 ms with the broadcast products, 5.8
+  with `bmm`).  Every exponential used the broadcast products before.  A
+  setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
+- A compiled step's small products are written out: a product whose left
+  factor has at most `small_matmul_max` rows and columns (a small system's
+  next state and outputs, a fused block's rows) is a broadcast multiply and
+  a sum while `torch.compile` traces, as the exponential's own products are
+  (`discrete_statespace_system.matmul`).  As library calls they ended the
+  kernels around them: a float32 step of a building of a few hundred rooms
+  was about 11,600 kernel launches and 2,700 library calls, most of them
+  one-row products.  Eager code keeps the library's product.
+- The `combo_kernels` setting (`T4B_COMBO_KERNELS`, off): the step is
+  compiled with Inductor's combo kernels (independent kernels in one
+  launch).  With the small products written out, that step came to about
+  1,600 launches and 190 library calls, and a week's simulation took a
+  third of the time.  The compile is longer, and the option is experimental
+  in Inductor.
+- A functional step reads its parameters as pieces of one `torch.split` of
+  theta instead of one index per parameter.  Each index's backward was a
+  theta-sized vector of zeros, summed once per parameter per step: the
+  largest part of a fit's time on a model with many parameters (1,800
+  parameters among 225,000 entries, float32: the step's adjoint 52.9 ->
+  16.2 ms).
+- The matrix exponential of a transform-mode step: the degree-8 series by
+  Paterson-Stockmeyer (four products instead of eight; five instead of
+  sixteen for the `phi1` pair), the matrix balanced first (two Osborne
+  sweeps: a balance equation's matrix is badly scaled rather than stiff),
+  and the doublings from the new `expm_squarings` setting
+  (`T4B_EXPM_SQUARINGS`, 18 as before; each is a product per block per
+  step, three in a reverse-mode gradient).  A matrix beyond the series'
+  range comes out NaN instead of a wrong finite value.
+- `FunctionalModel.step(kind, compiled)` is the one transform-mode step, of
+  a kind (`scalar`, `windows`, `batched`, `rows`: which of the state, theta
+  and the exogenous row carry a batch dimension) and with one signature,
+  `step(y, theta, u, constants=None)`; the step properties are its names.
+  `derived_values` of a batch of parameter vectors derives per row, so the
+  rows and batched rollouts hoist the parameter-only work out of the step
+  as the windows and scalar rollouts did (once per rollout, not once per
+  step), and every derived tensor and value setting is on the step's
+  device.
+  Each compiled step has a code object of its own: Dynamo counts a
+  function's compiled variants per code object and fails beyond a limit, so
+  the steps of several models compile in one process.
+- The per-step graphs' adjoint returns the hoisted values' cotangents as
+  one vector: the sweep adds one tensor per step instead of one per hoisted
+  tensor.
+- `FunctionalModel.prepare_trace()` fills the state widths a traced step
+  reads, and asking for a compiled step calls it (a compile after
+  `initialize()` depended on an eager step having run in between).
+- `fusable` (default `True`), a structural setting of the Systems with
+  fusable ports (`WallSystem`, `BuildingSpaceSystem`,
+  `BuildingSpaceThermalSystem`, `SpaceHeaterSystem`): an instance set
+  `fusable=False` joins no fused block and couples to its neighbours one
+  step late, as with fusion off (walls between rooms that should not fuse
+  the rooms into one block).  Batched copies share it: walls that fuse and
+  walls that do not batch apart.  The partition (`split_worlds`) sees no
+  fusable arc through such an instance.
+- A fused block keeps a member's vector input fed partly inside the block
+  and partly from outside (a room's `wallHeatGain` from a fused wall toward
+  a hallway and from an unfused wall toward another room): the inside slots
+  are substituted exactly, and only the outside slots enter the port's
+  column.  Such a cluster could not be simulated before (the fused block
+  had no input of that name).
+- The rooms' internal gains and openings: `BuildingSpaceThermalSystem` and
+  `BuildingSpaceSystem` take `plugLoad` [W] (electrical plug load, all of
+  it heat in the air; 0 while unwired) and `exchangeHeatGain` [W] (fusable,
+  one slot per connected opening to another zone: a port apart from
+  `wallHeatGain`, so the walls between rooms can stay out of fusion while
+  the openings fuse).  Both enter the air node as `heatGain` does.
+- `BuildingSpaceThermalSystem.eta_inf` (0 to 1, default 0): the share of
+  the indoor-outdoor temperature difference the space's outdoor air has
+  recovered before it enters.  The infiltration and an outdoor make-up
+  stream arrive at `T_o + eta_inf (T_i - T_o)`; a make-up stream from a
+  neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
+  touched.  A composite's children see the composite's wiring
+  (`System.input_defaults()` of a room's `thermal` is the room's).
+- `split_worlds` provides a lagged hub instead of copying it: a component
+  with free parameters whose outputs the other worlds read are all lagged
+  (`LAGGED_OUTPUT_PORTS`, a building's hidden interior node) and that one
+  world needs only through measured or exogenous signals lives in that
+  world (its home), and every other world reads it through a cut
+  connection: `Model.add_connection(..., detached=True)`, the value without
+  its gradient (`Worlds.provided` lists them as `(output port, reader,
+  input port)`).  Both engines pass the value on detached and still
+  evaluate the sender every step, the partition reads the signal as data,
+  and the estimator's structure walk (`FunctionalModel.index_coupling`) lets
+  no parameter through, so the readers' blocks stay apart from the home's.
+  A batched meta holds one flag per pair (its instances may read the sender
+  in different ways), and a saved model keeps the flag.
+- `split_worlds` gives a component's copy in another world an id the
+  model accepts (`partition.member_id`): `<id>__in_<world>` where that fits
+  the id limit, else the world by a hash of its name and the component's id
+  cut to fit.  The copy of a batched component's long id was refused when
+  the split model loaded.
+- A replay leaf of a cut (`partition.replay_leaf`) reads with a copy of its
+  sensor's reader.  It was given the reader itself, so a fill decided for
+  the replayed input was the scored sensor's too, and a sensor that
+  measures a model output refuses a fill: the cut model did not initialize.
+- `WeightedSumSystem` builds its weights as one tensor on the values'
+  device.  Through Python floats a compiled step copied them from the host
+  at every call, which a step captured as a CUDA graph refuses.
+- A second functional simulation of the same period (the cached recording)
+  no longer writes the cached history into a port that was given data: the
+  port holds that data already, and data repeated over copies refuses an
+  in-place write.
+- `System.JOINS_WORLDS` (default `False`): a component whose class sets it
+  (an opening between the zones of one room) joins the worlds of the scored
+  spaces it reads or feeds into one world (`Worlds.merged`) instead of being
+  copied with a measurement of the other side.
+- `split_worlds` records what it did on the model it splits:
+  `Model.worlds` (a batched model reads its source's).  A multiple-shooting
+  fit of such a model starts every component and its copies in other worlds
+  (`Worlds.copies`) from one box and one start, without an option: they are
+  one state.  Per state entry their window-start variables get the union of
+  their boxes and their mean start.
+- On such a model, a parameter and its copies (`Worlds.shared`) are one
+  parameter: `Estimator.estimate` puts each copy into its original's entry
+  with its start and bounds (a private original becomes one shared entry
+  with its copies, a shared group takes them in; `parameters="auto"`, which
+  lists the copies, too).  A copy listed with another start or bounds, a
+  copy listed without its original or in a shared group without it, and
+  an original or a copy that is an instance of a batched component raise a
+  `ValueError` that names them and says what to list.  The worlds that
+  share a copied parameter are one block of the estimator's structure
+  (`FunctionalModel.index_coupling`).
+
+The following were not listed when they landed:
+
+- Drawings are laid out in-process with `pygraphviz` (its wheel bundles
+  Graphviz, so no system install is needed); when drawing is unavailable,
+  `Model.load` warns and skips it.  `SemanticModel.visualize` takes
+  `format="svg"` (default) or `"png"` and lays out left to right by default
+  (`rankdir="LR"`); `SimulationModel.visualize` takes `forward_only=` and
+  `compressed=`.  A composite's node is named by its id, not its full URI.
+- `FanSystem.airFlowRate` is a mass flow [kg/s].
+- The rooms' make-up flow `max(m_exh - m_sup, 0)` is smooth by default
+  (`air_balance.positive_flow`), so its gradient has no corner at a balanced
+  room; `saturation_mode("hard")`
+  (`twin4build.systems.utils.smooth_saturation`) gives the exact clamp.
+- The air handling unit has one branch per VAV box: the rooms'
+  `supplyAirFlowRate` / `exhaustAirFlowRate` are vector inputs, one slot per
+  branch, summed in the room.
+- `PIDControllerSystem` is the positional form with conditional
+  integration: the integral is held while the output saturates, and the
+  state holds two values (the integral and the last error).  With
+  `Ti -> inf` the controller is exactly `clamp(kp * e)`.  Controller
+  identification gains a `"max"` candidate, a proportional loop above a
+  threshold.
+- Simulation steps are counted in elapsed UTC seconds, so a period across a
+  DST change has one hour of steps more or less than a day; periods may
+  differ in length.
+- Database loads keep one connection per process and server, cache a window
+  without rows once it ended more than two days ago, and keep the raw rows
+  of each point (`generated_files/cached_data/raw/`, one parquet file per
+  point): a window missing from that store fetches the whole span around
+  it.
+- The translator's rules: an unbound node of a `NoStepRule` means any node
+  other than those the match binds; two set rules on one set node keep the
+  elements both rules hold for; `PathRule`, `AnyPathRule` and
+  `SetAnyPathRule` take a bare predicate URI without a warning.
+
+### Fixed
+
+Bugs of 1.1.2:
+
+- Parameters marked `"shared"` were estimated as private.
+- The data loader's cache was keyed on a file's name alone, so two files of
+  one name shared their cached data and an edited file was not read again;
+  the key holds the folder, the size and the modification time.
+- The ontologies ship with the package, so translating needs no network; a
+  namespace that cannot be read warns instead of shrinking the model, and a
+  remote fetch times out after 15 s.
+- The translator builds blank-node instances, keeps blank-node labels out of
+  ids (ids stay the same across translations, and `load_estimation_result`
+  no longer fails with a `KeyError`), caps a composite's id at 80
+  characters plus `+N`, no longer merges two names that sanitize to one id,
+  and solves its matching as a sparse problem (large graphs ran out of
+  memory).
+- An empty time-series window raises a `ValueError` naming the sensor and
+  the window.
+- A fan's and a heat recovery's outputs stay finite at zero air flow (they
+  were NaN).
+- `copy.deepcopy` and pickling of a `tps.Parameter` keep its value and
+  bounds.
+- `serialize()` then `load(filename=...)` keeps nested and per-branch
+  parameters, a radiator's `UA` and module-level transformations (saved by
+  reference; a lambda warns and is skipped).
+- `SemanticModel` no longer calls `logging.disable` for the whole process,
+  and the log file is flushed every line.
+- Database rows that span a DST change load.
 
 ### Migration notes
 
@@ -863,7 +1169,22 @@ Unused and untested; 2.0 drops them without a deprecation period.
 ### Release metadata
 
 - `pyproject.toml` is the package-version source of truth and declares
-  `2.0.0`.
-- Release tags use the matching `vMAJOR.MINOR.PATCH` form. Pushing such a tag
-  triggers the trusted-publishing PyPI workflow for the configured maintainer;
+  `2.0.0rc1` (PEP 440); `twin4build.__version__` reads it from the installed
+  package's metadata.
+- A release tag is `v` followed by that version: `v2.0.0rc1` for this
+  release candidate, `vMAJOR.MINOR.PATCH` for a final release.  Pushing such
+  a tag triggers the trusted-publishing PyPI workflow for the configured
+  maintainer, which publishes only when the tag is the `pyproject.toml`
+  version (compared as PEP 440 versions) and CI passes on the tagged commit;
   branch pushes do not publish or auto-increment versions.
+- Python 3.10 or later (3.9 is no longer supported).
+- New dependencies since 1.1.2: `pygraphviz>=2.0.1` (drawing; its wheel
+  bundles Graphviz), `casadi` (IPOPT and collocation) and `pytz`; capped:
+  `brickschema<0.8`, `pyparsing<3.3.3` and `python-dateutil<3`, each for a
+  breaking upstream release.  `psycopg2` is no longer a dependency: reading
+  a PostgreSQL database needs the `[database]` extra (`psycopg2-binary`),
+  and without it raises an `ImportError` that names the extra.  `jupyter`
+  and `nbformat` are no longer dependencies either: running the example
+  notebooks (and `twin4build.utils.test_notebook`) needs the `[notebooks]`
+  extra, which `[dev]` and `[all]` include; twin4build imports neither.
+- The wheel ships the example data (CSV, TTL) and the ontologies.
