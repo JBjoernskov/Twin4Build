@@ -391,7 +391,13 @@ class FunctionalSimulationSession:
             self.recording_cache_hit = True
             self.recording_cache_hits += 1
             for port, history in self.cached_public_histories:
-                port._history.copy_(history)
+                # A port that was given data holds that data as its history
+                # (initialize put it back): nothing to restore, and data
+                # repeated over copies is one row seen many times, which an
+                # in-place write refuses.  Any other history is written in
+                # place, so a captured graph keeps reading the same tensor.
+                if not port._is_leaf:
+                    port._history.copy_(history)
                 port._history_is_populated = True
                 port._tensor.copy_(history[-1])
             y0, exogenous_tape = self.cached_recording
