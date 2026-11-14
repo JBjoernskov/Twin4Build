@@ -109,6 +109,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
     SparseBilinear,
     bilinear_onestep,
     bilinear_plan,
+    matmul,
     structure_constant,
 )
 from twin4build.utils.logger import LOGGER
@@ -689,8 +690,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             Ai, Bi, Ci, Di, Ei, Fi = (_expand(t) for t in mats[i])
             o, n = entry["x_offset"], entry["n_states"]
             sx, su = S[i]
-            a_rows.append(torch.nn.functional.pad(Ai, (o, N - o - n)) + Bi @ sx)  # (n_c, n, N)
-            b_rows.append(Bi @ su)  # (n_c, n, M)
+            a_rows.append(torch.nn.functional.pad(Ai, (o, N - o - n)) + matmul(Bi, sx))  # (n_c, n, N)
+            b_rows.append(matmul(Bi, su))  # (n_c, n, M)
 
             # Bilinear terms must act on external inputs only: substituted
             # (state-valued) bilinear inputs would create quadratic state
@@ -778,9 +779,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                     _expand(Ci)[:, row:row + 1, :],
                     (o, N - o - n),
                 )
-                + Di_row @ sx
+                + matmul(Di_row, sx)
             )
-            d_rows.append(Di_row @ su)
+            d_rows.append(matmul(Di_row, su))
         C = torch.cat(c_rows, dim=1)
         D = torch.cat(d_rows, dim=1)
 

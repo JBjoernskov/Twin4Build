@@ -1907,7 +1907,8 @@ class FunctionalModel:
         thousands of ATen kernels of the eager step, which shrinks the
         captured CUDA graph and its replay time several-fold (issue #134).
         Compiled on first use (cached on disk by Inductor); it needs a
-        Triton-capable torch build on a GPU.  The compiled steps are the ones
+        Triton-capable torch build on a GPU.  The ``combo_kernels`` setting
+        compiles it with Inductor's combo kernels.  The compiled steps are the ones
         the per-step CUDA graphs capture (``compile`` over ``vmap`` was
         numerically wrong on torch 2.11 until #241: the vector inputs are
         assembled with ``scatter`` / ``scatter_add`` since).
@@ -1936,7 +1937,8 @@ class FunctionalModel:
                     return torch.func.vmap(one, in_dims=(*dims, constant_dims))(y, theta, u, constants)
 
             if compiled:
-                step = torch.compile(_own_code(step, f"step_{kind}"), fullgraph=True, dynamic=False)
+                options = {"combo_kernels": True} if _settings.value("combo_kernels") else None
+                step = torch.compile(_own_code(step, f"step_{kind}"), fullgraph=True, dynamic=False, options=options)
             self.__dict__[name] = step
         return step
 

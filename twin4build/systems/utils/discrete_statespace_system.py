@@ -71,6 +71,25 @@ def _small_matmul(a, b):
     return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2)
 
 
+def matmul(a, b):
+    """``a @ b`` as a step writes it (both at least two-dimensional).
+
+    While ``torch.compile`` traces, a product whose left factor has at most
+    ``small_matmul_max`` rows and columns is a broadcast multiply and a sum
+    (:func:`_small_matmul`): a small system's next state and outputs, a fused
+    block's rows.  As a library call each of them ends the kernel around it,
+    and a step of many small systems is then mostly launches; written out,
+    Inductor fuses it with the arithmetic on both sides, forward and
+    backward.  A larger product, and every product of eager code, is the
+    library's.
+    """
+    if torch.compiler.is_compiling():
+        limit = _settings.value("small_matmul_max")
+        if a.shape[-2] <= limit and a.shape[-1] <= limit:
+            return _small_matmul(a, b)
+    return a @ b
+
+
 #: The scaled 1-norm above which the exponential refuses (NaN): the degree-8
 #: series is not an exponential there, and squaring would amplify the error.
 _EXPM_REFUSE_NORM = 2.0
@@ -427,7 +446,7 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
             expX, phi = torch.utils.checkpoint.checkpoint(_expm_phi1_ss, X, use_reentrant=False)
         else:
             expX, phi = _expm_phi1_ss(X)
-        return expX, phi @ (B_eff * T)
+        return expX, matmul(phi, B_eff * T)
     # Block matrix M = [[A*T, B*T], [0, 0]]; expm(M) = [[Ad, Bd], [0, I]].
     # Built out-of-place (cat + zero-row pad) so it is ``vmap``-safe -- an
     # in-place ``M[..., :n, :n] = ...`` fails when A_eff/B_eff carry a vmap batch
@@ -467,7 +486,7 @@ def _onestep_augmented(A, B, C, D, E, F, x, u, step_size):
     T = step_size
     n = A.shape[-1]
     X = A_eff * T
-    b = (B_eff * T) @ u.unsqueeze(-1)  # (..., n, 1)
+    b = matmul(B_eff * T, u.unsqueeze(-1))  # (..., n, 1)
     lead = torch.broadcast_shapes(X.shape[:-2], b.shape[:-2])
     top = torch.cat([X.expand(*lead, n, n), b.expand(*lead, n, 1)], dim=-1)  # (..., n, n + 1)
     M = torch.nn.functional.pad(top, (0, 0, 0, 1))  # (..., n + 1, n + 1): a zero last row
@@ -475,8 +494,8 @@ def _onestep_augmented(A, B, C, D, E, F, x, u, step_size):
         expM = torch.utils.checkpoint.checkpoint(_expm_ss, M, use_reentrant=False)
     else:
         expM = _expm_ss(M)
-    x_next = (expM[..., :n, :n] @ x.unsqueeze(-1)).squeeze(-1) + expM[..., :n, n]
-    y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)
+    x_next = matmul(expM[..., :n, :n], x.unsqueeze(-1)).squeeze(-1) + expM[..., :n, n]
+    y = matmul(C, x_next.unsqueeze(-1)).squeeze(-1) + matmul(D, u.unsqueeze(-1)).squeeze(-1)
     return x_next, y
 
 
@@ -571,8 +590,8 @@ def bilinear_onestep(
                 )
                 disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
 
-    x_next = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (Bd @ u.unsqueeze(-1)).squeeze(-1)
-    y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)
+    x_next = matmul(Ad, x.unsqueeze(-1)).squeeze(-1) + matmul(Bd, u.unsqueeze(-1)).squeeze(-1)
+    y = matmul(C, x_next.unsqueeze(-1)).squeeze(-1) + matmul(D, u.unsqueeze(-1)).squeeze(-1)
     return x_next, y
 
 
