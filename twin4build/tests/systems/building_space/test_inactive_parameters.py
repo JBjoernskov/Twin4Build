@@ -36,7 +36,7 @@ class TestBoundaryWallGone(unittest.TestCase):
         self.assertEqual(
             attrs,
             {"thermal.C_air", "thermal.C_wall", "thermal.R_in", "thermal.R_out", "thermal.f_air",
-             "thermal.f_wall", "thermal.Q_occ_gain", "mass.V", "mass.G_occ", "mass.m_inf"},
+             "thermal.f_wall", "thermal.Q_occ_gain", "thermal.eta_inf", "mass.V", "mass.G_occ", "mass.m_inf"},
         )
         self.assertNotIn("boundaryTemperature", space.input)
 

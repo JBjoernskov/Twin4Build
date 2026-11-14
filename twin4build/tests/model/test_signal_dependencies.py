@@ -136,7 +136,7 @@ class TestRoom(DeclarationCase):
 
     INPUTS = {"outdoorTemperature": s(2.0), "supplyAirFlowRate": vec(0.05, 0.04), "exhaustAirFlowRate": vec(0.06),
               "supplyAirTemperature": s(19.0), "globalIrradiation": s(100.0), "numberOfPeople": s(3.0),
-              "heatGain": s(200.0), "makeUpAirTemperature": s(21.0),
+              "heatGain": s(200.0), "makeUpAirTemperature": s(21.0), "plugLoad": s(150.0),
               "wallHeatGain": s(50.0), "infiltrationAirFlowRate": s(0.01), "outdoorCo2Concentration": s(420.0),
               "makeUpAirCO2": s(600.0), "supplyAirCO2": s(430.0), "exchangeCO2Gain": s(0.0)}
 

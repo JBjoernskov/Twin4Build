@@ -267,5 +267,67 @@ class TestThermalMakeUpPort(unittest.TestCase):
         self.assertIn((2, 0, 0), self.zone._ss_support()["F"])
 
 
+class TestOutdoorAirRecovery(TestThermalMakeUpPort):
+    """``eta_inf``: the outdoor air arrives at ``T_o + eta (T_i - T_o)`` -- the infiltration and an outdoor make-up
+    stream carry ``1 - eta`` of their heat; a make-up stream from a neighbouring zone (``makeUpAirTemperature``
+    wired) is not touched."""
+
+    def setUp(self):
+        super().setUp()
+        # the same zone with its make-up air wired (a neighbouring zone's temperature)
+        model = tb.Model(id="outdoor_air_recovery_wired")
+        self.wired_zone = tb.BuildingSpaceThermalSystem(
+            C_air=1e5, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=0.0, id="zone",
+        )
+        neighbour = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": 22.0}, id="Neighbour")
+        model.add_connection(neighbour, self.wired_zone, "scheduleValue", "makeUpAirTemperature")
+        self.wired_zone.initialize([START], [START + datetime.timedelta(hours=1)], [DT])
+
+    def _step(self, m_sup, m_exh, make_up=None, wired=False):
+        # a wired step runs the zone whose make-up air is wired
+        zone, self.zone = self.zone, self.wired_zone if wired else self.zone
+        try:
+            return super()._step(m_sup, m_exh, make_up=make_up, wired=wired)
+        finally:
+            self.zone = zone
+
+    def _with(self, eta, m_inf, m_sup, m_exh, make_up=None, wired=False):
+        self.params = dict(self.zone._forward_params(), eta_inf=_t(eta), m_inf=_t(m_inf))
+        return self._step(m_sup, m_exh, make_up=make_up, wired=wired)
+
+    def test_the_default_is_outdoor_air(self):
+        self.assertIn("eta_inf", self.zone._forward_params())
+        self.assertEqual(float(self.zone._forward_params()["eta_inf"].reshape(-1)[0]), 0.0)
+        self.assertEqual(self.zone.parameter["eta_inf"], {"lb": 0.0, "ub": 1.0})
+        self.assertTrue(self.zone._make_up_is_outdoor_air())
+        self.assertFalse(self.wired_zone._make_up_is_outdoor_air())
+
+    @_exact
+    def test_full_recovery_removes_the_outdoor_air_heat(self):
+        # eta 1: neither the infiltration nor the outdoor make-up stream (0.08 kg/s) carries heat -- as no
+        # infiltration and an exhaust that the supply covers
+        self.assertAlmostEqual(self._with(1.0, 0.01, 0.1, 0.18), self._with(0.0, 0.0, 0.1, 0.1), places=12)
+
+    def test_recovery_warms_monotonically(self):
+        cold, half, full = (self._with(eta, 0.01, 0.1, 0.18) for eta in (0.0, 0.5, 1.0))
+        self.assertLess(cold, half)
+        self.assertLess(half, full)
+
+    @_exact
+    def test_a_wired_make_up_stream_is_not_touched(self):
+        # wired: only the infiltration takes the factor
+        self.assertAlmostEqual(
+            self._with(1.0, 0.01, 0.1, 0.18, make_up=22.0, wired=True),
+            self._with(0.0, 0.0, 0.1, 0.18, make_up=22.0, wired=True),
+            places=12,
+        )
+
+    def test_a_room_hands_its_wiring_to_its_thermal_model(self):
+        for wired in (False, True):
+            with self.subTest(wired=wired):
+                room = TestCompositeWiring._room(self, wired)
+                self.assertEqual(room.thermal._make_up_is_outdoor_air(), not wired)
+
+
 if __name__ == "__main__":
     unittest.main()

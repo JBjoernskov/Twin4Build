@@ -35,12 +35,15 @@ _VALUE_SETTINGS: dict = {}
 
 def _setting_reader(name: str):
     """A state's ``init_fn`` reading its initial value from the setting ``name``
-    (one value per copy on a batched System: ``(n_c, 1)``)."""
+    (one value per copy on a batched System: ``(n_c, 1)``).  Per copy is a
+    value setting's tensor; a structural setting's sequence holds one value
+    per state entry, whatever the number of copies."""
 
     def read(component):
-        value = torch.as_tensor(getattr(component, name), dtype=tps.float_dtype())
+        raw = getattr(component, name)
+        value = torch.as_tensor(raw, dtype=tps.float_dtype())
         n_c = int(getattr(component, "n_c", 1) or 1)
-        if value.dim() == 1 and n_c > 1 and value.numel() == n_c:
+        if isinstance(raw, torch.Tensor) and value.dim() == 1 and n_c > 1 and value.numel() == n_c:
             return value.reshape(n_c, 1)
         return value
 
@@ -746,10 +749,16 @@ class System(nn.Module, metaclass=SystemMeta):
             child = getattr(self, name)
             if type(child)._is_declared:
                 # A child has no connections: an input it sizes by its wiring
-                # takes the width of the composite's input of the same name.
+                # takes the width of the composite's input of the same name,
+                # and an input is wired when the composite's is (is_wired reads
+                # the names handed down: the child's input_defaults are the
+                # composite's).
+                from twin4build.utils.slots import is_wired
+
                 for port, child_decl in type(child)._declarations["input"].items():
                     if child_decl.size == "wired" and port in self.input:
                         child.input[port]._n_v = self.input[port]._n_v
+                child._wired_ports = frozenset(port for port in child.input if port in self.input and is_wired(self, port))
                 child._initialize_declared(n_t, n_s, n_c * self.slots_per_copy(decl), run)
         self._share_unit_params()
         if type(self)._has_series():
@@ -1476,10 +1485,22 @@ class System(nn.Module, metaclass=SystemMeta):
     #: state-space block (see ``FusedStateSpaceSystem``).  A connection is
     #: *fusable* -- eliminable exactly at the matrix level -- iff its output
     #: port is in the sender's ``FUSABLE_OUTPUT_PORTS`` and its input port is
-    #: in the receiver's ``FUSABLE_INPUT_PORTS``.  Empty on the base class:
-    #: components opt in explicitly.
+    #: in the receiver's ``FUSABLE_INPUT_PORTS``, and neither instance sets
+    #: ``fusable=False`` (the structural setting every class with fusable
+    #: ports declares: such an instance fuses with nothing and couples to its
+    #: neighbours one step late, as without fusion).  Empty on the base
+    #: class: components opt in explicitly.
     FUSABLE_INPUT_PORTS: frozenset = frozenset()
     FUSABLE_OUTPUT_PORTS: frozenset = frozenset()
+
+    #: Whether the component joins the worlds of the spaces it connects when a
+    #: model is split into worlds (:func:`twin4build.model.partition.split_worlds`):
+    #: the scored spaces it reads or feeds are one world, so it is neither
+    #: copied nor fed a measurement of either side.  For a free coupling that
+    #: can be strong (an opening between the zones of one room), where a
+    #: measured side would be a reservoir a fit can push and pull without
+    #: cost.  False on the base class: components opt in explicitly.
+    JOINS_WORLDS: bool = False
 
     def _ss_units(self):
         """The linear/bilinear state-space *leaf* units owned by this component,

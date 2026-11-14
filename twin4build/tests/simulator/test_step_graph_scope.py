@@ -73,6 +73,45 @@ class TestStepGraphScope(unittest.TestCase):
             self.assertIsNot(graphs[1][key], graphs[0][key], "a graph from before the initialization was replayed")
         torch.testing.assert_close(temperatures[1], temperatures[0], rtol=0, atol=0)
 
+    def test_an_integer_leaf_takes_no_gradient(self):
+        """The adjoint graph marked every hoisted leaf as requiring a gradient;
+        a sparse bilinear term's positions are an integer leaf ("only Tensors
+        of floating point dtype can require gradients"), and a fit with fused
+        blocks stopped at its first gradient.  With an integer leaf among the
+        constants, the per-step graphs' gradients equal eager autograd's."""
+        from torch.utils import _pytree as pytree
+
+        from twin4build.simulator._step_graph import StepGraphs, _StepGraphRollout
+
+        dev, dt = "cuda", torch.float64
+        idx = torch.tensor([0, 2], device=dev)  # positions: an integer leaf
+        w = torch.tensor([0.5, -0.25], device=dev, dtype=dt)  # the values at them: a floating leaf
+
+        def step(y, theta, u, constants):
+            i, ww = constants
+            gain = torch.zeros_like(y).index_add(0, i, ww * y[i])
+            y_next = 0.9 * y + theta[0] * u[0] + theta[1] * gain
+            return y_next, y_next.sum().reshape(1)
+
+        y0 = torch.tensor([1.0, 2.0, 3.0], device=dev, dtype=dt)
+        tape = torch.linspace(0.0, 1.0, 12, device=dev, dtype=dt).reshape(12, 1)
+        theta = torch.tensor([0.3, 0.7], device=dev, dtype=dt, requires_grad=True)
+        leaves, spec = pytree.tree_flatten((idx, w))
+        leaves = [l.clone().requires_grad_(True) if l.is_floating_point() else l for l in leaves]
+        graphs = StepGraphs(step, spec, len(leaves), name="integer leaf")
+        _states, out = _StepGraphRollout.apply(graphs, y0, theta, tape, *leaves)
+        g_theta, g_w = torch.autograd.grad(out.sum(), (theta, leaves[1]))
+
+        theta_e = theta.detach().clone().requires_grad_(True)
+        w_e = w.clone().requires_grad_(True)
+        y, total = y0, 0.0
+        for t in range(tape.shape[0]):
+            y, m = step(y, theta_e, tape[t], (idx, w_e))
+            total = total + m.sum()
+        e_theta, e_w = torch.autograd.grad(total, (theta_e, w_e))
+        torch.testing.assert_close(g_theta, e_theta)
+        torch.testing.assert_close(g_w, e_w)
+
     def test_gradient_matches_whole_rollout_capture(self):
         from twin4build.tests.estimator.example_fixture import (
             EXAMPLE_START,
