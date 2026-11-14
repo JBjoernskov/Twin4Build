@@ -1059,6 +1059,10 @@ The following were not listed when they landed:
 - `WeightedSumSystem` builds its weights as one tensor on the values'
   device.  Through Python floats a compiled step copied them from the host
   at every call, which a step captured as a CUDA graph refuses.
+- A second functional simulation of the same period (the cached recording)
+  no longer writes the cached history into a port that was given data: the
+  port holds that data already, and data repeated over copies refuses an
+  in-place write.
 - `System.JOINS_WORLDS` (default `False`): a component whose class sets it
   (an opening between the zones of one room) joins the worlds of the scored
   spaces it reads or feeds into one world (`Worlds.merged`) instead of being
