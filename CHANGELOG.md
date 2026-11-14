@@ -795,6 +795,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
   so an asynchronous CUDA fault is attributed to the phase that launched it.
+- A CUDA graph's first replay is checked against the eager run within the
+  bound on reordered floating-point sums, `8 * n * u * scale` element-wise
+  (`n` the widest dimension of the function's tensors, `u` the dtype's unit
+  roundoff, `scale` the output tensor's largest magnitude), instead of a
+  fixed `rtol=1e-9, atol=1e-11`.  In float32 a replay that sums in another
+  order (atomic accumulation) differs by a few ulp, which the fixed
+  tolerance rejected at random; float64 stays strict (about `1e-13`
+  relative at `n = 100`).  The error names the difference observed and the
+  one allowed; a passing check logs both at debug level.  The per-step
+  graphs (`cuda_graph_scope="step"`) and `CudaGraphCallable` both use it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's
@@ -842,6 +852,19 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - The constrained optimization matrix compares AD SLSQP and trust-constr.
   Pareto scaling uses one shared broadcast valve schedule and reports exact
   decision/constraint dimensions plus convergence and comfort violations.
+- A port that does not log (`set_save_simulation_result(False)`) and holds
+  no data keeps its current value only: it allocates no time history at its
+  next `initialize`, scalar and vector ports alike, in object and functional
+  runs.  `set_save_simulation_result` now sets vector ports too (it set the
+  scalar ones only).  An estimation logs its measuring devices only, so the
+  histories of every other port no longer take memory; a functional run
+  still fills the history of an output wired into a logged input (a
+  sensor's `measuredValue`).  What is logged is unchanged, bit for bit.
+- `Estimator.estimate` puts every port's logging back as it was when it
+  returns or raises.  Its simulations log the measuring devices only, and it
+  left them so: a simulation after it kept no history of any other port,
+  vector ports included now that `set_save_simulation_result` sets them
+  (`history()` raised "History is not populated").
 
 ### Migration notes
 

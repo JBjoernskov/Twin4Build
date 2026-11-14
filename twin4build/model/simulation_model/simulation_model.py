@@ -2282,8 +2282,10 @@ class SimulationModel:
         """
         Enable or disable history logging of simulation results for components.
 
-        Sets the log_history flag on every scalar input and output port of the
-        selected components.
+        Sets the log_history flag on every input and output port (scalar and
+        vector) of the selected components.  A port that does not log keeps
+        no time history from its next initialize on (only its current value),
+        unless it holds data.
 
         Args:
             flag (bool): Whether to save (log) simulation results.
@@ -2295,18 +2297,18 @@ class SimulationModel:
             assert isinstance(c, list), "The c must be a list."
             for component in c:
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
         else:
             for component in self._components.values():
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
 
     def _reset(self) -> None:

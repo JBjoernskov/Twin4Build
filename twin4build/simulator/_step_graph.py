@@ -35,6 +35,8 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import torch
 from torch.utils import _pytree as pytree
 
+from twin4build.utils._cuda_graph import check_replay_matches_eager, largest_dimension
+
 
 def initialization_count(functional_model) -> int:
     """How often the model ``functional_model`` steps has been initialized
@@ -51,7 +53,8 @@ class StepGraph:
     parameters and the hoisted matrices), ``dynamic`` inputs change every
     call (the state, the exogenous row, the cotangents).  The first call
     after :meth:`set_static` captures: an eager warm-up on a side stream,
-    the recording, one replay and a replay-against-eager parity check.
+    the recording, one replay and a replay-against-eager parity check
+    (:func:`~twin4build.utils._cuda_graph.check_replay_matches_eager`).
     Outputs are the graph's static buffers: the caller clones what it keeps.
     """
 
@@ -92,11 +95,13 @@ class StepGraph:
             self.outputs = tuple(self.fn(*inputs))
         self.graph.replay()
         torch.cuda.synchronize()
-        for out, ref in zip(self.outputs, reference):
-            torch.testing.assert_close(
-                out, ref, rtol=1e-9, atol=1e-11, equal_nan=True,
-                msg=f"{self.name}: CUDA graph replay differs from eager output",
-            )
+        # the replay may sum in another order than the eager run (atomic
+        # accumulation, other kernels): it must agree within the bound on
+        # reordered sums, n the widest dimension of the step's tensors
+        check_replay_matches_eager(
+            self.outputs, reference, n=largest_dimension(inputs, reference),
+            label=f"{self.name}: CUDA graph replay",
+        )
         self.capture_seconds += time.perf_counter() - started
 
     def __call__(self, *dynamic: torch.Tensor) -> Tuple[torch.Tensor, ...]:
