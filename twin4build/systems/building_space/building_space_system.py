@@ -10,7 +10,7 @@ from twin4build.systems.building_space.building_space_thermal_system import (
     BOUNDARY_WALL_GONE,
     BuildingSpaceThermalSystem,
 )
-from twin4build.systems.saref4syst.declarations import Child, Input, Output
+from twin4build.systems.saref4syst.declarations import Child, Input, Output, Setting
 from twin4build.utils.rgetattr import rgetattr
 
 
@@ -70,6 +70,9 @@ class BuildingSpaceSystem(core.System):
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
           - wallHeatGain (heat flows from connected WallSystem components)
+          - exchangeHeatGain (heat flows from connected openings, the heat
+            twin of the mass model's exchangeCO2Gain)
+          - plugLoad (electrical plug load, all of it heat; optional)
 
        **Combined Outputs:**
           - indoorTemperature: From thermal subsystem
@@ -99,6 +102,10 @@ class BuildingSpaceSystem(core.System):
     DEPRECATED_KEYWORDS = {"thermal_kwargs": "thermal", "mass_kwargs": "mass"}
     REMOVED_ATTRIBUTES = {"boundaryTemperature": BOUNDARY_WALL_GONE}
 
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the walls, heaters and openings it is connected to; False: couple to them one step late",
+    )
     outdoorTemperature = Input(doc="Outdoor temperature [degC]")
     supplyAirFlowRate = Input(size="wired", doc="Supply air flow of each branch into the room [kg/s]")
     exhaustAirFlowRate = Input(size="wired", doc="Exhaust air flow of each branch out of the room [kg/s]")
@@ -110,6 +117,10 @@ class BuildingSpaceSystem(core.System):
         default=outdoorTemperature, doc="Temperature of the make-up air [degC]; unwired: outdoor air"
     )
     wallHeatGain = Input(size="wired", doc="Heat flows from connected WallSystem components [W], one slot per wall")
+    exchangeHeatGain = Input(
+        size="wired", doc="Heat flows from connected openings to other zones [W], one slot per opening"
+    )
+    plugLoad = Input(default=0.0, doc="Electrical plug load [W], all of it heat in the air; unwired: none")
     infiltrationAirFlowRate = Input(default=0.0, doc="Envelope inflow on top of the make-up flow [kg/s]")
     outdoorCo2Concentration = Input(default=400.0, doc="Outdoor CO2 concentration [ppmv]")
     makeUpAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the make-up air [ppmv]; unwired: outdoor air")
@@ -134,7 +145,7 @@ class BuildingSpaceSystem(core.System):
     #: without the room gets it in the room's place (:mod:`twin4build.model.signal_dependencies`).
     OUTPUT_PROJECTIONS = {"surplusAirFlowRate": "AirImbalanceSystem", "makeUpAirFlowRate": "AirImbalanceSystem"}
 
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "heatGain"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "exchangeHeatGain", "heatGain"})
 
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature", "indoorCO2"})
 

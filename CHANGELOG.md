@@ -116,6 +116,28 @@ passing it raises and names its replacement.
   sensor's `validate` / `validate_connections` hooks → nothing to call: a
   load checks the model and raises (below).  `Model.load(validate_model=...)`
   raises a `TypeError` saying so.
+- `DiscreteStatespaceSystem` written the old way → declarations plus
+  `forward(x, inputs, p, step_size)`, which the base calls: its own
+  `do_step`, `initialize` and `discretize_system` go.  `forward` takes the
+  state `x` (copies, n) and `inputs["u"]` (copies, m) and returns
+  `(x_next, {"y": ...})`; `p` holds no parameter (the matrices are
+  settings, never estimated).
+  - Matrices with a leading copy dimension (`A` of shape `(n_c, n, n)`:
+    several systems in one) → one System per copy, which
+    `Model.batch_components` batches (copies holding equal matrices batch).
+    Such a matrix raises at the run start, naming the shapes.
+  - `state_names=` → nothing: the state is `x`, and `System.state_names()`
+    names its entries.  `sample_time=` (1.x) and `step_size=` → the run's
+    step size.  `batch_size`, `sim_batch_size` and `system_batch_size` →
+    the copies of a batched meta.  `discretize_system` →
+    `discretize_onestep(A, B, E, F, u, step_size)`.  Each raises and names
+    its replacement.  `add_noise=`, which 1.x ignored, raises as any
+    keyword the constructor does not take.
+  - The input `u` is as wide as what is wired into it (it held `B`'s
+    columns whatever was wired): wire every column; a run start with
+    another width raises.
+  - `system.x` is the declared state (a `tps.State`, not its tensor);
+    `get_state()` / `set_state()` read and write the tensor.
 
 #### Changed
 
@@ -183,6 +205,13 @@ passing it raises and names its replacement.
   `damper_position`).
 - `ToDegCFromDegK` and `ToDegKFromDegC` are declared Systems (they could not
   be built before).
+- `DiscreteStatespaceSystem` is declared (the migration above): the
+  settings `A`, `B`, `C`, `D` (absent: zeros), `E`, `F` (absent: linear),
+  held and saved as nested lists of numbers, and `x0`; the input `u`, the
+  output `y` (one slot per row of `C`) and the state `x`.  It steps with the
+  same `bilinear_onestep` as before: against the System written the old
+  way, the same bits in object mode and the functional engine.
+  `check_system` has an example.
 - PIDs of different directions batch into one copy, each acting in its own
   direction, and the gains are no longer `abs()`-ed (#297); walls and
   thermal-mass nodes with different `T_init` start at their own values when
@@ -190,12 +219,11 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-Three Systems still write their own `do_step` and `initialize`; a test keeps
+Two Systems still write their own `do_step` and `initialize`; a test keeps
 the list from growing and states each reason.  `ControllerIdentificationSystem`
 (and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
 2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
-is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
-once the numerics work lands.  Until then the base does not raise on an
+is exempt: the loader builds it.  Until then the base does not raise on an
 override.
 
 ### Removed
@@ -795,6 +823,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
   so an asynchronous CUDA fault is attributed to the phase that launched it.
+- A CUDA graph's first replay is checked against the eager run within the
+  bound on reordered floating-point sums, `8 * n * u * scale` element-wise
+  (`n` the widest dimension of the function's tensors, `u` the dtype's unit
+  roundoff, `scale` the output tensor's largest magnitude), instead of a
+  fixed `rtol=1e-9, atol=1e-11`.  In float32 a replay that sums in another
+  order (atomic accumulation) differs by a few ulp, which the fixed
+  tolerance rejected at random; float64 stays strict (about `1e-13`
+  relative at `n = 100`).  The error names the difference observed and the
+  one allowed; a passing check logs both at debug level.  The per-step
+  graphs (`cuda_graph_scope="step"`) and `CudaGraphCallable` both use it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's
@@ -842,6 +880,105 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - The constrained optimization matrix compares AD SLSQP and trust-constr.
   Pareto scaling uses one shared broadcast valve schedule and reports exact
   decision/constraint dimensions plus convergence and comfort violations.
+- A port that does not log (`set_save_simulation_result(False)`) and holds
+  no data keeps its current value only: it allocates no time history at its
+  next `initialize`, scalar and vector ports alike, in object and functional
+  runs.  `set_save_simulation_result` now sets vector ports too (it set the
+  scalar ones only).  An estimation logs its measuring devices only, so the
+  histories of every other port no longer take memory; a functional run
+  still fills the history of an output wired into a logged input (a
+  sensor's `measuredValue`).  What is logged is unchanged, bit for bit.
+- `Estimator.estimate` puts every port's logging back as it was when it
+  returns or raises.  Its simulations log the measuring devices only, and it
+  left them so: a simulation after it kept no history of any other port,
+  vector ports included now that `set_save_simulation_result` sets them
+  (`history()` raised "History is not populated").
+- A fused state-space block builds its matrices unit by unit, each unit its
+  own rows, and holds its bilinear terms (`E`, `F`) as their entries
+  (`discrete_statespace_system.SparseBilinear`): a few thousand of the tens
+  of millions a dense `(n_c, m, n, n)` / `(n_c, m, n, m)` tensor has for a
+  storey-wide block, where padding every term to the joint shape ran an
+  8 GB GPU out of memory and broadcasting the inputs over the dense terms
+  took most of a step.  The entries' indices and the fixed order they are
+  summed in (`bilinear_plan`) are built once from the block's structure, so
+  a step gives the same bits on every call and in a CUDA graph, and also
+  when the first assembly runs inside a `torch.func` transform.  The new
+  `fused_sparse` setting (`T4B_FUSED_SPARSE`, on) switches back to dense
+  terms; the matrices are the same.  The per-step CUDA graphs' adjoint
+  gives an integer constant a zero cotangent instead of asking for its
+  gradient.
+- `zoh_expm="aug"` (`T4B_ZOH_EXPM=aug`): a transform-mode state-space step
+  reads the next state off ONE matrix exponential of size `n + 1`,
+  `exp([[A T, B T u], [0, 0]])`, instead of the `phi1` pair and an `n x m`
+  product: about half the products, and the most accurate of the three on
+  stiff blocks (about 1e-15 of the state against `torch.matrix_exp`, `phi1`
+  about 1e-6).  The default stays `phi1`.
+- The `small_matmul_max` setting (`T4B_SMALL_MATMUL_MAX`, 16): while
+  `torch.compile` traces, a matrix exponential up to that size is written
+  with broadcast products for Inductor to fuse, a larger one with `bmm` (a
+  159-state fused block's step took 26 ms with the broadcast products, 5.8
+  with `bmm`).  Every exponential used the broadcast products before.  A
+  setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
+- `fusable` (default `True`), a structural setting of the Systems with
+  fusable ports (`WallSystem`, `BuildingSpaceSystem`,
+  `BuildingSpaceThermalSystem`, `SpaceHeaterSystem`): an instance set
+  `fusable=False` joins no fused block and couples to its neighbours one
+  step late, as with fusion off (walls between rooms that should not fuse
+  the rooms into one block).  Batched copies share it: walls that fuse and
+  walls that do not batch apart.  The partition (`split_worlds`) sees no
+  fusable arc through such an instance.
+- A fused block keeps a member's vector input fed partly inside the block
+  and partly from outside (a room's `wallHeatGain` from a fused wall toward
+  a hallway and from an unfused wall toward another room): the inside slots
+  are substituted exactly, and only the outside slots enter the port's
+  column.  Such a cluster could not be simulated before (the fused block
+  had no input of that name).
+- The rooms' internal gains and openings: `BuildingSpaceThermalSystem` and
+  `BuildingSpaceSystem` take `plugLoad` [W] (electrical plug load, all of
+  it heat in the air; 0 while unwired) and `exchangeHeatGain` [W] (fusable,
+  one slot per connected opening to another zone: a port apart from
+  `wallHeatGain`, so the walls between rooms can stay out of fusion while
+  the openings fuse).  Both enter the air node as `heatGain` does.
+- `BuildingSpaceThermalSystem.eta_inf` (0 to 1, default 0): the share of
+  the indoor-outdoor temperature difference the space's outdoor air has
+  recovered before it enters.  The infiltration and an outdoor make-up
+  stream arrive at `T_o + eta_inf (T_i - T_o)`; a make-up stream from a
+  neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
+  touched.  A composite's children see the composite's wiring
+  (`System.input_defaults()` of a room's `thermal` is the room's).
+- `split_worlds` provides a lagged hub instead of copying it: a component
+  with free parameters whose outputs the other worlds read are all lagged
+  (`LAGGED_OUTPUT_PORTS`, a building's hidden interior node) and that one
+  world needs only through measured or exogenous signals lives in that
+  world (its home), and every other world reads it through a cut
+  connection: `Model.add_connection(..., detached=True)`, the value without
+  its gradient (`Worlds.provided` lists them as `(output port, reader,
+  input port)`).  Both engines pass the value on detached and still
+  evaluate the sender every step, the partition reads the signal as data,
+  and the estimator's structure walk (`FunctionalModel.index_coupling`) lets
+  no parameter through, so the readers' blocks stay apart from the home's.
+  A batched meta holds one flag per pair (its instances may read the sender
+  in different ways), and a saved model keeps the flag.
+- `System.JOINS_WORLDS` (default `False`): a component whose class sets it
+  (an opening between the zones of one room) joins the worlds of the scored
+  spaces it reads or feeds into one world (`Worlds.merged`) instead of being
+  copied with a measurement of the other side.
+- `split_worlds` records what it did on the model it splits:
+  `Model.worlds` (a batched model reads its source's).  A multiple-shooting
+  fit of such a model starts every component and its copies in other worlds
+  (`Worlds.copies`) from one box and one start, without an option: they are
+  one state.  Per state entry their window-start variables get the union of
+  their boxes and their mean start.
+- On such a model, a parameter and its copies (`Worlds.shared`) are one
+  parameter: `Estimator.estimate` puts each copy into its original's entry
+  with its start and bounds (a private original becomes one shared entry
+  with its copies, a shared group takes them in; `parameters="auto"`, which
+  lists the copies, too).  A copy listed with another start or bounds, a
+  copy listed without its original or in a shared group without it, and
+  an original or a copy that is an instance of a batched component raise a
+  `ValueError` that names them and says what to list.  The worlds that
+  share a copied parameter are one block of the estimator's structure
+  (`FunctionalModel.index_coupling`).
 
 ### Migration notes
 

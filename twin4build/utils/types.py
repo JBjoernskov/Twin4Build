@@ -320,6 +320,9 @@ class Vector:
         if values is not None:
             values = _expand_to_4D_tensor(values, self.n_s, self.n_c)
 
+        # A port keeps a history when it logs or holds data; any other keeps
+        # its current value only (nothing reads its history).
+        keeps = self._is_leaf or self._log_history or values is not None
         # We return early if this vector has requires_grad=True.
         # This is the case when used in the optimizer.
         # Here we dont want to reinitialize the history as the torch.optim.Optimizer changes this in-place.
@@ -327,9 +330,10 @@ class Vector:
             self._initialized
             and self._requires_reinittialization == False
             and force == False
+            and (self._is_leaf or keeps == (self._history is not None))
         ):
             # For non-leaf vectors, reset history for new simulation run
-            if not self._is_leaf:
+            if not self._is_leaf and self._history is not None:
                 self._history.zero_()
                 self._history_is_populated = False
             return
@@ -355,7 +359,7 @@ class Vector:
             if self._do_normalization:
                 self._normalized_history = self.normalize()
 
-        else:
+        elif keeps:
             # Pre-allocate history with time-first layout for efficient writes
             # Internal shape: (n_t, n_s, n_c, n_v)
             self._history = torch.zeros(
@@ -366,6 +370,10 @@ class Vector:
                 dtype=float_dtype(),
                 requires_grad=False,
             )
+            self._history_is_populated = False
+        else:
+            # Neither logs nor holds data: the current value only.
+            self._history = None
             self._history_is_populated = False
 
         self._initialized = True
@@ -783,6 +791,9 @@ class Scalar:
         if values is not None:
             values = _expand_to_3D_scalar_tensor(values, self.n_s, self.n_c)
 
+        # A port keeps a history when it logs or holds data (see
+        # Vector.initialize).
+        keeps = self._is_leaf or self._log_history or values is not None
         # We return early if this scalar has requires_grad=True.
         # This is the case when used in the optimizer.
         # Here we dont want to reinitialize the history as the torch.optim.Optimizer changes this in-place.
@@ -790,9 +801,10 @@ class Scalar:
             self._initialized
             and self._requires_reinittialization == False
             and force == False
+            and (self._is_leaf or keeps == (self._history is not None))
         ):
             # For non-leaf scalars, reset history for new simulation run
-            if not self._is_leaf:
+            if not self._is_leaf and self._history is not None:
                 self._history.zero_()
                 self._history_is_populated = False
             return
@@ -815,12 +827,16 @@ class Scalar:
             if self._do_normalization:
                 self._normalized_history = self.normalize()
 
-        else:
+        elif keeps:
             # Pre-allocate history with time-first layout for efficient writes
             # Internal shape: (n_t, n_s, n_c)
             self._history = torch.zeros(
                 self.n_t, self.n_s, self.n_c, dtype=float_dtype(), requires_grad=False
             )
+            self._history_is_populated = False
+        else:
+            # Neither logs nor holds data: the current value only.
+            self._history = None
             self._history_is_populated = False
 
         self._initialized = True
