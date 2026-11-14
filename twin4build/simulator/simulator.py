@@ -344,6 +344,13 @@ class Simulator:
                 output = connected_component.output[connection.output_port]
                 try:
                     value = output.get(i_v=output_port_index, i_c=output_component_index)
+                    cut = connection_point.detached_of(connection)
+                    if cut is True:
+                        value = value.detach()  # read without its gradient (split_worlds' cut)
+                    elif cut is not False:
+                        # per pair (a batched meta): the pairs are the axis after the simulations
+                        mask = cut.to(value.device).reshape((1, -1) + (1,) * (value.dim() - 2))
+                        value = torch.where(mask, value.detach(), value)
                     if (
                         isinstance(input_port_index, torch.Tensor)
                         and input_port_index.ndim > 0

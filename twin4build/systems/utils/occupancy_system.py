@@ -19,6 +19,7 @@ from twin4build.systems.saref4syst.declarations import Child, Input, Output, Par
 from twin4build.systems.utils.discrete_statespace_system import (
     _discretize_onestep,
     effective_matrices,
+    matmul,
 )
 from twin4build.systems.utils.smooth_saturation import clamp
 from twin4build.utils.data_loaders.sources import as_source
@@ -330,8 +331,8 @@ class OccupancySystem(core.System):
         )
         # bilinear_onestep's x_next, with the occupancy slot zeroed out.
         x = C_prev.unsqueeze(-1)
-        x_no_occ = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (
-            Bd @ u_r.unsqueeze(-1)
+        x_no_occ = matmul(Ad, x.unsqueeze(-1)).squeeze(-1) + matmul(
+            Bd, u_r.unsqueeze(-1)
         ).squeeze(-1)
         return (C_now.unsqueeze(-1) - x_no_occ).squeeze(-1) / Bd[
             ..., 0, OCCUPANCY_SLOT_ACTIVE

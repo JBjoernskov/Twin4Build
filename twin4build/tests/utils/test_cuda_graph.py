@@ -223,5 +223,155 @@ class TestCudaGraphWrappers(unittest.TestCase):
             self.assertEqual(cuda_graph.LAST_PHASE, "capture:record")
 
 
+class TestReplayParityBound(unittest.TestCase):
+    """A replay may differ from the eager run by what reordered sums differ
+    by, ``c * n * u * scale``, and by nothing like a wrong capture's error."""
+
+    @staticmethod
+    def _values(dtype, numel, seed=0):
+        generator = torch.Generator().manual_seed(seed)
+        values = torch.rand(numel, generator=generator, dtype=torch.float64)
+        return ((values * 2 - 1) * 300).to(dtype)
+
+    @staticmethod
+    def _allowed(eager, n):
+        u = torch.finfo(eager.dtype).eps / 2
+        return cuda_graph.REPLAY_BOUND_FACTOR * n * u * float(eager.abs().max())
+
+    @staticmethod
+    def _up(values, steps=1):
+        """``values`` moved ``steps`` ulp up."""
+        for _ in range(steps):
+            values = torch.nextafter(values, torch.full_like(values, float("inf")))
+        return values
+
+    def test_largest_dimension_of_the_tensors(self):
+        tensors = (torch.zeros(3, 40), [torch.zeros(5), torch.tensor(2.0)], None)
+        self.assertEqual(cuda_graph.largest_dimension(*tensors), 40)
+        self.assertEqual(cuda_graph.largest_dimension(torch.tensor(1.0)), 1)
+        self.assertEqual(cuda_graph.largest_dimension(), 1)
+
+    def test_float32_differences_of_a_few_ulp_pass(self):
+        eager = self._values(torch.float32, 1700)
+        replay = eager.clone()
+        index = torch.arange(11) * 150
+        replay[index] = self._up(replay[index], steps=3)
+        n = cuda_graph.largest_dimension(eager)
+        observed, allowed = cuda_graph.check_replay_matches_eager(
+            replay, eager, n=n, label="test"
+        )
+        self.assertGreater(observed, 0)
+        self.assertLess(observed, 1e-3 * allowed)
+        self.assertAlmostEqual(allowed, self._allowed(eager, 1700))
+        # the fixed tolerance the bound replaces rejects them
+        with self.assertRaises(AssertionError):
+            torch.testing.assert_close(replay, eager, rtol=1e-9, atol=1e-11)
+
+    def test_float32_sums_in_another_order_pass(self):
+        generator = torch.Generator().manual_seed(1)
+        terms = torch.randn(64, 500, generator=generator, dtype=torch.float32)
+        forward = torch.zeros(64, dtype=torch.float32)
+        backward = torch.zeros(64, dtype=torch.float32)
+        for j in range(500):
+            forward += terms[:, j]
+            backward += terms[:, -1 - j]
+        self.assertFalse(torch.equal(forward, backward))
+        cuda_graph.check_replay_matches_eager(
+            backward, forward, n=cuda_graph.largest_dimension(terms), label="test"
+        )
+
+    def test_a_wrong_capture_fails(self):
+        eager = self._values(torch.float32, 200)
+        n = cuda_graph.largest_dimension(eager)
+        wrong = {"1e-3 relative": eager * (1 + 1e-3), "stale": eager.roll(1)}
+        for name, replay in wrong.items():
+            with self.subTest(name), self.assertRaises(AssertionError):
+                cuda_graph.check_replay_matches_eager(replay, eager, n=n, label="test")
+
+    def test_float64_stays_strict(self):
+        eager = self._values(torch.float64, 200)
+        n = cuda_graph.largest_dimension(eager)
+        self.assertLess(self._allowed(eager, n) / float(eager.abs().max()), 2e-13)
+        replay = eager.clone()
+        replay[:5] = self._up(replay[:5])
+        cuda_graph.check_replay_matches_eager(replay, eager, n=n, label="test")
+        with self.assertRaises(AssertionError):
+            cuda_graph.check_replay_matches_eager(
+                eager * (1 + 2e-7), eager, n=n, label="test"
+            )
+
+    def test_near_zero_outputs_pass_at_the_tensor_scale(self):
+        eager = torch.full((100,), 1.0e3, dtype=torch.float32)
+        eager[::10] = 1.0e-6
+        replay = eager.clone()
+        # two ulp of the tensor's largest value, a hundred times these
+        # elements' own size: what a sum of terms of size 1e3 that cancels
+        # to near zero may give in another order
+        ulp = float(self._up(torch.tensor(1.0e3)) - 1.0e3)
+        replay[::10] += 2 * ulp
+        observed, allowed = cuda_graph.check_replay_matches_eager(
+            replay, eager, n=100, label="test"
+        )
+        self.assertGreater(observed, 100 * 1.0e-6)
+        self.assertLess(observed, allowed)
+
+    def test_the_message_names_the_observed_and_the_allowed_difference(self):
+        eager = self._values(torch.float32, 200)
+        replay = eager.clone()
+        replay[17] += 0.5
+        observed = float((replay - eager).abs().max())
+        allowed = self._allowed(eager, 200)
+        with self.assertRaises(AssertionError) as info:
+            cuda_graph.check_replay_matches_eager(
+                (replay,), (eager,), n=200, label="step: CUDA graph replay"
+            )
+        message = str(info.exception)
+        self.assertIn("step: CUDA graph replay differs from eager output", message)
+        self.assertIn(f"max |replay - eager| = {observed:.3e}", message)
+        self.assertIn(f"allowed {allowed:.3e}", message)
+        self.assertIn("1 of 200 elements over", message)
+
+    def test_a_pass_logs_the_observed_and_the_allowed_difference(self):
+        eager = self._values(torch.float32, 200)
+        replay = eager.clone()
+        replay[3] = self._up(replay[3])
+        with mock.patch.object(cuda_graph.LOGGER, "debug") as debug:
+            observed, allowed = cuda_graph.check_replay_matches_eager(
+                replay, eager, n=200, label="test"
+            )
+        debug.assert_called_once()
+        args = debug.call_args.args
+        self.assertIn("test", args)
+        self.assertIn(observed, args)
+        self.assertIn(allowed, args)
+        self.assertGreater(observed, 0)
+
+    def test_nans_infinities_and_exact_outputs(self):
+        eager = self._values(torch.float64, 50)
+        eager[4] = float("nan")
+        eager[5] = float("inf")
+        counts = torch.arange(6)
+        cuda_graph.check_replay_matches_eager(
+            (eager.clone(), counts.clone()), (eager, counts), n=50, label="test"
+        )
+        moved_nan = eager.clone()
+        moved_nan[4], moved_nan[6] = 1.0, float("nan")
+        lost_inf = eager.clone()
+        lost_inf[5] = 1.0e300
+        other_count = counts.clone()
+        other_count[2] += 1
+        wrong = {
+            "NaN moved": (moved_nan, counts),
+            "infinity lost": (lost_inf, counts),
+            "integer differs": (eager, other_count),
+            "output missing": (eager,),
+        }
+        for name, replay in wrong.items():
+            with self.subTest(name), self.assertRaises(AssertionError):
+                cuda_graph.check_replay_matches_eager(
+                    replay, (eager, counts), n=50, label="test"
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -107,6 +107,11 @@ class WallSystem(core.System):
     integrated jointly with zero lag and is unconditionally stable for any
     positive :math:`R`, :math:`C` and step size.
 
+    A wall set ``fusable=False`` is kept out of fusion and couples to its
+    zones one step late: walls between rooms then leave every room its own
+    block (a room's ``wallHeatGain`` may take slots from fused and unfused
+    walls alike).
+
     Computational Features
     ----------------------
 
@@ -134,6 +139,10 @@ class WallSystem(core.System):
     """
 
     T_init = Setting(20.0, doc="Initial wall temperature [degC]")
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the zones it is connected to; False: couple to them one step late",
+    )
     temperatureA = Input(doc="Side-A temperature [degC]")
     temperatureB = Input(doc="Side-B temperature [degC]")
     heatFlowRateA = Output(doc="Heat flow into side A [W]")

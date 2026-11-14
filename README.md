@@ -179,8 +179,9 @@ Optional extras:
 
 ```bat
 pip install twin4build[database]     # PostgreSQL connectivity
+pip install twin4build[notebooks]    # jupyter and nbformat, to run the example notebooks
 pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
-pip install twin4build[all]          # Dev + database (not CUDA torch)
+pip install twin4build[all]          # Dev + notebooks + database (not CUDA torch)
 ```
 
 ### GPU / CUDA installation
@@ -226,13 +227,9 @@ Graph drawing uses [Graphviz](https://graphviz.org) through [pygraphviz](https:/
 
 The bundled Graphviz is licensed under EPL-2.0 (see pygraphviz's `LICENSE.graphviz`). Matplotlib's optional LaTeX text rendering is a separate system binary and is not included. Skip drawing with `draw_semantic_model=False` / `draw_simulation_model=False`.
 
-### psycopg2 binaries (Linux-only)
-You might need to install the tools to build psycopg2 from source, here is an example for Ubuntu:
+### PostgreSQL (optional)
 
-```bat
-sudo apt-get update
-sudo apt-get install -y python3-dev libpq-dev build-essential
-```
+Reading series from a PostgreSQL database (`DatabaseSource`, `load_from_database`) needs psycopg2, which `pip install twin4build[database]` installs as the prebuilt `psycopg2-binary` wheel: no compiler or `libpq-dev` is needed. Without it everything else works, and reading a database raises an `ImportError` that names the extra.
 
 ## Publications
 <a id="1">[1]</a> 

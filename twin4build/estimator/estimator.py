@@ -596,6 +596,14 @@ class Estimator:
                   not tied to it: it starts free, like the first period,
                   while the periods within each span stay tied.
 
+                On a model split into worlds
+                (``twin4build.model.partition.split_worlds``, which records
+                them as ``model.worlds``), a component and its copies in
+                other worlds (``Worlds.copies``) are one state: their
+                variables start every period from one box and one start
+                (per state entry, the union of their boxes and their mean
+                start).
+
                 The result carries the estimated states
                 (``estimated_initial_state_instances``) and the jumps at the
                 boundaries (``continuity_jumps_instances``,
@@ -740,6 +748,17 @@ class Estimator:
               directory and can be reloaded with
               :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
             - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
+            - The fit's simulations log the measuring devices only; every port's
+              logging (``set_save_simulation_result``) is put back as it was when
+              ``estimate`` returns or raises, so a simulation after it logs what
+              one before it did.
+            - On a model split into worlds (``split_worlds``, ``model.worlds``),
+              a parameter and its copies in other worlds (``Worlds.shared``)
+              are one parameter: list the original, and its copies join its
+              entry with its start and bounds (a private original becomes one
+              shared entry with them; a shared group takes them in).  A copy
+              listed with another start or bounds, or without its original,
+              raises ``ValueError``.
 
         Examples:
             >>> # New list format (recommended)
@@ -768,6 +787,29 @@ class Estimator:
             ...     options={"maxiter": 500}
             ... )
         """
+        # The fit logs its measuring devices only (set below); every port's
+        # flag is put back when it returns or raises.
+        flags = _port_logging(self.simulator.model)
+        try:
+            return self._estimate(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                parameters=parameters,
+                measurements=measurements,
+                n_warmup=n_warmup,
+                method=method,
+                options=options,
+                schedule=schedule,
+                **kwargs,
+            )
+        finally:
+            _restore_port_logging(flags)
+
+    def _estimate(
+        self, start_time, end_time, step_size, parameters, measurements, n_warmup, method, options, schedule, **kwargs
+    ) -> EstimationResult:
+        """:meth:`estimate`'s body; :meth:`estimate` puts the ports' logging back."""
         # Reject removed kwargs with clear migration messages.
         for legacy_key in (
             "startTime",
@@ -920,6 +962,9 @@ class Estimator:
                 "[(component, attr, x0, lb, ub), ...] "
                 "or [(components, attr, x0, lb, ub, 'private'|'shared'), ...]."
             )
+        # On a model split into worlds, a parameter and its copies are one
+        # parameter: the copies join their original's entry.
+        parameters = _join_world_copies(parameters, self.simulator.model)
 
         # Process parameters in new list format
         self._process_parameters_list(parameters)
@@ -4039,6 +4084,138 @@ def _check_contiguous_periods(start_time, end_time) -> None:
                 f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods, or "
                 "continuity_gaps=True to leave the tie out across a gap"
             )
+
+
+def _same_value(a, b) -> bool:
+    """Two starts or bounds of parameter entries are the same: both ``None``, or equal numbers."""
+    if a is None or b is None:
+        return a is None and b is None
+    return np.array_equal(np.asarray(a, dtype=float), np.asarray(b, dtype=float))
+
+
+def _join_world_copies(entries: list, model) -> list:
+    """The validated parameter entries with every world copy in its original's entry (``Worlds.shared``).
+
+    :func:`~twin4build.model.partition.split_worlds` evaluates a component once per world that needs it: the copies
+    of a free parameter it lists (``model.worlds.shared``) are one parameter, so the fit gives them one value.  A copy
+    joins its original's entry with its start and bounds: an original listed as private becomes, with its copies,
+    one shared entry (the other components of a private entry stay private); an original in a shared group brings
+    its copies into that group.  A copy that is not listed joins; one listed with the original's start and bounds
+    (``parameters="auto"`` lists every copy so) joins.  Raises ``ValueError``, naming the components, for a copy
+    listed with another start or bounds, a copy listed without its original, a copy in a shared group without its
+    original, a member listed twice, and an original or a copy that is an instance of a batched component (one
+    parameter's values would have to be mapped onto fewer: give the unbatched model).
+    """
+    worlds = getattr(model, "worlds", None)
+    if worlds is None or not worlds.shared:
+        return entries
+    entries = [[list(components), attr, x0, lb, ub, kind, list(member_index)]
+               for components, attr, x0, lb, ub, kind, member_index in entries]
+    source = getattr(model, "_batch_source_model", None)
+    batched = getattr(source, "_component_to_meta", None) or {}
+
+    def where(cid, attr):
+        found = [(i, k) for i, entry in enumerate(entries) if entry[1] == attr
+                 for k, comp in enumerate(entry[0]) if comp is not None and comp.id == cid]
+        if len(found) > 1:
+            raise ValueError(f"{cid}.{attr} is listed {len(found)} times in parameters: list it once")
+        if not found and cid in batched:
+            meta, _ = batched[cid]
+            if meta.id != cid and any(entry[1] == attr and any(c is meta for c in entry[0]) for entry in entries):
+                raise ValueError(
+                    f"{cid}.{attr} has copies in other worlds (split_worlds), but it is an instance of the batched "
+                    f"{meta.id}: one value for an original and its copies would map the batched parameter's values "
+                    "onto fewer. Estimate the unbatched model, where its copies join it."
+                )
+        return found[0] if found else None
+
+    n_joined = 0
+    for (cid, attr), members in worlds.shared.items():
+        copies = [copy_id for copy_id, _ in members[1:]]
+        at = where(cid, attr)
+        listed = {copy_id: where(copy_id, attr) for copy_id in copies}
+        if at is None:
+            named = [copy_id for copy_id, spot in listed.items() if spot is not None]
+            if named:
+                raise ValueError(
+                    f"{', '.join(f'{c}.{attr}' for c in named)} copies {cid}.{attr} into other worlds "
+                    f"(split_worlds), but {cid}.{attr} is not in parameters: list {cid}.{attr} instead (its copies "
+                    "join it)."
+                )
+            continue  # not estimated
+        i, k = at
+        entry = entries[i]
+        original = entry[0][k]
+        joining = []
+        for copy_id, spot in listed.items():
+            if spot is None:
+                copy = model.components.get(copy_id)
+                if copy is None:
+                    raise ValueError(
+                        f"{copy_id}.{attr} copies {cid}.{attr} into another world (split_worlds), but it is an "
+                        "instance of a batched component: one value for an original and its copies would map the "
+                        "batched parameter's values onto fewer. Estimate the unbatched model, where its copies join it."
+                    )
+                joining.append(copy)
+                continue
+            j, m = spot
+            other = entries[j]
+            if j == i and entry[5] == "shared":
+                continue  # already in its original's group
+            if other[5] == "shared":
+                raise ValueError(
+                    f"{copy_id}.{attr} is in a shared group without {cid}.{attr}, which it copies into another "
+                    f"world (split_worlds): put it in {cid}.{attr}'s group, or leave it out (it joins its original)."
+                )
+            if j != i and not all(_same_value(a, b) for a, b in zip(other[2:5], entry[2:5])):
+                raise ValueError(
+                    f"{copy_id}.{attr} copies {cid}.{attr} into another world (split_worlds): one parameter, fitted "
+                    f"as one, but {copy_id}.{attr} is listed with x0={other[2]!r}, bounds ({other[3]!r}, "
+                    f"{other[4]!r}) and {cid}.{attr} with x0={entry[2]!r}, bounds ({entry[3]!r}, {entry[4]!r}): give "
+                    f"them the same start and bounds, or leave {copy_id}.{attr} out (it joins its original)."
+                )
+            joining.append(other[0][m])
+            other[0][m] = None  # leaves its entry for its original's
+        if not joining:
+            continue
+        n_joined += len(joining)
+        if entry[5] == "shared":
+            entry[0].extend(joining)
+            entry[6].extend([entry[6][k]] * len(joining))
+        else:
+            entry[0][k] = None
+            entries.append([[original, *joining], attr, entry[2], entry[3], entry[4], "shared",
+                            [None] * (1 + len(joining))])
+    out = []
+    for components, attr, x0, lb, ub, kind, member_index in entries:
+        kept = [(c, mi) for c, mi in zip(components, member_index) if c is not None]
+        if kept:
+            out.append(([c for c, _ in kept], attr, x0, lb, ub, kind, [mi for _, mi in kept]))
+    if n_joined:
+        LOGGER.config("worlds: %d copies of parameters join their originals' entries (split_worlds)", n_joined)
+    return out
+
+
+def _port_logging(model) -> list:
+    """The ``log_history`` flag of every port ``set_save_simulation_result``
+    sets, as ``(component, "input" | "output", port name, flag)``; none
+    without a model (``estimate`` then raises on its arguments as before)."""
+    flags = []
+    components = getattr(model, "components", None) or {}
+    for component in components.values():
+        for side in ("input", "output"):
+            for name, port in getattr(component, side).items():
+                if isinstance(port, (tps.Scalar, tps.Vector)):
+                    flags.append((component, side, name, port.log_history))
+    return flags
+
+
+def _restore_port_logging(flags) -> None:
+    """Set every port of :func:`_port_logging`'s list back to its flag."""
+    for component, side, name, flag in flags:
+        port = getattr(component, side).get(name)
+        if isinstance(port, (tps.Scalar, tps.Vector)):
+            port.log_history = flag
 
 
 class EstimationResult(ResultDict):
