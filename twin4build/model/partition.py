@@ -141,7 +141,10 @@ def _is_data_sensor(comp, allowed: Optional[Set[str]]) -> bool:
 def _is_fusable(e: "Edge") -> bool:
     """Whether the edge is a fusable arc: its output port in the sender's
     ``FUSABLE_OUTPUT_PORTS`` and its input port in the receiver's
-    ``FUSABLE_INPUT_PORTS`` (see ``FusedStateSpaceSystem``)."""
+    ``FUSABLE_INPUT_PORTS`` (see ``FusedStateSpaceSystem``), neither of them
+    set ``fusable=False``."""
+    if not getattr(e.sender, "fusable", True) or not getattr(e.receiver, "fusable", True):
+        return False
     outs = getattr(type(e.sender), "FUSABLE_OUTPUT_PORTS", frozenset())
     ins = getattr(type(e.receiver), "FUSABLE_INPUT_PORTS", frozenset())
     return e.output_port in outs and e.input_port in ins

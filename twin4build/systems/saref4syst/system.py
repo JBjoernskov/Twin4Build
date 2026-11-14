@@ -1476,8 +1476,11 @@ class System(nn.Module, metaclass=SystemMeta):
     #: state-space block (see ``FusedStateSpaceSystem``).  A connection is
     #: *fusable* -- eliminable exactly at the matrix level -- iff its output
     #: port is in the sender's ``FUSABLE_OUTPUT_PORTS`` and its input port is
-    #: in the receiver's ``FUSABLE_INPUT_PORTS``.  Empty on the base class:
-    #: components opt in explicitly.
+    #: in the receiver's ``FUSABLE_INPUT_PORTS``, and neither instance sets
+    #: ``fusable=False`` (the structural setting every class with fusable
+    #: ports declares: such an instance fuses with nothing and couples to its
+    #: neighbours one step late, as without fusion).  Empty on the base
+    #: class: components opt in explicitly.
     FUSABLE_INPUT_PORTS: frozenset = frozenset()
     FUSABLE_OUTPUT_PORTS: frozenset = frozenset()
 

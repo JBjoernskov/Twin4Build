@@ -2282,8 +2282,10 @@ class SimulationModel:
         """
         Enable or disable history logging of simulation results for components.
 
-        Sets the log_history flag on every scalar input and output port of the
-        selected components.
+        Sets the log_history flag on every input and output port (scalar and
+        vector) of the selected components.  A port that does not log keeps
+        no time history from its next initialize on (only its current value),
+        unless it holds data.
 
         Args:
             flag (bool): Whether to save (log) simulation results.
@@ -2295,18 +2297,18 @@ class SimulationModel:
             assert isinstance(c, list), "The c must be a list."
             for component in c:
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
         else:
             for component in self._components.values():
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
 
     def _reset(self) -> None:
@@ -2375,8 +2377,8 @@ class SimulationModel:
 
         A connection is fusable iff its output port is in the sender's
         ``FUSABLE_OUTPUT_PORTS`` and its input port is in the receiver's
-        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair).
-        The fused block replaces its members in the execution order -- the
+        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair), and
+        neither instance sets ``fusable=False``.  The fused block replaces its members in the execution order -- the
         internal arcs are eliminated exactly into one monolithic state-space
         model, so the coupling has no co-simulation lag and is unconditionally
         stable.  The members stay in ``self._components`` (parameter
@@ -2458,13 +2460,15 @@ class SimulationModel:
     def _fusable_arcs(self):
         """Every connection whose output port is in the sender's
         ``FUSABLE_OUTPUT_PORTS`` and whose input port is in the receiver's
-        ``FUSABLE_INPUT_PORTS``, as ``(sender, output port, receiver, input
-        port, pairs)`` with ``pairs`` the connection's ``(s_ic, r_ic, out_v,
-        in_v)`` instance and slot pairs (one pair for a singleton scalar link)."""
+        ``FUSABLE_INPUT_PORTS``, neither of them set ``fusable=False``, as
+        ``(sender, output port, receiver, input port, pairs)`` with ``pairs``
+        the connection's ``(s_ic, r_ic, out_v, in_v)`` instance and slot pairs
+        (one pair for a singleton scalar link)."""
         arcs = []
         for comp in self._components.values():
             outs = getattr(type(comp), "FUSABLE_OUTPUT_PORTS", frozenset())
-            if not outs:
+            # an instance can opt out: coupled to its neighbours one step late instead
+            if not outs or not getattr(comp, "fusable", True):
                 continue
             for conn in comp.connected_through:
                 if conn.output_port not in outs:
@@ -2472,7 +2476,7 @@ class SimulationModel:
                 for cp in conn.connects_system_at:
                     recv = cp.connection_point_of
                     ins = getattr(type(recv), "FUSABLE_INPUT_PORTS", frozenset())
-                    if cp.input_port not in ins:
+                    if cp.input_port not in ins or not getattr(recv, "fusable", True):
                         continue
                     if self._components.get(recv.id) is not recv:
                         continue

@@ -10,7 +10,7 @@ from twin4build.systems.building_space.building_space_thermal_system import (
     BOUNDARY_WALL_GONE,
     BuildingSpaceThermalSystem,
 )
-from twin4build.systems.saref4syst.declarations import Child, Input, Output
+from twin4build.systems.saref4syst.declarations import Child, Input, Output, Setting
 from twin4build.utils.rgetattr import rgetattr
 
 
@@ -99,6 +99,10 @@ class BuildingSpaceSystem(core.System):
     DEPRECATED_KEYWORDS = {"thermal_kwargs": "thermal", "mass_kwargs": "mass"}
     REMOVED_ATTRIBUTES = {"boundaryTemperature": BOUNDARY_WALL_GONE}
 
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the walls, heaters and openings it is connected to; False: couple to them one step late",
+    )
     outdoorTemperature = Input(doc="Outdoor temperature [degC]")
     supplyAirFlowRate = Input(size="wired", doc="Supply air flow of each branch into the room [kg/s]")
     exhaustAirFlowRate = Input(size="wired", doc="Exhaust air flow of each branch out of the room [kg/s]")
