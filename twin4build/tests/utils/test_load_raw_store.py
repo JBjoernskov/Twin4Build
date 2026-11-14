@@ -39,6 +39,7 @@ def day(d, h=0):
     return datetime.datetime(2024, 3, d, h, tzinfo=CET)
 
 
+@unittest.skipIf(load_mod.psycopg2 is None, "needs psycopg2 (the [database] extra)")
 class TestRawStore(unittest.TestCase):
     def setUp(self):
         index = pd.date_range("2024-02-20", "2024-04-10", freq="300s", tz=UTC, inclusive="left")

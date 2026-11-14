@@ -758,6 +758,7 @@ class SimulationModel:
         components: Dict[str, core.System] = None,
         output_component_index: [int, torch.Tensor] = None,
         input_component_index: [int, torch.Tensor] = None,
+        detached=False,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -776,6 +777,10 @@ class SimulationModel:
                 slots adds them to the same connection.
             components (Optional[Dict[str, core.System]]): Component dictionary to operate on.
                 Defaults to the model's own component dictionary.
+            detached: ``True``: the receiver reads the value without its gradient (no parameter upstream
+                of the sender reaches the receiver through this connection; the sender is still evaluated
+                every step).  On a batched meta, one flag per pair.  ``split_worlds`` cuts a provided
+                component's connections to the other worlds' readers so.
 
         Raises:
             AssertionError: If property names are invalid for the components.
@@ -845,6 +850,12 @@ class SimulationModel:
                 # once per branch.  One Connection carries all of them as
                 # tensor indices (the Vector -> Vector form the engines
                 # already route); anything else is a genuine duplicate.
+                existing = receiver_component_connection_point.detached_of(sender_obj_connection)
+                if not (existing is True and detached is True) and not (existing is False and not detached):
+                    raise ValueError(
+                        f"{message} A connection read without its gradient (detached) on some slots and with it "
+                        "on others is given in one call, with one flag per pair."
+                    )
                 self._merge_vector_connection(
                     sender_component,
                     receiver_component,
@@ -912,6 +923,8 @@ class SimulationModel:
             receiver_component_connection_point.set_input_component_index(
                 sender_obj_connection, input_component_index
             )
+        if detached is not False and detached is not None:
+            receiver_component_connection_point.set_detached(sender_obj_connection, detached)
 
         if components == self._components:
             sender_component_uri = self._semantic_model.T4B.__getitem__(
@@ -2282,8 +2295,10 @@ class SimulationModel:
         """
         Enable or disable history logging of simulation results for components.
 
-        Sets the log_history flag on every scalar input and output port of the
-        selected components.
+        Sets the log_history flag on every input and output port (scalar and
+        vector) of the selected components.  A port that does not log keeps
+        no time history from its next initialize on (only its current value),
+        unless it holds data.
 
         Args:
             flag (bool): Whether to save (log) simulation results.
@@ -2295,18 +2310,18 @@ class SimulationModel:
             assert isinstance(c, list), "The c must be a list."
             for component in c:
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
         else:
             for component in self._components.values():
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
 
     def _reset(self) -> None:
@@ -2375,8 +2390,8 @@ class SimulationModel:
 
         A connection is fusable iff its output port is in the sender's
         ``FUSABLE_OUTPUT_PORTS`` and its input port is in the receiver's
-        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair).
-        The fused block replaces its members in the execution order -- the
+        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair), and
+        neither instance sets ``fusable=False``.  The fused block replaces its members in the execution order -- the
         internal arcs are eliminated exactly into one monolithic state-space
         model, so the coupling has no co-simulation lag and is unconditionally
         stable.  The members stay in ``self._components`` (parameter
@@ -2458,13 +2473,15 @@ class SimulationModel:
     def _fusable_arcs(self):
         """Every connection whose output port is in the sender's
         ``FUSABLE_OUTPUT_PORTS`` and whose input port is in the receiver's
-        ``FUSABLE_INPUT_PORTS``, as ``(sender, output port, receiver, input
-        port, pairs)`` with ``pairs`` the connection's ``(s_ic, r_ic, out_v,
-        in_v)`` instance and slot pairs (one pair for a singleton scalar link)."""
+        ``FUSABLE_INPUT_PORTS``, neither of them set ``fusable=False``, as
+        ``(sender, output port, receiver, input port, pairs)`` with ``pairs``
+        the connection's ``(s_ic, r_ic, out_v, in_v)`` instance and slot pairs
+        (one pair for a singleton scalar link)."""
         arcs = []
         for comp in self._components.values():
             outs = getattr(type(comp), "FUSABLE_OUTPUT_PORTS", frozenset())
-            if not outs:
+            # an instance can opt out: coupled to its neighbours one step late instead
+            if not outs or not getattr(comp, "fusable", True):
                 continue
             for conn in comp.connected_through:
                 if conn.output_port not in outs:
@@ -2472,10 +2489,12 @@ class SimulationModel:
                 for cp in conn.connects_system_at:
                     recv = cp.connection_point_of
                     ins = getattr(type(recv), "FUSABLE_INPUT_PORTS", frozenset())
-                    if cp.input_port not in ins:
+                    if cp.input_port not in ins or not getattr(recv, "fusable", True):
                         continue
                     if self._components.get(recv.id) is not recv:
                         continue
+                    if cp.detached_of(conn) is not False:
+                        continue  # read without its gradient (split_worlds' cut): never inside a fused block
                     arcs.append((comp, conn.output_port, recv, cp.input_port, slot_pairs(cp, conn)))
         return arcs
 
@@ -3815,6 +3834,15 @@ class SimulationModel:
                     for conn, idx in connection_point.output_port_index.items()
                 },
             }
+            detached = {
+                str(hash(conn)): (True if flag is True else [bool(v) for v in flag.tolist()])
+                for conn in connection_point.connects_system_through
+                for flag in (connection_point.detached_of(conn),)
+                if flag is not False
+            }
+            if detached:
+                # what split_worlds cut: read again as it was (only written where there is one)
+                literals_to_update["detached"] = detached
 
             for key, value in literals_to_update.items():
                 if isinstance(value, (dict, list)):
@@ -4327,6 +4355,14 @@ class SimulationModel:
                     conn_key = connection.get_short_name()
                     input_port_index = None
                     output_port_index = None
+                    detached = False
+                    if core.namespace.T4B.detached in predicate_object_pairs_connection_point:
+                        raw = predicate_object_pairs_connection_point[core.namespace.T4B.detached][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict):
+                            detached = parsed.get(conn_key, False)
+                            if isinstance(detached, list):
+                                detached = torch.tensor(detached, dtype=torch.bool)
                     if (
                         core.namespace.T4B.input_port_index
                         in predicate_object_pairs_connection_point
@@ -4364,6 +4400,7 @@ class SimulationModel:
                             "input_port": input_port,
                             "input_port_index": input_port_index,
                             "output_port_index": output_port_index,
+                            "detached": detached,
                         }
                     )
 
@@ -4397,6 +4434,7 @@ class SimulationModel:
                 input_port=data["input_port"],
                 input_port_index=data["input_port_index"],
                 output_port_index=data["output_port_index"],
+                detached=data.get("detached", False),
             )
 
         # Step 4: Forget the instances that were cached while the file was
