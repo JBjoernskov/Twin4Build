@@ -683,11 +683,28 @@ class FunctionalSimulationSession:
             self.replay_count += 1
         return RolloutResult(states.clone(), outputs.clone())
 
+    def _outputs_feeding_logged_inputs(self):
+        """``id`` of every output port wired into an input port that logs:
+        its history is routed into that input's (:meth:`materialize_inputs`),
+        so it is published even when the output itself does not log (a
+        sensor's ``measuredValue`` reads its producer's)."""
+        out = set()
+        for component in self.model.components.values():
+            for connection_point in component.connects_at:
+                if not component.input[connection_point.input_port].log_history:
+                    continue
+                for connection in connection_point.connects_system_through:
+                    out.add(id(connection.connects_system.output[connection.output_port]))
+        return out
+
     def materialize_outputs(self, result):
         """Write the rollout output tape into public output ports."""
+        feeding = self._outputs_feeding_logged_inputs()
         for index, (component, output_name) in enumerate(self.outputs):
             port = component.output[output_name]
             source = self.functional_model.meas_sources[index]
+            if port._history is None and not port.log_history and id(port) not in feeding:
+                continue  # keeps no history and feeds none: its value is the tape's
             if source[0] == "external":
                 if port._history is None:
                     raise RuntimeError(
@@ -708,6 +725,8 @@ class FunctionalSimulationSession:
                 # publishes the producer's previous value (object mode's order)
                 first = initial.reshape(1, self.n_periods, *([1] * (values.dim() - 2))).expand(1, *values.shape[1:]).to(values.dtype)
                 values = torch.cat([first, values[:-1]], dim=0)
+            if port._history is None:  # feeds a logged input, keeps no history of its own
+                port._history = torch.zeros(values.shape, dtype=values.dtype, device=values.device)
             port._history.copy_(values)
             port._history_is_populated = True
             port._tensor.copy_(values[-1])

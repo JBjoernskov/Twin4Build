@@ -795,6 +795,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
   so an asynchronous CUDA fault is attributed to the phase that launched it.
+- A CUDA graph's first replay is checked against the eager run within the
+  bound on reordered floating-point sums, `8 * n * u * scale` element-wise
+  (`n` the widest dimension of the function's tensors, `u` the dtype's unit
+  roundoff, `scale` the output tensor's largest magnitude), instead of a
+  fixed `rtol=1e-9, atol=1e-11`.  In float32 a replay that sums in another
+  order (atomic accumulation) differs by a few ulp, which the fixed
+  tolerance rejected at random; float64 stays strict (about `1e-13`
+  relative at `n = 100`).  The error names the difference observed and the
+  one allowed; a passing check logs both at debug level.  The per-step
+  graphs (`cuda_graph_scope="step"`) and `CudaGraphCallable` both use it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's
@@ -842,6 +852,72 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - The constrained optimization matrix compares AD SLSQP and trust-constr.
   Pareto scaling uses one shared broadcast valve schedule and reports exact
   decision/constraint dimensions plus convergence and comfort violations.
+- A port that does not log (`set_save_simulation_result(False)`) and holds
+  no data keeps its current value only: it allocates no time history at its
+  next `initialize`, scalar and vector ports alike, in object and functional
+  runs.  `set_save_simulation_result` now sets vector ports too (it set the
+  scalar ones only).  An estimation logs its measuring devices only, so the
+  histories of every other port no longer take memory; a functional run
+  still fills the history of an output wired into a logged input (a
+  sensor's `measuredValue`).  What is logged is unchanged, bit for bit.
+- `Estimator.estimate` puts every port's logging back as it was when it
+  returns or raises.  Its simulations log the measuring devices only, and it
+  left them so: a simulation after it kept no history of any other port,
+  vector ports included now that `set_save_simulation_result` sets them
+  (`history()` raised "History is not populated").
+- A fused state-space block builds its matrices unit by unit, each unit its
+  own rows, and holds its bilinear terms (`E`, `F`) as their entries
+  (`discrete_statespace_system.SparseBilinear`): a few thousand of the tens
+  of millions a dense `(n_c, m, n, n)` / `(n_c, m, n, m)` tensor has for a
+  storey-wide block, where padding every term to the joint shape ran an
+  8 GB GPU out of memory and broadcasting the inputs over the dense terms
+  took most of a step.  The entries' indices and the fixed order they are
+  summed in (`bilinear_plan`) are built once from the block's structure, so
+  a step gives the same bits on every call and in a CUDA graph, and also
+  when the first assembly runs inside a `torch.func` transform.  The new
+  `fused_sparse` setting (`T4B_FUSED_SPARSE`, on) switches back to dense
+  terms; the matrices are the same.  The per-step CUDA graphs' adjoint
+  gives an integer constant a zero cotangent instead of asking for its
+  gradient.
+- `zoh_expm="aug"` (`T4B_ZOH_EXPM=aug`): a transform-mode state-space step
+  reads the next state off ONE matrix exponential of size `n + 1`,
+  `exp([[A T, B T u], [0, 0]])`, instead of the `phi1` pair and an `n x m`
+  product: about half the products, and the most accurate of the three on
+  stiff blocks (about 1e-15 of the state against `torch.matrix_exp`, `phi1`
+  about 1e-6).  The default stays `phi1`.
+- The `small_matmul_max` setting (`T4B_SMALL_MATMUL_MAX`, 16): while
+  `torch.compile` traces, a matrix exponential up to that size is written
+  with broadcast products for Inductor to fuse, a larger one with `bmm` (a
+  159-state fused block's step took 26 ms with the broadcast products, 5.8
+  with `bmm`).  Every exponential used the broadcast products before.  A
+  setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
+- `fusable` (default `True`), a structural setting of the Systems with
+  fusable ports (`WallSystem`, `BuildingSpaceSystem`,
+  `BuildingSpaceThermalSystem`, `SpaceHeaterSystem`): an instance set
+  `fusable=False` joins no fused block and couples to its neighbours one
+  step late, as with fusion off (walls between rooms that should not fuse
+  the rooms into one block).  Batched copies share it: walls that fuse and
+  walls that do not batch apart.  The partition (`split_worlds`) sees no
+  fusable arc through such an instance.
+- A fused block keeps a member's vector input fed partly inside the block
+  and partly from outside (a room's `wallHeatGain` from a fused wall toward
+  a hallway and from an unfused wall toward another room): the inside slots
+  are substituted exactly, and only the outside slots enter the port's
+  column.  Such a cluster could not be simulated before (the fused block
+  had no input of that name).
+- The rooms' internal gains and openings: `BuildingSpaceThermalSystem` and
+  `BuildingSpaceSystem` take `plugLoad` [W] (electrical plug load, all of
+  it heat in the air; 0 while unwired) and `exchangeHeatGain` [W] (fusable,
+  one slot per connected opening to another zone: a port apart from
+  `wallHeatGain`, so the walls between rooms can stay out of fusion while
+  the openings fuse).  Both enter the air node as `heatGain` does.
+- `BuildingSpaceThermalSystem.eta_inf` (0 to 1, default 0): the share of
+  the indoor-outdoor temperature difference the space's outdoor air has
+  recovered before it enters.  The infiltration and an outdoor make-up
+  stream arrive at `T_o + eta_inf (T_i - T_o)`; a make-up stream from a
+  neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
+  touched.  A composite's children see the composite's wiring
+  (`System.input_defaults()` of a room's `thermal` is the room's).
 
 ### Migration notes
 
