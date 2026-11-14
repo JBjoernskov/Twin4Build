@@ -961,6 +961,52 @@ The following were not listed when they landed:
   159-state fused block's step took 26 ms with the broadcast products, 5.8
   with `bmm`).  Every exponential used the broadcast products before.  A
   setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
+- A compiled step's small products are written out: a product whose left
+  factor has at most `small_matmul_max` rows and columns (a small system's
+  next state and outputs, a fused block's rows) is a broadcast multiply and
+  a sum while `torch.compile` traces, as the exponential's own products are
+  (`discrete_statespace_system.matmul`).  As library calls they ended the
+  kernels around them: a float32 step of a building of a few hundred rooms
+  was about 11,600 kernel launches and 2,700 library calls, most of them
+  one-row products.  Eager code keeps the library's product.
+- The `combo_kernels` setting (`T4B_COMBO_KERNELS`, off): the step is
+  compiled with Inductor's combo kernels (independent kernels in one
+  launch).  With the small products written out, that step came to about
+  1,600 launches and 190 library calls, and a week's simulation took a
+  third of the time.  The compile is longer, and the option is experimental
+  in Inductor.
+- A functional step reads its parameters as pieces of one `torch.split` of
+  theta instead of one index per parameter.  Each index's backward was a
+  theta-sized vector of zeros, summed once per parameter per step: the
+  largest part of a fit's time on a model with many parameters (1,800
+  parameters among 225,000 entries, float32: the step's adjoint 52.9 ->
+  16.2 ms).
+- The matrix exponential of a transform-mode step: the degree-8 series by
+  Paterson-Stockmeyer (four products instead of eight; five instead of
+  sixteen for the `phi1` pair), the matrix balanced first (two Osborne
+  sweeps: a balance equation's matrix is badly scaled rather than stiff),
+  and the doublings from the new `expm_squarings` setting
+  (`T4B_EXPM_SQUARINGS`, 18 as before; each is a product per block per
+  step, three in a reverse-mode gradient).  A matrix beyond the series'
+  range comes out NaN instead of a wrong finite value.
+- `FunctionalModel.step(kind, compiled)` is the one transform-mode step, of
+  a kind (`scalar`, `windows`, `batched`, `rows`: which of the state, theta
+  and the exogenous row carry a batch dimension) and with one signature,
+  `step(y, theta, u, constants=None)`; the step properties are its names.
+  `derived_values` of a batch of parameter vectors derives per row, so the
+  rows and batched rollouts hoist the parameter-only work out of the step
+  as the windows and scalar rollouts did (once per rollout, not once per
+  step), and every derived tensor and value setting is on the step's
+  device.
+  Each compiled step has a code object of its own: Dynamo counts a
+  function's compiled variants per code object and fails beyond a limit, so
+  the steps of several models compile in one process.
+- The per-step graphs' adjoint returns the hoisted values' cotangents as
+  one vector: the sweep adds one tensor per step instead of one per hoisted
+  tensor.
+- `FunctionalModel.prepare_trace()` fills the state widths a traced step
+  reads, and asking for a compiled step calls it (a compile after
+  `initialize()` depended on an eager step having run in between).
 - `fusable` (default `True`), a structural setting of the Systems with
   fusable ports (`WallSystem`, `BuildingSpaceSystem`,
   `BuildingSpaceThermalSystem`, `SpaceHeaterSystem`): an instance set
