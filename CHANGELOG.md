@@ -661,6 +661,18 @@ Unused and untested; 2.0 drops them without a deprecation period.
   (`discrete_statespace_system.ZOH_EXPM` and `EXPM_CHECKPOINT`,
   `_functional.ROLLOUT_CHECKPOINT`, the translator's `_MATCH_DIAG_PATH` and
   `_MATCH_DIAG_PATTERN_FILTER`, `_cuda_graph.SYNC_PHASES_ENV`) are gone.
+- `Model.sim2sem_map` and `Model.sem2sim_map`: which semantic nodes each
+  component of the simulation model models, and the components that model
+  each semantic node.  On a translated model they are the translator's maps
+  (for the components still in the model); they used to be reachable only
+  through the translator and were lost when a model was serialized.
+  `Model.serialize()` now writes the link with the simulation model, one
+  `t4b:modelsSemanticNode` triple per component and semantic node, and a
+  model rebuilt with `load(filename=...)` answers with the same map: its
+  nodes are instances of the model's semantic model by URI, and know their
+  classes when that semantic model holds the graph the model was translated
+  from.  A blank node has no identity outside its graph and is not kept
+  across a serialize and load.
 
 ### Changed
 

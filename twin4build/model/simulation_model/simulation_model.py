@@ -3959,6 +3959,7 @@ class SimulationModel:
                     ?s ?p ?o .
                     FILTER (?p != rdf:type && 
                             ?p != rdfs:subClassOf &&
+                            ?p != t4b:modelsSemanticNode &&
                             ?p != s4syst:connectsSystem &&
                             ?p != s4syst:connectsSystemThrough &&
                             ?p != s4syst:connectsAt)
