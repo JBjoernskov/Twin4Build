@@ -3,12 +3,13 @@ import copy
 import datetime
 import warnings
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 # Third party imports
 import numpy as np
 import pandas as pd
 import torch
+from rdflib import BNode, URIRef
 
 from twin4build.utils.rgetattr import rgetattr
 from prettytable import PrettyTable
@@ -25,6 +26,10 @@ from twin4build.utils.graphviz_render import (
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.validate_period import validate_period
+
+#: In a serialized model: ``<component> t4b:modelsSemanticNode <node>`` for
+#: every semantic node the component models (:attr:`Model.sim2sem_map`).
+MODELS_SEMANTIC_NODE = core.namespace.T4B.modelsSemanticNode
 
 
 @autoreset_print
@@ -317,6 +322,75 @@ class Model:
     @property
     def semantic_model(self) -> "core.SemanticModel":
         return self._semantic_model
+
+    def _component_uri(self, component: "core.System") -> URIRef:
+        """The node of ``component`` in the simulation model's own graph."""
+        return self._simulation_model._semantic_model.T4B.__getitem__(component.id)
+
+    @property
+    def sim2sem_map(self) -> Dict["core.System", Set["core.SemanticObject"]]:
+        """Each component of the simulation model -> the semantic nodes it
+        models: the link the translation makes between the two halves of
+        the model.
+
+        On a model translated in this process these are the translator's
+        own (``Translator.sim2sem_map``), for the components still in the
+        model.  A model rebuilt from a serialized one
+        (``load(filename=...)``) gives the same link back, read from the
+        file: :meth:`serialize` writes it with the model.  Its nodes are
+        then instances of :attr:`semantic_model` by URI
+        (``SemanticModel.get_instance``); they answer for their classes
+        when that semantic model holds the graph the model was translated
+        from.  A blank node has no identity outside the graph it was read
+        from and is not kept across a serialize and load.
+
+        Empty for a model built by hand.
+        """
+        present = {id(c): c for c in self._simulation_model.components.values()}
+        translated = getattr(self._translator, "sim2sem_map", None)
+        if translated:
+            return {
+                component: set(nodes)
+                for component, nodes in translated.items()
+                if id(component) in present and nodes
+            }
+        by_uri = {str(self._component_uri(c)): c for c in present.values()}
+        graph = self._simulation_model._semantic_model.instance_graph
+        found: Dict["core.System", Set["core.SemanticObject"]] = {}
+        for subject, _, node in graph.triples((None, MODELS_SEMANTIC_NODE, None)):
+            component = by_uri.get(str(subject))
+            if component is not None:
+                found.setdefault(component, set()).add(
+                    self._semantic_model.get_instance(node)
+                )
+        return found
+
+    @property
+    def sem2sim_map(self) -> Dict["core.SemanticObject", Set["core.System"]]:
+        """Each semantic node that is modelled -> the components that model
+        it: :attr:`sim2sem_map` the other way round."""
+        found: Dict["core.SemanticObject", Set["core.System"]] = {}
+        for component, nodes in self.sim2sem_map.items():
+            for node in nodes:
+                found.setdefault(node, set()).add(component)
+        return found
+
+    def _write_translation_links(self) -> None:
+        """Put :attr:`sim2sem_map` into the simulation model's graph, so
+        that it is serialized with the model.  A model that was rebuilt from
+        a file has no translator: the links it was read with stay as they
+        are (a removed component's went with it)."""
+        translated = getattr(self._translator, "sim2sem_map", None)
+        if not translated:
+            return
+        graph = self._simulation_model._semantic_model.instance_graph
+        graph.remove((None, MODELS_SEMANTIC_NODE, None))
+        for component, nodes in self.sim2sem_map.items():
+            subject = self._component_uri(component)
+            for node in nodes:
+                uri = getattr(node, "uri", None)
+                if isinstance(uri, URIRef) and not isinstance(uri, BNode):
+                    graph.add((subject, MODELS_SEMANTIC_NODE, uri))
 
     @property
     def system_registry(self) -> SystemRegistry:
@@ -1184,12 +1258,18 @@ class Model:
         """
         Serialize both halves of the model.
 
+        The link between them (:attr:`sim2sem_map`) is written with the
+        simulation model, one ``t4b:modelsSemanticNode`` triple per
+        component and semantic node, so a model rebuilt from the file knows
+        which semantic nodes each of its components models.
+
         Returns:
             The path of the saved instance graph of the simulation model
             (:attr:`instance_graph_path`), the file ``load(filename=...)``
             rebuilds the model from.
         """
         self._semantic_model.serialize()
+        self._write_translation_links()
         return self._simulation_model.serialize()
 
     def visualize(self, **kwargs) -> None:
