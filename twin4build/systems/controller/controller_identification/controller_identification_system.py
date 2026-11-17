@@ -1169,7 +1169,15 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         measured actuator position, wired from the command's own data sensor
         (``rewire(mode="playback")``): its logged history is the answer,
         and a functional simulation records it in one shot instead of
-        stepping this controller once per time step."""
+        stepping this controller once per time step.
+
+        The command sensor's ``measuredValue`` is what the sensor reads, a
+        stepped output (ADR 0001, decision 6); with nothing wired to it, it
+        reads its recorded series, ``measuredData``, which the run start
+        fills.  That series is the history replayed, as the functional
+        engine follows a data sensor's ``measuredValue`` to it."""
+        from twin4build.systems.sensor.sensor_system import SensorSystem
+
         if not self.replays_data() or output_name != "inputSignal":
             return None
         links = []
@@ -1177,7 +1185,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             if point.input_port != "actuatorMeasured":
                 continue
             for connection in point.connects_system_through:
-                port = connection.connects_system.output[connection.output_port]
+                source = connection.connects_system
+                port = source.output[connection.output_port]
+                if (
+                    isinstance(source, SensorSystem)
+                    and connection.output_port == "measuredValue"
+                    and "measuredValue" in source.output_defaults()
+                ):
+                    port = source.output["measuredData"]
                 history = port._history
                 if history is None or not (port._history_is_populated or port.is_leaf):
                     return None
