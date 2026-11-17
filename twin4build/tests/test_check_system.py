@@ -142,6 +142,20 @@ def examples(directory):
             {"inletAirTemperature": 10.0, "outletAirTemperatureSetpoint": 18.0, "airFlowRate": 1.0},
         ),
         tb.DamperSystem: (tb.DamperSystem(id="damper"), {"damperPosition": 0.4}),
+        tb.DiscreteStatespaceSystem: (
+            # two states, two inputs, three outputs, both bilinear terms
+            tb.DiscreteStatespaceSystem(
+                id="state_space",
+                A=[[-1e-4, 5e-5], [2e-5, -8e-5]],
+                B=[[1e-4, 0.0], [5e-5, 2e-5]],
+                C=[[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]],
+                D=[[0.0, 0.0], [0.0, 0.0], [0.0, 1.0]],
+                E=[[[-1e-5, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, -2e-6]]],
+                F=[[[0.0, 0.0], [0.0, 0.0]], [[1e-6, 0.0], [0.0, 0.0]]],
+                x0=[20.0, 18.0],
+            ),
+            {"u": [5.0, 2.0]},
+        ),
         tb.FanCoilUnitSystem: (
             tb.FanCoilUnitSystem(id="fcu"),
             {"supplyWaterTemperature": 50.0, "valvePosition": 0.5, "airFlowRate": 0.2, "inletAirTemperature": 20.0},
@@ -210,7 +224,6 @@ WITHOUT_EXAMPLE = {
     "FusedStateSpaceSystem": "the loader builds it from the state-space Systems it fuses; never written by a user",
     # Written the old way, with their own do_step and initialize; each gets an
     # example when it is converted (see STEPPING_THEMSELVES).
-    "DiscreteStatespaceSystem": "not converted yet",
     "ControllerIdentificationSystem": "converted in 2.1",
     "ControllerIdentificationPISystem": "converted in 2.1, with its parent",
 }
@@ -222,7 +235,6 @@ STEPPING_THEMSELVES = {
     "ControllerIdentificationSystem": "exempt for 2.0, converted in 2.1: it builds its candidate controllers and gates from its wiring at the run start, one set per actuator, which the declarations do not express",
     "FusedStateSpaceSystem": "exempt: the loader builds it from the state-space Systems it fuses and steps it "
     "as one block; nobody writes one",
-    "DiscreteStatespaceSystem": "converted to derive + forward once the numerics branches land",
 }
 
 

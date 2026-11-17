@@ -96,6 +96,29 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
         retrieved_state = self.system.get_state()
         self.assertAlmostEqual(retrieved_state[0, 0, 0].item(), 1.5, places=5)
 
+    def test_the_matrices_are_settings_that_size_the_ports(self):
+        """2.0: declared; the matrices are nested tuples (saved as JSON, compared by value when copies batch)."""
+        system = DiscreteStatespaceSystem(id="sized", A=[[-1e-4, 0.0], [0.0, -2e-4]], B=[[1e-4], [0.0]],
+                                          C=[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], x0=[20.0, 18.0])
+        self.assertEqual(system.A, ((-1e-4, 0.0), (0.0, -2e-4)))
+        self.assertEqual(system.declared_size("output", "y"), 3)
+        self.assertEqual(system.declared_size("state", "x"), 2)
+
+    def test_a_removed_keyword_names_its_replacement(self):
+        with self.assertRaisesRegex(TypeError, "the run's step size"):
+            DiscreteStatespaceSystem(id="stepped", A=[[0.9]], B=[[0.1]], C=[[1.0]], step_size=3600)
+
+    def test_an_input_of_another_width_raises_at_the_run_start(self):
+        model = twin4build.Model(id="test_ss_width")
+        system = DiscreteStatespaceSystem(id="ss_width", A=[[-1e-4]], B=[[1e-4, 1e-4]], C=[[1.0]])
+        source = twin4build.ScheduleSystem(id="ss_width_u", weekday_ruleset={"ruleset_default_value": 1.0})
+        model.add_connection(source, system, "scheduleValue", "u", input_port_index=0)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        start = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+        with self.assertRaisesRegex(ValueError, "u is 1 wide, but B has 2 columns"):
+            twin4build.Simulator(model).simulate(start_time=start, end_time=start + datetime.timedelta(hours=1),
+                                                step_size=600, show_progress_bar=False)
+
 
 class TestPiecewiseLinearSystem(unittest.TestCase):
     def setUp(self):
