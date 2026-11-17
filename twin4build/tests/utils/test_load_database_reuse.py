@@ -16,7 +16,11 @@ from unittest import mock
 
 # Third party imports
 import pandas as pd
-import psycopg2
+
+try:  # the [database] extra
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
 # Local application imports
 import twin4build
@@ -89,6 +93,7 @@ class FakeCursor:
         return self.all
 
 
+@unittest.skipIf(psycopg2 is None, "needs psycopg2 (the [database] extra)")
 class TestLoadDatabaseReuse(unittest.TestCase):
     def setUp(self):
         index = pd.date_range("2024-03-01", "2024-04-01", freq="600s", tz=UTC, inclusive="left")
@@ -164,6 +169,17 @@ class TestLoadDatabaseReuse(unittest.TestCase):
         with self.assertRaises(psycopg2.OperationalError):
             self.load("P1", datetime.datetime(2024, 3, 4, tzinfo=UTC), datetime.datetime(2024, 3, 5, tzinfo=UTC), cache=False)
         self.assertEqual(len(self.server.connections), 1)  # no retry on a connection that was just opened
+
+
+class TestWithoutTheDatabaseExtra(unittest.TestCase):
+    """psycopg2 is the [database] extra: without it, everything but reading a database works, and reading one
+    says what to install."""
+
+    def test_reading_a_database_names_the_extra(self):
+        load_mod._CONNECTIONS.clear()
+        with mock.patch.object(load_mod, "psycopg2", None):
+            with self.assertRaisesRegex(ImportError, r"pip install 'twin4build\[database\]'"):
+                load_mod._connection("host=localhost dbname=points")
 
 
 if __name__ == "__main__":

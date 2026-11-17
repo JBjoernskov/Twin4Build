@@ -10,12 +10,17 @@ import re
 # Third party imports
 import numpy as np
 import pandas as pd
-import psycopg2
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dateutil.parser import parse
 from dateutil.tz import gettz
-from psycopg2.extras import RealDictCursor
+
+try:  # the [database] extra: only reading a PostgreSQL database needs it
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
 
 # Local application imports
 from twin4build.utils.mkdir_in_root import mkdir_in_root
@@ -561,6 +566,11 @@ def _connection(conn_string):
     conn = _CONNECTIONS.get(key)
     if conn is not None and not conn.closed:
         return key, conn, True
+    if psycopg2 is None:
+        raise ImportError(
+            "Reading from a PostgreSQL database needs psycopg2, which twin4build installs with its database "
+            "extra: pip install 'twin4build[database]' (or pip install psycopg2-binary)"
+        )
     conn = psycopg2.connect(conn_string)
     conn.autocommit = True  # reads only: no transaction stays open between loads
     _CONNECTIONS[key] = conn
@@ -913,7 +923,8 @@ def load_from_database(
           )
 
     Note:
-       The function requires psycopg2 to be installed for PostgreSQL connectivity.
+       The function requires psycopg2, the database extra
+       (``pip install 'twin4build[database]'``); without it, it raises ImportError.
        One connection per process and server is kept open and reused by later loads;
        a kept connection the server has closed meanwhile is opened again.
        Database schema should have columns: time, id, value (configurable).

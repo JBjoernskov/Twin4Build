@@ -175,7 +175,7 @@ prettytable==3.18.0
 prometheus-client==0.26.0
 prompt-toolkit==3.0.53
 psutil==7.2.2 ; python_full_version < '3.11' or (sys_platform != 'cygwin' and sys_platform != 'emscripten')
-psycopg2==2.9.13
+psycopg2-binary==2.9.13
 ptyprocess==0.7.0 ; os_name != 'nt' or (sys_platform != 'emscripten' and sys_platform != 'win32')
 pure-eval==0.2.4
 pyarrow==25.0.1 ; python_full_version < '3.11'

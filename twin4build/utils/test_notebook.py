@@ -6,20 +6,32 @@ import sys
 import tempfile
 import traceback
 
-# Third party imports
-import nbformat
-from nbconvert.preprocessors import ExecutePreprocessor
-from nbconvert.preprocessors.execute import CellExecutionError
+
+def notebook_tools():
+    """``(nbformat, ExecutePreprocessor, CellExecutionError)``, from the
+    notebooks extra; without it, an ImportError that names the extra."""
+    try:
+        import nbformat
+        from nbconvert.preprocessors import ExecutePreprocessor
+        from nbconvert.preprocessors.execute import CellExecutionError
+    except ImportError as error:
+        raise ImportError(
+            "Running a notebook needs jupyter and nbformat, the notebooks extra: "
+            "pip install 'twin4build[notebooks]'"
+        ) from error
+    return nbformat, ExecutePreprocessor, CellExecutionError
 
 
 def test_notebook(notebook_path):
     """
     Execute a notebook and return True if it runs without errors, False otherwise.
-    Prints detailed error information if an exception occurs.
+    Prints detailed error information if an exception occurs.  Needs the
+    notebooks extra (``pip install 'twin4build[notebooks]'``).
 
     :param notebook_path: str, path to the notebook file
     :return: bool, True if notebook executes without errors, False otherwise
     """
+    nbformat, ExecutePreprocessor, CellExecutionError = notebook_tools()
     # Create a temporary kernel spec using the current Python executable so
     # the notebook runs in the same environment as the test runner.
     tmpdir = tempfile.mkdtemp(prefix="t4b_kernel_")
