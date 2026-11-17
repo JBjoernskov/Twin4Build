@@ -24,10 +24,10 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:OperationTemperatureMax') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:operationTemperatureMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:OperationTemperatureMin') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:operationTemperatureMin') }}
 
   # Relationships
   - template: |-

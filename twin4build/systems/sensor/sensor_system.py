@@ -1,803 +1,296 @@
+"""A measurement point: a sensor's recorded series and what it reads in the
+model (ADR 0001, decision 6)."""
+
 # Standard library imports
 import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 # Third party imports
+import numpy as np
 import pandas as pd
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
-
-
-def get_signature_pattern_input():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="signature_pattern_input",
-    )
-    sp.add_modeled_node(node0)
-    return sp
-
-
-def get_flow_signature_pattern_after_coil_air_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.Coil))  # waterside
-    node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
-    node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
-    node5 = Node(cls=core.namespace.S4SYST.System)  # before waterside
-    node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
-    node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
-    node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="flow_signature_pattern_after_coil_air_side"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node5, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.FSO.returnsFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node7, object=node3, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node8, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node3, object=node0, predicate=core.namespace.FSO.suppliesFluidTo
-        )
-    )
-    sp.add_input("measuredValue", node4, ("outletAirTemperature"))
-    sp.add_modeled_node(node0)
-    return sp
-
-
-def get_flow_signature_pattern_after_coil_air_side_simple():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
-    node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="flow_signature_pattern_after_coil_air_side_simple",
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node3, object=node0, predicate=core.namespace.FSO.suppliesFluidTo
-        )
-    )
-    sp.add_input("measuredValue", node4, ("outletAirTemperature"))
-    sp.add_modeled_node(node0)
-    return sp
-
-
-def get_flow_signature_pattern_after_coil_water_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.Coil))  # waterside
-    node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
-    node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
-    node5 = Node(cls=core.namespace.S4SYST.System)  # before waterside
-    node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
-    node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
-    node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="flow_signature_pattern_after_coil_water_side",
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node5, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.FSO.returnsFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node7, object=node3, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node8, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node2, object=node0, predicate=core.namespace.FSO.returnsFluidTo
-        )
-    )
-    sp.add_input("measuredValue", node4, ("outletWaterTemperature"))
-    sp.add_modeled_node(node0)
-    return sp
-
-
-def get_flow_signature_pattern_before_coil_water_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.Coil))  # waterside
-    node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
-    node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
-    node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
-    node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
-    node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="flow_signature_pattern_before_coil_water_side",
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    # sp.add_triple(Exact(subject=node5, object=node2, predicate="suppliesFluidTo"))
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.FSO.returnsFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node7, object=node3, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node8, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node2, object=node0, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_input("measuredValue", node4, ("inletWaterTemperature"))
-    sp.add_modeled_node(node0)
-    return sp
+from twin4build.utils.callable_ref import as_callable
+from twin4build.utils.data_loaders.sources import DatabaseSource, DataFrameSource, as_source
+from twin4build.utils.logger import autoreset_print
 
 
 # Properties of spaces
-def get_space_temperature_signature_pattern():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature))
-    node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="space_temperature_signature_pattern"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-    sp.add_input("measuredValue", node2, ("indoorTemperature"))
-    sp.add_modeled_node(node0)
-    return sp
 
 
 # Properties of spaces
-def get_space_co2_signature_pattern():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Co2,))
-    node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace,))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="space_co2_signature_pattern"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-    sp.add_input("measuredValue", node2, ("indoorCO2"))
-    sp.add_modeled_node(node0)
-    return sp
 
 
-def get_position_signature_pattern():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.OpeningPosition,))
-    node2 = Node(
-        cls=(
-            core.namespace.S4BLDG.Valve,
-            core.namespace.S4BLDG.Damper,
-        )
-    )
-    node3 = Node(cls=(core.namespace.S4BLDG.Controller))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="position_signature_pattern"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node1, predicate=core.namespace.SAREF.controls)
-    )
-    sp.add_input("measuredValue", node3, ("inputSignal", "inputSignal"))
-    sp.add_modeled_node(node0)
-    return sp
+# -----------------------------------------------------------------------------
+# Why the zone / AHU air-temperature sensors are expressed as *two* patterns each
+# -----------------------------------------------------------------------------
+#
+# We want the virtual sensor (connected to ``BuildingSpace.indoorTemperature`` /
+# ``AHU.supplyAirTemperature``) to appear in the simulation model whether or not
+# the BRICK graph actually carries a Brick-reference timeseries UUID.  The first,
+# natural encoding was a single pattern with the external-ref / timeseries-id
+# triples wrapped in :class:`OptionalRule`.  That encoding is **broken** for a
+# very specific reason:
+#
+# 1. OptionalRule triples are eligible to be matched on a *disconnected* subgraph,
+#    separate from the (sensor, vav, room) subgraph.
+# 2. In the translator's ``_try_merge_with_incomplete`` disconnected-merge
+#    branch, any sub-group whose modeled_node slots are *not* filled is
+#    classified as a "shared resource" and placed in ``groups_to_preserve``
+#    — i.e. kept for reuse across every subsequent match of the pattern.
+# 3. Because the original pattern only declared ``sensor`` as a modeled node,
+#    the ``(externalref, timeseries_id)`` sub-group is *always* a shared
+#    resource.  The translator therefore picks *one* arbitrary
+#    ``(blank_node, uuid_literal)`` pair (the first one it enumerates) and
+#    rebinds *every* Zone_Air_Temperature_Sensor in the building to it.
+#
+# The fix is to split the single pattern into two mutually-exclusive variants:
+#
+# * ``*_with_ref_pattern`` — requires the external-ref chain via :class:`StepRule`
+#   triples and additionally declares ``externalref`` as a modeled node so the
+#   (externalref, timeseries_id) sub-group can never be re-used.  Models
+#   ``{sensor, externalref}`` (two modeled nodes).
+# * ``*_virtual_pattern``  — omits the external-ref chain entirely.  Models
+#   ``{sensor}`` (one modeled node).
+#
+# The translator's MILP objective is
+# ``component_selection_cost - semantic_instance_benefit * n_modeled_nodes``,
+# and the mutual-exclusion constraint is keyed on each ``modeled_node`` /
+# ``sm_node`` pair.  Consequently:
+#
+# * If a sensor has a Brick timeseries reference, *both* patterns match on the
+#   same ``sensor`` modeled node, but the with-ref variant has two modeled
+#   nodes (cheaper in the minimisation) and wins.
+# * If a sensor has *no* Brick timeseries reference, only the virtual variant
+#   matches and is selected.
+#
+# Net effect: the UUID is preserved when available and the virtual sensor is
+# preserved when no UUID exists — without reintroducing the shared-resource
+# cross-binding bug.
+# -----------------------------------------------------------------------------
 
 
-def get_temperature_before_air_to_air_supply_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_before_air_to_air_supply_side"
-    )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node2, object=node0, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("primaryTemperatureIn"))
-    sp.add_modeled_node(node0)
-
-    return sp
+def _standard_deviation(value) -> Optional[float]:
+    """A measurement's standard deviation: positive, or ``None``."""
+    if value is None:
+        return None
+    value = float(value)
+    if not value > 0:
+        raise ValueError(f"SensorSystem: measurement_sd must be positive, got {value}.")
+    return value
 
 
-def get_temperature_before_air_to_air_exhaust_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_before_air_to_air_exhaust_side"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node0, object=node2, predicate=core.namespace.FSO.returnsFluidTo
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("secondaryTemperatureIn"))
-    sp.add_modeled_node(node0)
-
-    return sp
+_READER = "give the sensor a reader: source=CsvSource(path, date_column=..., value_column=...), DataFrameSource(df) or DatabaseSource(uuid)"
 
 
-def get_temperature_after_air_to_air_supply_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_after_air_to_air_supply_side"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(
-            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("primaryTemperatureOut"))
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
-def get_temperature_after_air_to_air_exhaust_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_after_air_to_air_exhaust_side"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.FSO.returnsFluidTo)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("secondaryTemperatureOut"))
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
+@autoreset_print
 class SensorSystem(core.System):
-    """A system representing a physical or virtual sensor in the building.
+    """A measurement point: what a sensor recorded, and what it reads in the
+    model (ADR 0001, decision 6).
 
-    This class implements sensor functionality, supporting both physical sensors
-    (reading from time series data) and virtual sensors (computing values from
-    other inputs). It integrates with TimeSeriesInputSystem for data handling.
+    ::
+
+        tb.SensorSystem(id="room_temperature", source=CsvSource("room.csv", value_column=2))
+
+    Two outputs.  ``measuredData`` is the recorded series, read once at run
+    start from ``source`` (:meth:`series`).  ``measuredValue`` is what the
+    sensor reads: the value wired to its input, or its recorded series while
+    nothing is wired (``measuredValue = Input(default=measuredData)``).  A
+    sensor that measures a model output is wired; the estimator scores its
+    ``measuredValue`` against ``measuredData``.  A sensor that drives the
+    model is not.  A System that needs the measurement itself connects to
+    ``measuredData``, so it never closes a loop through the model.
 
     Args:
-        filename: Path to sensor readings file.
-            Defaults to None.
-        df: DataFrame containing readings.
-            Defaults to None.
-        useSpreadsheet: Whether to use a spreadsheet for input.
-            Defaults to False.
-        useDatabase: Whether to use a database for input.
-            Defaults to False.
-        **kwargs: Additional keyword arguments passed to parent class.
+        source: The reader of the recorded series:
+            :class:`~twin4build.utils.data_loaders.sources.CsvSource`,
+            :class:`~twin4build.utils.data_loaders.sources.DataFrameSource` or
+            :class:`~twin4build.utils.data_loaders.sources.DatabaseSource`,
+            with its reading options (resampling, gap limit, fill).  A string
+            is a database point's id.  ``None``: the sensor has no data (and
+            must then be wired).
+        uuid: The id of the point the sensor stands for, named in
+            measurement results; without a ``source`` it is the database point
+            the sensor reads.
+        transformation: Applied to every value read (a unit conversion); a
+            saved model holds its ``module:qualname``.
+        allow_missing: Whether a step without a reading is an unscored sample
+            rather than an error.  ``None`` (default): yes for a sensor that
+            measures a model output, no for one that drives the model, which
+            gives its reader a ``fill`` instead.
+        scoring_mask: Which samples an estimation scores, see
+            :attr:`scoring_mask`.
+        measurement_sd: The standard deviation the sensor is scored with, in
+            the unit of its readings; used by
+            :meth:`~twin4build.estimator.estimator.Estimator.estimate` for an
+            entry of ``measurements`` that names the sensor without one.
 
-    Note:
-        A sensor must either have connections to other systems (virtual sensor) or
-        have data input through filename/df (physical sensor).
+    After a run, :attr:`time_series_input` holds the reading: its ``values``,
+    the per-period series ``df`` as read and the ``filled`` steps.
     """
 
-    sp = [
-        get_temperature_before_air_to_air_supply_side(),
-        get_temperature_before_air_to_air_exhaust_side(),
-        get_temperature_after_air_to_air_supply_side(),
-        get_temperature_after_air_to_air_exhaust_side(),
-        get_signature_pattern_input(),
-        get_flow_signature_pattern_after_coil_air_side(),
-        get_flow_signature_pattern_after_coil_water_side(),
-        get_flow_signature_pattern_before_coil_water_side(),
-        get_space_temperature_signature_pattern(),
-        get_space_co2_signature_pattern(),
-        get_position_signature_pattern(),
-    ]
+    #: The 1.x keywords and what replaced them.
+    REMOVED_ATTRIBUTES = {
+        **{name: _READER for name in ("filename", "datecolumn", "valuecolumn", "use_spreadsheet", "use_database", "use_df")},
+        "df": "give the sensor a reader, source=DataFrameSource(df), or call set_series(series)",
+        "dbconfig": "give the sensor a reader, source=DatabaseSource(uuid, dbconfig), or call set_dbconfig(dbconfig)",
+        **{
+            name: "give the reader its reading options, CsvSource(..., resample_method=..., dt_limit=..., fill=...)"
+            for name in ("resample_method", "dt_limit", "fill")
+        },
+    }
 
-    def __init__(
-        self,
-        filename: Optional[str] = None,
-        df: Optional[pd.DataFrame] = None,
-        uuid: Optional[str] = None,
-        name: Optional[str] = None,
-        dbconfig: Optional[Dict[str, Any]] = None,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
-        **kwargs,
-    ) -> None:
-        """Initialize the sensor system.
+    #: The name 1.x saved the transformation under.
+    DEPRECATED_KEYWORDS = {"transformation_ref": "transformation"}
 
-        Args:
-            filename: Path to sensor readings file.
-                Defaults to None.
-            df: DataFrame containing readings.
-                Defaults to None.
-            useSpreadsheet: Whether to use a spreadsheet for input.
-                Defaults to False.
-            useDatabase: Whether to use a database for input.
-                Defaults to False.
-            **kwargs: Additional keyword arguments passed to parent class.
-
-        Note:
-            Either filename/df must be provided for physical sensors, or
-            the sensor must have connections defined for virtual sensors.
-        """
-        assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
-        super().__init__(**kwargs)
-
-        # Define inputs and outputs as private variables
-        self._input = {"measuredValue": tps.Scalar()}
-        self._output = {
-            "measuredValue": tps.Scalar(0)
-        }  # TODO: Not necessary to be a leaf scalar, if the sensor has inputs. Need to implement check in initialize()
-
-        # Store attributes as private variables
-        self._useSpreadsheet = useSpreadsheet
-        self._useDatabase = useDatabase
-        self._filename = filename
-        self._df = df
-        self._datecolumn = 0
-        self._valuecolumn = 1
-        self._uuid = uuid
-        self._name = name
-        self._dbconfig = dbconfig
-        self._is_leaf = None
-        self._physicalSystem = None
-
-        self._config = {
-            "parameters": ["useSpreadsheet", "useDatabase"],
-            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
-            "database": ["uuid", "name", "dbconfig"],
-        }
+    source = Setting(None, convert=as_source, doc="The reader of the recorded series")
+    uuid = Setting(None, doc="The id of the point the sensor stands for")
+    transformation = Setting(None, convert=as_callable, doc="Applied to every value read")
+    allow_missing = Setting(None, doc="Whether a step without a reading is an unscored sample")
+    scoring_mask = Setting(None, save=False, doc="Which samples an estimation scores")
+    measurement_sd = Setting(None, convert=_standard_deviation, save=False, doc="The standard deviation it is scored with")
+    measuredData = Output(doc="The recorded series")
+    measuredValue = Input(default=measuredData, doc="The value the sensor reads; unwired, its recorded series")
+    measuredValue = Output(doc="What the sensor reads")
 
     @property
-    def config(self):
-        return self._config
+    def reader(self):
+        """The reader the recorded series comes from: ``source``, or the
+        database point ``uuid`` names; ``None`` for a sensor without data."""
+        if self.source is not None:
+            return self.source
+        if self.uuid is not None:
+            return DatabaseSource(self.uuid)
+        return None
 
     @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the sensor system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "measuredValue": Measured value input for virtual sensors
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the sensor system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "measuredValue": Measured value output [units depend on sensor type]
-        """
-        return self._output
-
-    @property
-    def filename(self) -> Optional[str]:
-        """
-        Get the path to sensor readings file.
-        """
-        return self._filename
-
-    @filename.setter
-    def filename(self, value: Optional[str]) -> None:
-        """
-        Set the path to sensor readings file.
-        """
-        self._filename = value
-
-    @property
-    def df(self) -> Optional[pd.DataFrame]:
-        """
-        Get the direct DataFrame input of sensor readings.
-        """
-        return self._df
-
-    @df.setter
-    def df(self, value: Optional[pd.DataFrame]) -> None:
-        """
-        Set the direct DataFrame input of sensor readings.
-        """
-        self._df = value
-
-    @property
-    def datecolumn(self) -> int:
-        """
-        Get the column index for datetime values.
-        """
-        return self._datecolumn
-
-    @datecolumn.setter
-    def datecolumn(self, value: int) -> None:
-        """
-        Set the column index for datetime values.
-        """
-        self._datecolumn = value
-
-    @property
-    def valuecolumn(self) -> int:
-        """
-        Get the column index for sensor readings.
-        """
-        return self._valuecolumn
-
-    @valuecolumn.setter
-    def valuecolumn(self, value: int) -> None:
-        """
-        Set the column index for sensor readings.
-        """
-        self._valuecolumn = value
+    def has_data(self) -> bool:
+        """Whether the sensor holds a recorded series (``measuredData``)."""
+        return self.reader is not None
 
     @property
     def is_leaf(self) -> bool:
-        """
-        Get whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        return self._is_leaf
-
-    @is_leaf.setter
-    def is_leaf(self, value: bool) -> None:
-        """
-        Set whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        self._is_leaf = value
+        """Whether nothing is wired to the sensor's input: it then reads its
+        recorded series (True), otherwise the value wired to it (False)."""
+        return len(self.connects_at) == 0
 
     @property
-    def physicalSystem(self) -> Optional[TimeSeriesInputSystem]:
-        """
-        Get the data handling system for physical sensors.
-        """
-        return self._physicalSystem
+    def time_series_input(self) -> Optional[TimeSeriesInputSystem]:
+        """The reading of the last run start (``values``, ``df``,
+        ``filled``); ``None`` before it, and for a sensor without data."""
+        return self.__dict__.get("_reading")
 
-    @physicalSystem.setter
-    def physicalSystem(self, value: Optional[TimeSeriesInputSystem]) -> None:
-        """
-        Set the data handling system for physical sensors.
-        """
-        self._physicalSystem = value
-
-    @property
-    def useSpreadsheet(self) -> bool:
-        """
-        Get whether to use a spreadsheet for input.
-        """
-        return self._useSpreadsheet
-
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value: bool) -> None:
-        """
-        Set whether to use a spreadsheet for input.
-        """
-        self._useSpreadsheet = value
-
-    @property
-    def useDatabase(self) -> bool:
-        """
-        Get whether to use a database for input.
-        """
-        return self._useDatabase
-
-    @useDatabase.setter
-    def useDatabase(self, value: bool) -> None:
-        """
-        Set whether to use a database for input.
-        """
-        self._useDatabase = value
-
-    @property
-    def uuid(self) -> Optional[str]:
-        """
-        Get the UUID for database operations.
-        """
-        return self._uuid
-
-    @uuid.setter
-    def uuid(self, value: Optional[str]) -> None:
-        """
-        Set the UUID for database operations.
-        """
-        self._uuid = value
-
-    @property
-    def name(self) -> Optional[str]:
-        """
-        Get the name for database operations.
-        """
-        return self._name
-
-    @name.setter
-    def name(self, value: Optional[str]) -> None:
-        """
-        Set the name for database operations.
-        """
-        self._name = value
-
-    @property
-    def dbconfig(self) -> Optional[Dict[str, Any]]:
-        """
-        Get the database configuration parameters.
-        """
-        return self._dbconfig
-
-    @dbconfig.setter
-    def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
-        """
-        Set the database configuration parameters.
-        """
-        self._dbconfig = value
-
-    def validate(self, p) -> tuple[bool, bool, bool, bool]:
-        """Validate the sensor system configuration.
-
-        Checks if the sensor has proper inputs for different operational modes.
+    def set_series(self, series: Union[pd.Series, pd.DataFrame], uuid: Optional[str] = None) -> None:
+        """Read an in-memory series from now on (a ``DataFrameSource``).
 
         Args:
-            p: Logging function for validation messages.
+            series: The readings, a ``pandas.Series`` with a
+                ``DatetimeIndex`` or a ``pandas.DataFrame`` with a
+                ``DatetimeIndex`` and one column.
+            uuid: The sensor's identity.  ``None`` (default) keeps the
+                current one.
 
-        Returns:
-            tuple[bool, bool, bool, bool]: Validation status for:
-                - Simulator
-                - Estimator
-                - Evaluator
-                - Monitor
+        Raises:
+            TypeError: If ``series`` is neither a Series nor a DataFrame, or
+                its index is not a ``DatetimeIndex``.
+            ValueError: If a DataFrame has another number of columns than one.
         """
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_optimizer = True
-
-        if len(self.connects_at) == 0 and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        elif len(self.connects_at) > 0 and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Estimator."
-            p(message, plain=True, status="WARNING")
-            validated_for_estimator = False
-
-        self.is_leaf = len(self.connects_at) == 0
-        self.output["measuredValue"].is_leaf = self.is_leaf
-
-        return (
-            validated_for_simulator,
-            validated_for_estimator,
-            validated_for_optimizer,
-        )
-
-    def validate_connections(self, p) -> bool:
-        validated = True
-        if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-            p(message, plain=True, status="[WARNING]")
-            p.add_level()
-            p("measuredValue", plain=True)
-            p.remove_level()
-            validated = False
-        return validated
-
-    def initialize(
-        self,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        simulator: Optional[Any] = None,
-    ) -> None:
-        """Initialize the sensor system.
-
-        Sets up the physical or virtual sensor system and initializes the step instance.
-
-        Args:
-            start_time (Optional[datetime.datetime]): Start time for the simulation.
-            end_time (Optional[datetime.datetime]): End time for the simulation.
-            step_size (Optional[float]): Time step size in seconds.
-            model (Optional[Any]): Model object (not used in this class).
-        """
-
-        if (
-            self.filename is not None
-            or self.df is not None
-            or self.dbconfig is not None
-        ):
-            if self.df is None:
-                assert (
-                    self.useSpreadsheet == True or self.useDatabase == True
-                ), "useSpreadsheet or useDatabase must be True if df is not provided."
-            self.physicalSystem = TimeSeriesInputSystem(
-                id=f"time series input - {self.id}",
-                df=self.df,
-                filename=self.filename,
-                datecolumn=self.datecolumn,
-                valuecolumn=self.valuecolumn,
-                useSpreadsheet=self.useSpreadsheet,
-                useDatabase=self.useDatabase,
-                uuid=self.uuid,
-                name=self.name,
-                dbconfig=self.dbconfig,
-            )
-            self.physicalSystem.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-            )
-
+        if isinstance(series, pd.Series):
+            frame = series.to_frame(name="value" if series.name is None else series.name)
+        elif isinstance(series, pd.DataFrame):
+            if series.shape[1] != 1:
+                raise ValueError(
+                    f"SensorSystem '{self.id}': set_series takes a DataFrame with one column, got {series.shape[1]}."
+                )
+            frame = series
         else:
-            self.physicalSystem = None
-
-        assert (
-            len(self.connects_at) == 0 and self.physicalSystem is None
-        ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
-
-        if self.is_leaf:
-            self.output["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=self.physicalSystem.df.values,
+            raise TypeError(
+                f"SensorSystem '{self.id}': set_series takes a pandas Series or a one-column DataFrame, "
+                f"got {type(series).__name__}."
             )
-        else:
-            self.input["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            raise TypeError(
+                f"SensorSystem '{self.id}': the series must be indexed by time (a DatetimeIndex), "
+                f"got {type(frame.index).__name__}."
             )
-            self.output["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+        options = {} if self.source is None else {
+            "resample_method": self.source.resample_method, "dt_limit": self.source.dt_limit, "fill": self.source.fill,
+        }
+        self.source = DataFrameSource(frame, **options)
+        if uuid is not None:
+            self.uuid = uuid
+
+    def set_dbconfig(self, dbconfig: Optional[Dict[str, Any]]) -> None:
+        """The database connection of the sensor's database reader (the hook
+        :meth:`SimulationModel.set_dbconfigs` uses); a sensor that reads the
+        point its ``uuid`` names gets a ``DatabaseSource`` with it."""
+        if self.source is None and self.uuid is not None:
+            self.source = DatabaseSource(self.uuid, dbconfig)
+        elif hasattr(self.source, "dbconfig"):
+            self.source.dbconfig = dbconfig
+
+    def set_transformation(self, fn: Optional[Callable]) -> None:
+        """The function applied to every value read (the hook
+        :meth:`SimulationModel.set_transformations` uses); ``None`` removes
+        it."""
+        self.transformation = fn
+
+    def series(self, timestamps, step_size):
+        """The recorded series on the run's grid, from the reader."""
+        drives = "measuredValue" in self.output_defaults()  # nothing wired: the series drives the model
+        reader = self.reader
+        if reader is None:
+            if drives:
+                raise ValueError(
+                    f"SensorSystem '{self.id}': nothing is wired to measuredValue and the sensor has no "
+                    f"recorded series (source=...)"
+                )
+            self.__dict__["_reading"] = None
+            return {"measuredData": np.zeros(timestamps.shape)}
+        if not drives and reader.fill is not None:
+            raise ValueError(
+                f"SensorSystem '{self.id}' ({self.uuid}) measures a model output: its gaps are unscored "
+                f"samples, a fill would invent measurements to score (fill={reader.fill!r})."
             )
-
-    def do_step(
-        self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        stepIndex: Optional[int] = None,
-    ) -> None:
-        """Execute one time step of the sensor system.
-
-        Updates sensor outputs based on either physical readings or virtual calculations.
-
-        Args:
-            secondTime (Optional[float]): Current simulation time in seconds.
-            dateTime (Optional[datetime.datetime]): Current simulation datetime.
-            step_size (Optional[float]): Time step size in seconds.
-        """
-        if self.is_leaf:
-            self.output["measuredValue"].set(stepIndex=stepIndex)
-        else:
-            self.output["measuredValue"].set(
-                self.input["measuredValue"].get(), stepIndex
+        allow_missing = self.allow_missing
+        if allow_missing is None:
+            allow_missing = not drives
+        elif allow_missing and drives:
+            raise ValueError(
+                f"SensorSystem '{self.id}' ({self.uuid}) drives the model: its gaps cannot be unscored "
+                f"(allow_missing); declare a fill on its reader instead (fill=...)."
             )
+        reading = self.__dict__.get("_reading")
+        if reading is None or reading.source is not reader or reading.transformation is not self.transformation:
+            reading = TimeSeriesInputSystem(
+                id=f"time series input - {self.id}", source=reader, transformation=self.transformation
+            )
+            self.__dict__["_reading"] = reading
+        reading.allow_missing = bool(allow_missing)
+        return {"measuredData": reading.series(timestamps, step_size)["value"]}
+
+    def forward(self, x, inputs, p, step_size):
+        """What the sensor reads: its input, which is its recorded series
+        while nothing is wired."""
+        return x, {"measuredValue": inputs["measuredValue"]}
 
     def get_physical_readings(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> pd.DataFrame:
-        """Retrieve physical sensor readings for a specified time period.
-
-        Args:
-            start_time (Optional[datetime.datetime]): Start time for readings.
-            end_time (Optional[datetime.datetime]): End time for readings.
-            step_size (Optional[float]): Time step size in seconds.
-
-        Returns:
-            pd.DataFrame: DataFrame containing sensor readings.
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[float],
+    ) -> List[pd.Series]:
+        """The recorded series of each period, as read (NaN where the data
+        give nothing).
 
         Raises:
-            AssertionError: If called on a virtual sensor (no physical readings available).
+            ValueError: If the sensor has no recorded series.
         """
-        assert (
-            self.physicalSystem is not None
-        ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
-        self.physicalSystem.initialize(start_time, end_time, step_size, simulator)
-        return self.physicalSystem.df
+        if not self.has_data:
+            raise ValueError(f"SensorSystem '{self.id}' has no recorded series (source=...)")
+        self.initialize(start_time, end_time, step_size)
+        return self.time_series_input.df

@@ -1,18 +1,49 @@
 # Standard library imports
+import copy
 import datetime
-import shutil
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from collections import OrderedDict
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import torch
+from rdflib import BNode, URIRef
+
+from twin4build.utils.rgetattr import rgetattr
 from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.types as tps
+from twin4build.systems.registry import SystemRegistry
+from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.graphviz_render import (
+    DRAWING_UNAVAILABLE_HINT,
+    drawing_available,
+)
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS
+from twin4build.utils.logger import LOGGER, autoreset_print
+from twin4build.utils.validate_period import validate_period
+
+#: In a serialized model: ``<component> t4b:modelsSemanticNode <node>`` for
+#: every semantic node the component models (:attr:`Model.sim2sem_map`).
+MODELS_SEMANTIC_NODE = core.namespace.T4B.modelsSemanticNode
+
+
+@autoreset_print
+def _batch_members(group):
+    """The components of an execution group that batch: a fused state-space
+    block executes for its members, and it is the members that are batched
+    (the batched model fuses the metas again)."""
+    for executing in group:
+        members = getattr(executing, "members", None)
+        if members is not None and hasattr(executing, "_internal_arcs"):
+            for m in members:
+                yield m
+        else:
+            yield executing
 
 
 class Model:
@@ -26,7 +57,8 @@ class Model:
     modeling capabilities for building digital twins. It combines the functionality of
     :class:`SimulationModel` and :class:`SemanticModel` into a single, user-friendly interface.
 
-    **Composition Architecture:**
+    Composition Architecture
+    ------------------------
 
     The Model class acts as a facade that orchestrates two core components:
 
@@ -37,7 +69,8 @@ class Model:
     2. **SemanticModel:** Manages the ontological representation using SAREF4SYST,
        RDF graphs, semantic queries, and metadata for interoperability.
 
-    **Key Responsibilities:**
+    Key Responsibilities
+    --------------------
 
     - **Unified Interface:** Provides a single entry point for both simulation and semantic operations
     - **Component Management:** Delegates component operations to the appropriate underlying model
@@ -45,7 +78,8 @@ class Model:
     - **Data Integration:** Coordinates between semantic metadata and simulation execution
     - **Interoperability:** Ensures consistent SAREF-compliant representation across both models
 
-    **Usage Pattern:**
+    Usage Pattern
+    -------------
 
     Users typically interact with this Model class rather than directly with SimulationModel
     or SemanticModel. The Model class automatically handles the coordination between the two
@@ -82,13 +116,13 @@ class Model:
     >>> model = tb.Model(id="building_model")
     >>>
     >>> # Add components (delegates to simulation_model)
-    >>> space = tb.SpaceSystem(id="office_space")
+    >>> space = tb.BuildingSpaceSystem(id="office_space")
     >>> heater = tb.SpaceHeaterSystem(id="radiator")
     >>> model.add_component(space)
     >>> model.add_component(heater)
     >>>
     >>> # Add connections (updates both simulation and semantic models)
-    >>> model.add_connection(space, heater, "indoorTemperature", "zoneTemperature")
+    >>> model.add_connection(space, heater, "indoorTemperature", "indoorTemperature")
     >>>
     >>> # Load model (applies Algorithms 1-2, prepares semantic representation)
     >>> model.load()
@@ -112,7 +146,7 @@ class Model:
     >>> print(f"Components: {len(model.simulation_model.components)}")
     >>>
     >>> # Check if model is ready for simulation
-    >>> if model.simulation_model._is_loaded:
+    >>> if model.simulation_model.is_loaded:
     ...     simulator = tb.Simulator(model)
     ...     # Run simulation...
 
@@ -120,7 +154,7 @@ class Model:
 
     >>> # Load existing semantic model and convert to simulation model
     >>> model = tb.Model(id="restored_model")
-    >>> model.load(rdf_file="my_building.ttl")
+    >>> model.load(semantic_model_filename="my_building.ttl")
     >>> # Model now contains both semantic and simulation representations
     """
 
@@ -130,6 +164,9 @@ class Model:
         "_semantic_model",
         "_translator",
         "_dir_conf",
+        "_component_to_meta",
+        "_batch_source_model",
+        "_worlds",
     )
 
     def __str__(self):
@@ -180,12 +217,18 @@ class Model:
 
         return t.get_string()
 
-    def __init__(self, id: str) -> None:
+    def __init__(
+        self, id: str, system_registry: Optional[SystemRegistry] = None
+    ) -> None:
         """
         Initialize the Model instance.
 
         Args:
             id: Unique identifier for the model.
+            system_registry: Registry of the external ``System`` classes the
+                model serializes and loads (see
+                :mod:`twin4build.systems.registry`). ``None`` uses the default
+                registry, ``twin4build.system_registry``.
 
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
@@ -205,7 +248,7 @@ class Model:
         self._semantic_model = core.SemanticModel(
             id=self._id,
             namespaces={
-                "SIM": core.namespace.SIM,
+                "T4B": core.namespace.T4B,
                 "SAREF": core.namespace.SAREF,
                 "S4BLDG": core.namespace.S4BLDG,
                 "S4SYST": core.namespace.S4SYST,
@@ -216,7 +259,57 @@ class Model:
         self._simulation_model = core.SimulationModel(
             dir_conf=self.dir_conf + ["simulation_model"],
             id=f"{self._id}_simulation_model",
+            system_registry=system_registry,
         )
+        self._translator = None
+        self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
+        #: On a batched model: the model it was batched from (batch_components).
+        self._batch_source_model = None
+        #: What split_worlds did to the model (the worlds property).
+        self._worlds = None
+
+    @classmethod
+    def from_translation(
+        cls,
+        *,
+        id: str,
+        semantic_model: "core.SemanticModel",
+        simulation_model: "core.SimulationModel",
+        translator: "core.Translator",
+    ) -> "Model":
+        """Wrap the three artefacts produced by :meth:`Translator.translate`
+        into a :class:`Model` without re-creating empty halves.
+
+        Used by the translator to return a fully-wired Model. End users do
+        not normally call this; build a Model from scratch with
+        ``Model(id=...)`` or via ``Translator().translate(semantic_model)``.
+
+        Args:
+            id: The Model id (drives the on-disk directory layout under
+                ``generated_files/models/<id>/``).
+            semantic_model: The semantic model the translator consumed.
+            simulation_model: The simulation graph the translator produced.
+            translator: The translator instance whose ``sim2sem_map`` /
+                ``sem2sim_map`` link the two models.
+        """
+        m = cls.__new__(cls)
+        m._id = id
+        m._dir_conf = ["generated_files", "models", id]
+        m._semantic_model = semantic_model
+        m._simulation_model = simulation_model
+        m._translator = translator
+        # Re-anchor on-disk directories so semantic_model and simulation_model
+        # share the same Model-level parent.  Each underlying model exposes a
+        # ``dir_conf`` setter that keeps internal sub-paths in sync.
+        try:
+            m._semantic_model.dir_conf = m._dir_conf + ["semantic_model"]
+        except Exception:
+            pass
+        try:
+            m._simulation_model.dir_conf = m._dir_conf + ["simulation_model"]
+        except Exception:
+            pass
+        return m
 
     @property
     def id(self) -> str:
@@ -230,13 +323,83 @@ class Model:
     def semantic_model(self) -> "core.SemanticModel":
         return self._semantic_model
 
+    def _component_uri(self, component: "core.System") -> URIRef:
+        """The node of ``component`` in the simulation model's own graph."""
+        return self._simulation_model._semantic_model.T4B.__getitem__(component.id)
+
+    @property
+    def sim2sem_map(self) -> Dict["core.System", Set["core.SemanticObject"]]:
+        """Each component of the simulation model -> the semantic nodes it
+        models: the link the translation makes between the two halves of
+        the model.
+
+        On a model translated in this process these are the translator's
+        own (``Translator.sim2sem_map``), for the components still in the
+        model.  A model rebuilt from a serialized one
+        (``load(filename=...)``) gives the same link back, read from the
+        file: :meth:`serialize` writes it with the model.  Its nodes are
+        then instances of :attr:`semantic_model` by URI
+        (``SemanticModel.get_instance``); they answer for their classes
+        when that semantic model holds the graph the model was translated
+        from.  A blank node has no identity outside the graph it was read
+        from and is not kept across a serialize and load.
+
+        Empty for a model built by hand.
+        """
+        present = {id(c): c for c in self._simulation_model.components.values()}
+        translated = getattr(self._translator, "sim2sem_map", None)
+        if translated:
+            return {
+                component: set(nodes)
+                for component, nodes in translated.items()
+                if id(component) in present and nodes
+            }
+        by_uri = {str(self._component_uri(c)): c for c in present.values()}
+        graph = self._simulation_model._semantic_model.instance_graph
+        found: Dict["core.System", Set["core.SemanticObject"]] = {}
+        for subject, _, node in graph.triples((None, MODELS_SEMANTIC_NODE, None)):
+            component = by_uri.get(str(subject))
+            if component is not None:
+                found.setdefault(component, set()).add(
+                    self._semantic_model.get_instance(node)
+                )
+        return found
+
+    @property
+    def sem2sim_map(self) -> Dict["core.SemanticObject", Set["core.System"]]:
+        """Each semantic node that is modelled -> the components that model
+        it: :attr:`sim2sem_map` the other way round."""
+        found: Dict["core.SemanticObject", Set["core.System"]] = {}
+        for component, nodes in self.sim2sem_map.items():
+            for node in nodes:
+                found.setdefault(node, set()).add(component)
+        return found
+
+    def _write_translation_links(self) -> None:
+        """Put :attr:`sim2sem_map` into the simulation model's graph, so
+        that it is serialized with the model.  A model that was rebuilt from
+        a file has no translator: the links it was read with stay as they
+        are (a removed component's went with it)."""
+        translated = getattr(self._translator, "sim2sem_map", None)
+        if not translated:
+            return
+        graph = self._simulation_model._semantic_model.instance_graph
+        graph.remove((None, MODELS_SEMANTIC_NODE, None))
+        for component, nodes in self.sim2sem_map.items():
+            subject = self._component_uri(component)
+            for node in nodes:
+                uri = getattr(node, "uri", None)
+                if isinstance(uri, URIRef) and not isinstance(uri, BNode):
+                    graph.add((subject, MODELS_SEMANTIC_NODE, uri))
+
+    @property
+    def system_registry(self) -> SystemRegistry:
+        """Registry that resolves the external ``System`` classes of the model."""
+        return self._simulation_model.system_registry
+
     @property
     def is_loaded(self) -> bool:
         return self._simulation_model.is_loaded
-
-    @property
-    def is_validated(self) -> bool:
-        return self._simulation_model.is_validated
 
     @property
     def components(self) -> dict:
@@ -253,16 +416,68 @@ class Model:
         ), f"The set value must be of type {list} and contain strings"
         self._dir_conf = dir_conf
 
-    @property
-    def result(self) -> Any:
-        return self.simulation_model.result
+    def get_component(self, component_id: str):
+        """Component by id -- regular components and the fused state-space
+        blocks that execute in place of clusters (see
+        :meth:`SimulationModel.get_component`)."""
+        return self.simulation_model.get_component(component_id)
 
     @property
-    def execution_order(self) -> List[str]:
+    def device(self):
+        """Device on which simulation tensors live (default cpu)."""
+        return self.simulation_model.device
+
+    @property
+    def dtype(self):
+        """Floating-point dtype used for simulation tensors."""
+        return self.simulation_model.dtype
+
+    def to(self, device=None, dtype=None) -> "Model":
+        """Move the model to a device and/or floating-point dtype.
+
+        Torch-style API: ``model.to("cuda")`` moves all component tensors to
+        the GPU and makes the simulator, estimator and optimizer compute
+        there; ``model.to("cuda", torch.float32)`` additionally switches to
+        single precision (a large speedup on consumer GPUs, where fp64
+        throughput is typically 1/32 of fp32, at reduced accuracy).
+        Scipy/IPOPT solvers and plotting remain on the CPU -- only small
+        parameter vectors cross that boundary per iteration.
+
+        Performance expectation: for a single simulation or estimation of a
+        small model (a handful of zones), the GPU does NOT beat the CPU --
+        each step is a microsecond-scale operation and kernel-launch latency
+        dominates.  Device support is the enabler for *batched* workflows
+        (multi-start estimation, scenario/ensemble studies, portfolios of
+        buildings via the ``n_c`` component-batch dimension) and for large
+        many-zone models, where per-candidate cost falls almost linearly
+        with batch size. See the canonical notebooks in the repository's
+        ``benchmarks/`` directory.
+
+        Example:
+            >>> model.load()
+            >>> model.to("cuda")                      # fp64 on the GPU
+            >>> model.to("cuda", torch.float32)       # fp32 (consumer GPUs)
+            >>> model.to("cpu", torch.float64)        # back to the default
+
+        Args:
+            device: Target device (``"cpu"``, ``"cuda"``, ``torch.device``).
+            dtype: Optional floating-point dtype.  Note this is a
+                process-wide setting (it configures the framework default
+                used for new tensor allocations), so all models in the
+                process should use the same dtype.
+
+        Returns:
+            The model itself, for chaining.
+        """
+        self.simulation_model.to(device=device, dtype=dtype)
+        return self
+
+    @property
+    def execution_order(self) -> List[List["core.System"]]:
         return self.simulation_model.execution_order
 
     @property
-    def flat_execution_order(self) -> List[str]:
+    def flat_execution_order(self) -> List["core.System"]:
         return self.simulation_model.flat_execution_order
 
     def get_dir(
@@ -295,14 +510,6 @@ class Model:
         """
         self.simulation_model.add_component(component=component)
 
-    def make_pickable(self) -> None:
-        """
-        Make the model instance pickable by removing unpickable references.
-
-        This method prepares the Model instance for use with multiprocessing in the Estimator class.
-        """
-        self.simulation_model.make_pickable()
-
     def remove_component(self, component: "core.System") -> None:
         """
         Remove a component from the model.
@@ -316,8 +523,13 @@ class Model:
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
+        output_port_index: [int, torch.Tensor] = None,
+        input_port_index: [int, torch.Tensor] = None,
+        output_component_index: [int, torch.Tensor] = None,
+        input_component_index: [int, torch.Tensor] = None,
+        detached=False,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -325,25 +537,58 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
+            output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
+                output port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, Sequence[int], torch.Tensor]]): Index into
+                the receiver's input port when it is a vector port. Defaults to None (scalar
+                ports). From a scalar output, a list of slots puts the one value in each of
+                them (``input_port_index=[1, 2]``: a room's temperature on both AHU branches
+                serving it); wiring the same pair again on other slots adds them to the same
+                connection.
+            output_component_index, input_component_index: For batched meta
+                components, the sender / receiver instance (``i_c``) of each
+                pair the connection carries, aligned element-wise with the
+                port indices when those are tensors.
+            detached: ``True``: the receiver reads the value without its
+                gradient.  The sender is still evaluated every step, but no
+                parameter upstream of it reaches the receiver through this
+                connection: the partition reads the value as data, the
+                estimator's structure walk (``index_coupling``) lets nothing
+                through, and both engines pass the value on detached.  On a
+                batched meta, one flag per pair.  ``split_worlds`` cuts a
+                provided component's connections to the other worlds'
+                readers so (``Worlds.provided``).
+
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output or input port name (``System.OUTPUT_PORT_ALIASES``,
+        ``System.INPUT_PORT_ALIASES``) connects as the name that replaced it,
+        with a ``DeprecationWarning``.
         """
+        output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
+            output_port_index=output_port_index,
+            input_port_index=input_port_index,
+            output_component_index=output_component_index,
+            input_component_index=input_component_index,
+            detached=detached,
         )
 
     def remove_connection(
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
     ) -> None:
         """
         Remove a connection between two components in the system.
@@ -351,93 +596,274 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
 
         Raises:
             ValueError: If the specified connection does not exist.
         """
+        output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
+        )
+
+    def get_components_by_class(
+        self, class_: Type, filter: Optional[Callable] = None
+    ) -> List:
+        """Return components on this model that are instances of ``class_``."""
+        return self.simulation_model.get_components_by_class(
+            class_=class_, filter=filter
         )
 
     def get_component_by_class(
-        self, dict_: Dict, class_: Type, filter: Optional[Callable] = None
+        self, dict_: Dict = None, class_: Type = None, filter: Optional[Callable] = None
     ) -> List:
-        """
-        Get components of a specific class from a dictionary.
-
-        Args:
-            dict_ (Dict): The dictionary to search.
-            class_ (Type): The class to filter by.
-            filter (Optional[Callable]): Additional filter function.
-
-        Returns:
-            List: List of components matching the class and filter.
-        """
+        """Deprecated: use :meth:`get_components_by_class` (removed in 2.1)."""
+        deprecate_name("get_component_by_class", "get_components_by_class")
+        if class_ is None and dict_ is not None and not isinstance(dict_, dict):
+            # Called as get_component_by_class(SomeSystem)
+            class_ = dict_
+            dict_ = self.simulation_model.components
+        if dict_ is None:
+            dict_ = self.simulation_model.components
         return self.simulation_model.get_component_by_class(
             dict_=dict_, class_=class_, filter=filter
         )
 
-    def set_custom_initial_dict(
-        self, custom_initial_dict: Dict[str, Dict[str, Any]]
-    ) -> None:
-        """
-        Set custom initial values for components.
+    # def set_custom_initial_dict(
+    #     self, custom_initial_dict: Dict[str, Dict[str, Any]]
+    # ) -> None:
+    #     """
+    #     Set custom initial values for components.
 
-        Args:
-            custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+    #     Args:
+    #         custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
 
-        Raises:
-            AssertionError: If unknown component IDs are provided.
-        """
-        self.simulation_model.set_custom_initial_dict(
-            custom_initial_dict=custom_initial_dict
-        )
+    #     Raises:
+    #         AssertionError: If unknown component IDs are provided.
+    #     """
+    #     self.simulation_model.set_custom_initial_dict(
+    #         custom_initial_dict=custom_initial_dict
+    #     )
 
-    def set_initial_values(self) -> None:
-        """
-        Set initial values for all components in the model.
-        """
-        self.simulation_model.set_initial_values()
+    def get_parameters(self, parameters=None) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component or
+        component id, attr, ...)`` tuples (the estimator's parameter
+        entries); ``None`` (default) reads every parameter the components
+        list in their configuration.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameters`.
 
-    def set_parameters_from_array(
-        self,
-        values: List[Any],
-        components: List["core.System"],
-        parameter_names: List[str],
-        normalized: List[bool] = None,
-        overwrite: bool = False,
-        save_original: bool = False,
-    ) -> None:
+        Example:
+            >>> values = model.get_parameters([(room, "thermal.C_air")])
+            >>> model.set_parameters({k: 2 * v for k, v in values.items()})
         """
-        Set parameters for components from an array.
+        return self.simulation_model.get_parameters(parameters)
 
-        Args:
-            values (List[Any]): List of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
+    def set_parameters(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component or component id, attr):
+        values}`` in physical units (:meth:`get_parameters`), on this model
+        whatever its batching: an id names a component of the model or a
+        component one of its batched metas stands for.  Returns
+        ``{"applied": n, "missing": m}``; with ``strict`` a key that names no
+        parameter raises ``KeyError`` and nothing is written.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameters`."""
+        return self.simulation_model.set_parameters(values, strict=strict)
 
-        Raises:
-            AssertionError: If a component doesn't have the specified attribute.
-        """
-        self.simulation_model.set_parameters_from_array(
-            values=values,
-            components=components,
-            parameter_names=parameter_names,
-            normalized=normalized,
-            overwrite=overwrite,
-            save_original=save_original,
-        )
+    def _write_parameters(self, *args, **kwargs) -> None:
+        """The estimator's writer (parallel lists, normalized values,
+        bounds); see :meth:`SimulationModel._write_parameters`."""
+        self.simulation_model._write_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
         Restore the parameters of the model.
         """
         self.simulation_model.restore_parameters(keep_values=keep_values)
+
+    # ------------------------------------------------------------------
+    # Dataset-configuration helpers (bridging semantic + simulation)
+    # ------------------------------------------------------------------
+    def set_dbconfigs(self, dbconfig: Dict[str, Any]) -> "Model":
+        """Apply a database configuration to every applicable component.
+
+        Facade for :meth:`SimulationModel.set_dbconfigs`. Returns ``self``
+        for chaining.
+        """
+        self.simulation_model.set_dbconfigs(dbconfig)
+        return self
+
+    def fill_missing_inputs(self, defaults: Dict[Any, Any]) -> "Model":
+        """Attach providers (constants or user-supplied systems) for
+        input ports the ontology did not wire.
+
+        Facade for :meth:`SimulationModel.fill_missing_inputs`; see that
+        method's docstring for the full key/value shape grammar.  In
+        short, ``defaults`` accepts both port-only entries (``str ->
+        value``) and component-scoped entries (``(component | id, port)
+        -> value``); values may be scalars (wrapped in a flat schedule),
+        :class:`core.System` providers (single-output auto-detected),
+        or ``(provider, output_port)`` tuples.  Returns ``self`` for
+        chaining.
+        """
+        self.simulation_model.fill_missing_inputs(defaults)
+        return self
+
+    def rewire(
+        self,
+        *,
+        start_time: Any,
+        end_time: Any,
+        step_size: int,
+        mode: str = "train",
+        **rewire_kwargs: Any,
+    ) -> "Model":
+        """Run the data-driven CITS rewire over the model's graph.
+
+        Should be called **before** :meth:`load` -- see
+        :meth:`SimulationModel.rewire` for the rationale.  Facade for
+        :meth:`SimulationModel.rewire`; in particular the ``mode``
+        kwarg selects gate-active (``"train"``) vs gate-bypassed
+        (``"simulate"``) frozen-pin configuration.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        self.simulation_model.rewire(
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            mode=mode,
+            **rewire_kwargs,
+        )
+        return self
+
+    def set_transformations(self, mapping: Dict[Any, Callable[[Any], Any]]) -> "Model":
+        """Apply unit-conversion callables to components by semantic class.
+
+        Keys are RDF class IRIs (``rdflib.URIRef``, strings, or
+        :class:`SemanticType` instances; e.g. ``BRICK.Temperature_Sensor``).
+        Each simulation component's semantic counterpart is looked up via
+        ``self._translator.sim2sem_map``; its rdf:types (with
+        ``rdfs:subClassOf`` transitive closure from the embedded
+        :class:`SemanticModel`) are matched against the mapping.
+
+        Most-specific class wins on ambiguity: when two rule keys both
+        match a component's types, the rule whose key is a subclass of
+        the other's is preferred.  Identical-specificity collisions log
+        a warning and the first-declared rule is kept.
+
+        Components implement ``set_transformation(self, fn)``; components
+        without that method are silently skipped (so this is safe to call
+        on heterogeneous models where only e.g. ``SensorSystem`` cares
+        about transformations).
+
+        This is a real method (not a facade) because it requires the
+        semantic + sim2sem map that only ``Model`` carries; the
+        underlying ``SimulationModel`` is intentionally kept ontology-
+        free.
+
+        Returns:
+            ``self`` for chaining.
+
+        Raises:
+            RuntimeError: When the model was not produced by a Translator
+                (no ``sim2sem_map`` available).  Build the model via
+                ``Translator().translate(semantic_model)`` to use this
+                helper.
+        """
+        if self._translator is None:
+            raise RuntimeError(
+                "Model.set_transformations requires a translator-built "
+                "model (no sim2sem_map is available on this Model). "
+                "Construct the Model via "
+                "`Translator().translate(semantic_model)` to use this "
+                "helper, or set per-component transformations directly "
+                "via `component.set_transformation(fn)`."
+            )
+        sim2sem = self._translator.sim2sem_map
+        semantic = self._semantic_model
+
+        # Resolve every rule key to a SemanticType so we can compare in
+        # the (rdfs:subClassOf-closed) class hierarchy.  Accept URIRef,
+        # plain str, or pre-built SemanticType instances.
+        rules: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+        for key, fn in mapping.items():
+            if isinstance(key, core.SemanticType):
+                stype = key
+            else:
+                stype = semantic.get_type(key)
+            rules.append((stype, fn, key))
+
+        def _is_strict_subclass(a, b) -> bool:
+            """``True`` iff ``a`` is a strict subclass of ``b``."""
+            if str(a.uri) == str(b.uri):
+                return False
+            return any(str(sc.uri) == str(b.uri) for sc in a.super_classes)
+
+        def _winner(nodes, component_id):
+            """Most-specific rule matching any of ``nodes`` (first-declared on ties)."""
+            matched: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+            for stype, fn, original_key in rules:
+                hit = False
+                for node in nodes:
+                    isinstance_check = getattr(node, "isinstance", None)
+                    if callable(isinstance_check) and isinstance_check(stype.uri):
+                        hit = True
+                        break
+                if hit:
+                    matched.append((stype, fn, original_key))
+            if not matched:
+                return None
+            winner = matched[0]
+            for cand in matched[1:]:
+                if _is_strict_subclass(cand[0], winner[0]):
+                    winner = cand
+                elif _is_strict_subclass(winner[0], cand[0]):
+                    continue
+                else:
+                    warnings.warn(
+                        f"set_transformations: rules for {cand[2]!r} and "
+                        f"{winner[2]!r} both match component "
+                        f"{component_id!r} with no subclass relationship; "
+                        f"keeping the first-declared rule ({winner[2]!r}).",
+                        stacklevel=2,
+                    )
+            return winner
+
+        for component in self._simulation_model.components.values():
+            semantic_nodes = sim2sem.get(component)
+            if not semantic_nodes:
+                continue
+            typed_setter = getattr(component, "set_transformation_by_type", None)
+            if callable(typed_setter):
+                # Components that model several semantic nodes with
+                # different roles (an OutdoorEnvironmentSystem models an
+                # outdoor temperature sensor AND a solar irradiance sensor)
+                # get one rule per node, keyed by the class that won for
+                # that node, so a Temperature_Sensor rule and a
+                # Solar_Irradiance_Sensor rule reach their own feeds.
+                for node in semantic_nodes:
+                    winner = _winner([node], component.id)
+                    if winner is not None:
+                        typed_setter(winner[0], winner[1])
+                continue
+            setter = getattr(component, "set_transformation", None)
+            if not callable(setter):
+                continue
+            winner = _winner(semantic_nodes, component.id)
+            if winner is not None:
+                setter(winner[1])
+
+        return self
 
     def cache(
         self,
@@ -453,6 +879,8 @@ class Model:
             start_time (Optional[datetime.datetime]): Start time for caching.
             end_time (Optional[datetime.datetime]): End time for caching.
             step_size (Optional[int]): Time step size for caching.
+            simulator (Optional[core.Simulator]): Simulator instance passed to the
+                data-source components' initialize methods.
         """
         self.simulation_model.cache(
             start_time=start_time,
@@ -463,27 +891,42 @@ class Model:
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: "core.Simulator",
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[int, List[int]],
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            start_time (datetime.datetime): Start time for the simulation.
-            end_time (datetime.datetime): End time for the simulation.
-            step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
+            start_time: Start time or times for the simulation.
+            end_time: End time or times for the simulation.
+            step_size: Time step size or sizes in seconds.
         """
-        self.simulation_model.initialize(start_time, end_time, step_size, simulator)
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+        self.simulation_model.initialize(start_time, end_time, step_size)
 
-    def validate(self) -> None:
+    def check(
+        self,
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[int, List[int]],
+    ) -> None:
+        """Probe every declared System of the loaded model over a period: one
+        ``derive`` and ``forward`` call each on the run-start values (see
+        :meth:`SimulationModel.check`).  ``Simulator.simulate(check=True)``
+        probes the run it starts.
+
+        Raises:
+            ValueError: Naming every System whose ``derive`` or ``forward``
+                gives what its declarations do not.
         """
-        Validate the model by checking IDs and connections.
-        """
-        self.simulation_model.validate()
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+        self.simulation_model.check(start_time, end_time, step_size)
 
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
@@ -499,61 +942,105 @@ class Model:
 
     def load(
         self,
-        semantic_model_filename: Optional[str] = None,
-        simulation_model_filename: Optional[str] = None,
+        filename: Optional[str] = None,
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        verbose: bool = False,
-        validate_model: bool = True,
         force_config_overwrite: bool = False,
+        logfile: Optional[str] = None,
+        enable_fusion: bool = True,
+        semantic_model_filename: Optional[str] = None,
+        simulation_model_filename: Optional[str] = None,
+        **kwargs,
     ) -> None:
         """
-        Load and set up the model for simulation.
+        Load and set up the simulation half of the model.
+
+        Preferred usage::
+
+            sm = tb.SemanticModel(rdf_file="building.ttl", id="building")
+            model = tb.Translator().translate(sm)
+            model.load()
+
+        Or restore a serialized simulation model::
+
+            model.load(filename="path/to/serialized_sim...")
 
         Args:
-            semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            draw_semantic_model (bool): Whether to create and save the semantic model graph.
-            draw_simulation_model (bool): Whether to create and save the simulation model graph.
-            verbose (bool): Whether to print verbose output during loading.
-            validate_model (bool): Whether to perform model validation.
+            filename: Path to a serialized simulation model (preferred).
+            fcn: Custom function applied during model loading.
+            draw_semantic_model: Whether to draw the semantic model graph.
+            draw_simulation_model: Whether to draw the simulation model graph.
+            force_config_overwrite: If True, all parameters are read from config.
+            logfile: Path to the plain LOGGER file. None (default) leaves
+                ``LOGGER.logfile`` as it is.
+            enable_fusion: Whether to fuse connected state-space clusters at load.
+            semantic_model_filename: Deprecated (removed in 2.1). Use
+                ``SemanticModel`` + ``Translator.translate`` instead.
+            simulation_model_filename: Deprecated alias for ``filename`` (removed in 2.1).
+
+        Raises:
+            ValueError: When the model does not load: an input without a
+                default is not wired, a wired width exceeds a declared size,
+                or a parameter has no value (every problem at once).
         """
-        if verbose:
+        if "validate_model" in kwargs:
+            raise TypeError(
+                "Model.load(validate_model=...) is gone in 2.0: every load checks the model and raises on a problem"
+            )
+        if "verbose" in kwargs:
+            deprecate_name("verbose=", "LOGGER.verbose")
+            LOGGER.verbose = kwargs.pop("verbose")
+        if kwargs:
+            raise TypeError(
+                f"Model.load() got unexpected keyword arguments: {sorted(kwargs)}"
+            )
+
+        if semantic_model_filename is not None:
+            deprecate_name(
+                "semantic_model_filename=",
+                "SemanticModel(rdf_file=...) + Translator.translate(...)",
+            )
+        if simulation_model_filename is not None:
+            deprecate_name("simulation_model_filename=", "filename=")
+            if filename is None:
+                filename = simulation_model_filename
+
+        if LOGGER.verbose:
             self._load(
                 semantic_model_filename=semantic_model_filename,
-                simulation_model_filename=simulation_model_filename,
+                simulation_model_filename=filename,
                 fcn=fcn,
                 draw_semantic_model=draw_semantic_model,
                 draw_simulation_model=draw_simulation_model,
-                verbose=verbose,
-                validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
+                logfile=logfile,
+                enable_fusion=enable_fusion,
             )
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self._load(
                     semantic_model_filename=semantic_model_filename,
-                    simulation_model_filename=simulation_model_filename,
+                    simulation_model_filename=filename,
                     fcn=fcn,
                     draw_semantic_model=draw_semantic_model,
                     draw_simulation_model=draw_simulation_model,
-                    verbose=verbose,
-                    validate_model=validate_model,
-                    force_config_overwrite=force_config_overwrite,
+                        force_config_overwrite=force_config_overwrite,
+                    logfile=logfile,
+                    enable_fusion=enable_fusion,
                 )
 
     def _load(
         self,
-        semantic_model_filename: Optional[str] = None,
-        simulation_model_filename: Optional[str] = None,
-        fcn: Optional[Callable] = None,
-        draw_semantic_model: bool = True,
-        draw_simulation_model: bool = True,
-        verbose: bool = False,
-        validate_model: bool = True,
-        force_config_overwrite: bool = False,
+        semantic_model_filename: Optional[str],
+        simulation_model_filename: Optional[str],
+        fcn: Optional[Callable],
+        draw_semantic_model: bool,
+        draw_simulation_model: bool,
+        force_config_overwrite: bool,
+        logfile: Optional[str],
+        enable_fusion: bool = True,
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -566,9 +1053,8 @@ class Model:
             fcn: Custom function to be applied during model loading.
             draw_semantic_model: Whether to create and save the object graph.
             draw_simulation_model: Whether to create and save the system graph.
-            verbose: Whether to print verbose output during loading.
-            validate_model: Whether to perform model validation.
             force_config_overwrite: Whether to force the configuration file to be overwritten.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
         assert (
             semantic_model_filename is None or simulation_model_filename is None
@@ -578,59 +1064,72 @@ class Model:
         #     warnings.warn("The model is already loaded. Resetting model.")
         #     self.reset()
 
-        PRINTPROGRESS("Loading model")
-        PRINTPROGRESS.add_level()
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
+        # ``None`` is "not given": a logfile configured on LOGGER stays.
+        if logfile is not None:
+            LOGGER.logfile = logfile
+
+        LOGGER.task("Loading model")
+        LOGGER.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            PRINTPROGRESS("Parsing semantic model", status="")
+            LOGGER.task("Parsing semantic model")
             self._semantic_model = core.SemanticModel(
-                semantic_model_filename,
+                rdf_file=semantic_model_filename,
+                namespaces={"T4B": core.namespace.T4B},
                 dir_conf=self.dir_conf + ["semantic_model"],
                 id=f"{self._id}_semantic_model",
             )
-            self._semantic_model.reason()
+            # self._semantic_model.reason()
+            LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
-                app_path = shutil.which("dot")
-                assert (
-                    app_path is not None
-                ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                PRINTPROGRESS("Drawing semantic model")
-                self._semantic_model.visualize()
+                if not drawing_available():
+                    LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                    warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+                else:
+                    LOGGER.task("Drawing semantic model")
+                    LOGGER.add_level()
+                    self._semantic_model.visualize()
+                    LOGGER.remove_level()
+                    LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
 
         if apply_translator:
-            PRINTPROGRESS("Applying translator")
-            PRINTPROGRESS.add_level()
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(self._semantic_model)
+            # ``translate`` now returns a fully-wired ``Model``; extract the
+            # simulation half and discard the wrapper since ``self`` is the
+            # Model we are populating here.
+            translated_model = self._translator.translate(self._semantic_model)
+            self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
-            PRINTPROGRESS.remove_level()
 
+        self._simulation_model.enable_fusion = enable_fusion
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
             fcn=fcn,
-            verbose=verbose,
-            validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
+            logfile=logfile,
         )
 
         if draw_simulation_model:
-            # Get all filenames generated in the folder dirname
-            app_path = shutil.which("dot")
-            assert (
-                app_path is not None
-            ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
-            PRINTPROGRESS("Drawing simulation model")
-            self._simulation_model.visualize()
+            if not drawing_available():
+                LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+            else:
+                LOGGER.task("Drawing simulation model")
+                LOGGER.add_level()
+                self._simulation_model.visualize()
+                LOGGER.remove_level()
+                LOGGER.ok("Drawing simulation model", change_status=True)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
+        LOGGER.ok("Loading model", change_status=True)
 
-        PRINTPROGRESS("Model loaded", plain=True)
-        if verbose:
-            print(self)
+        # LOGGER.reset()
 
     def fcn(self) -> None:
         """
@@ -638,38 +1137,94 @@ class Model:
         """
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
-        self.simulation_model.set_save_simulation_result(flag=flag, c=c)
-
-    def reset(self) -> None:
         """
-        Reset the model to its initial state.
-        """
-        # Reset all the dictionaries and lists
-        self.simulation_model.reset()
-
-    def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
-    ) -> None:
-        """
-        Load a chain log from a file or dictionary.
+        Enable or disable history logging of simulation results for components.
 
         Args:
-            filename (Optional[str]): The filename to load the chain log from.
-            result (Optional[Dict]): The chain log dictionary to load.
+            flag (bool): Whether to save (log) simulation results.
+            c (Optional[list]): List of components to apply the flag to.
+                If None, the flag is applied to all components in the model.
+        """
+        self.simulation_model.set_save_simulation_result(flag=flag, c=c)
+
+    def set_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        period_starts: Optional[List[datetime.datetime]] = None,
+    ) -> None:
+        """Set the state the simulations that follow start from,
+        ``{component id: (state_size,) or (n_periods, state_size)}``; applied
+        at every :meth:`initialize`.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_state`."""
+        self.simulation_model.set_state(state, period_starts=period_starts)
+
+    @staticmethod
+    def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order: those a batched meta was built from
+        (:meth:`batch_components`), ``(component.id,)`` for any other
+        component."""
+        return core.SimulationModel.get_source_component_ids(component)
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """Deprecated name of :meth:`get_parameters` (removed in 2.1)."""
+        deprecate_name("get_parameter_values", "get_parameters")
+        return self.simulation_model.get_parameters(parameters)
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Deprecated name of :meth:`set_parameters` (removed in 2.1)."""
+        deprecate_name("set_parameter_values", "set_parameters")
+        return self.simulation_model.set_parameters(values, strict=strict)
+
+    def load_estimation_result(
+        self,
+        filename: Optional[str] = None,
+        result: Optional[Dict] = None,
+        parameters: bool = True,
+        initial_state: bool = True,
+        fixed: bool = True,
+        # verbose: int = 0,
+    ) -> None:
+        """
+        Load an estimation result from a file or dictionary.
+
+        Args:
+            filename (Optional[str]): The filename to load the estimation result from.
+            result (Optional[Dict]): The estimation result dictionary to load.
+            parameters (bool): Set the estimated parameter values (default).
+            initial_state (bool): Set the model's state (:meth:`set_state`)
+                from the initial states the result carries (multiple
+                shooting, collocation), so a simulation of the estimated
+                periods starts from the estimated state.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed to the values it ran with, so the model
+                simulates as it was fitted.
 
         Raises:
             AssertionError: If invalid arguments are provided.
         """
-        self.simulation_model.load_estimation_result(filename=filename, result=result)
+        self.simulation_model.load_estimation_result(
+            filename=filename,
+            result=result,
+            parameters=parameters,
+            initial_state=initial_state,
+            fixed=fixed,
+            # verbose=verbose,
+        )
+
+    def check_for_missing_initial_values(self) -> None:
+        """Check whether required component outputs have initial values."""
+        self.simulation_model.check_for_missing_initial_values()
 
     def check_for_for_missing_initial_values(self) -> None:
-        """
-        Check for missing initial values in components.
-
-        Raises:
-            Exception: If any component is missing an initial value.
-        """
-        self.simulation_model.check_for_for_missing_initial_values()
+        """Deprecated typo; use :meth:`check_for_missing_initial_values`."""
+        deprecate_name(
+            "check_for_for_missing_initial_values",
+            "check_for_missing_initial_values",
+        )
+        self.check_for_missing_initial_values()
 
     def get_semantic_object(self, key: str) -> "core.SemanticObject":
         """
@@ -679,7 +1234,7 @@ class Model:
             key (str): The key of the component.
 
         Returns:
-            core.System: The system component.
+            core.SemanticObject: The semantic object mapped to the simulation component.
 
         Raises:
             AssertionError: If the mapping is not 1-to-1.
@@ -692,9 +1247,936 @@ class Model:
             iter(self._translator.sim2sem_map[self._simulation_model._components[key]])
         )
 
-    def serialize(self) -> None:
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the simulation model to,
+        whether or not it has been written; ``load(filename=...)`` rebuilds
+        the model from it."""
+        return self._simulation_model.instance_graph_path
+
+    def serialize(self) -> str:
         """
-        Serialize the model.
+        Serialize both halves of the model.
+
+        The link between them (:attr:`sim2sem_map`) is written with the
+        simulation model, one ``t4b:modelsSemanticNode`` triple per
+        component and semantic node, so a model rebuilt from the file knows
+        which semantic nodes each of its components models.
+
+        Returns:
+            The path of the saved instance graph of the simulation model
+            (:attr:`instance_graph_path`), the file ``load(filename=...)``
+            rebuilds the model from.
         """
         self._semantic_model.serialize()
-        self._simulation_model.serialize()
+        self._write_translation_links()
+        return self._simulation_model.serialize()
+
+    def visualize(self, **kwargs) -> None:
+        """
+        Visualize the model.  Keyword arguments are forwarded to
+        :meth:`SimulationModel.visualize` (e.g. ``forward_only=True``,
+        ``compressed=True``).  The semantic model is only re-drawn when
+        called without arguments to match the standalone behaviour.
+        """
+        if not kwargs:
+            self._semantic_model.visualize()
+        self._simulation_model.visualize(**kwargs)
+
+    def factor_air_handling_units(self) -> List[Dict[str, Any]]:
+        """Factor every composite :class:`AirHandlingUnitSystem` into one
+        :class:`DamperSystem` per terminal, a supply and a return junction and
+        an :class:`AirHandlingUnitCoreSystem` on the totals, in place (see
+        :mod:`twin4build.model.factor_units`).  The model simulates exactly as
+        before; the estimator then sees one block per room instead of one
+        block joined through the unit.  Call :meth:`load` afterwards."""
+        from twin4build.model.factor_units import factor_air_handling_units
+
+        return factor_air_handling_units(self)
+
+    @property
+    def worlds(self):
+        """What :func:`~twin4build.model.partition.split_worlds` did to this model (a
+        :class:`~twin4build.model.partition.Worlds`), ``None`` before; on a batched model, the worlds of the model it
+        was batched from.  A multiple-shooting fit starts every component and its copies (``Worlds.copies``) from
+        one box and one start."""
+        worlds = getattr(self, "_worlds", None)
+        source = getattr(self, "_batch_source_model", None)
+        if worlds is None and source is not None:
+            return source.worlds
+        return worlds
+
+    @worlds.setter
+    def worlds(self, worlds) -> None:
+        self._worlds = worlds
+
+    def batch_components(self) -> "Model":
+        """Build a Model with batched meta components.
+
+        Groups components within each execution group by their signature
+        (class, port structure, parameter keys, state hints).  For each group
+        of compatible components a single *meta component* is created -- an
+        instance of the **same class** whose ``n_c`` (parallel-components)
+        dimension equals the group size.
+
+        ``tps.Parameter`` / ``tps.TensorParameter`` attributes listed in
+        ``component.parameter`` are stacked along the ``n_c`` axis so that a
+        single ``do_step`` call computes all batched components in parallel
+        via PyTorch broadcasting.
+
+        **After calling this method:**
+
+        1. Call ``batched.load(draw_semantic_model=False,
+           draw_simulation_model=False)`` to compute execution order.
+        2. When initialising the batched model for simulation, pass
+           ``n_c = component._n_c_batched`` to every I/O port's
+           ``initialize()`` so that tensors are allocated with the correct
+           parallel-component dimension.
+
+        Returns
+        -------
+        Model
+            A new ``Model`` whose components are the batched meta components
+            and whose connections mirror the original model's wiring.
+
+        Notes
+        -----
+        * The mapping from original component ids to ``(meta, i_c)`` is
+          stored in ``self._component_to_meta`` for later look-up.
+        * Components with ``n_c == 1`` (singletons) join the batched model
+          as they are, with the mapping metadata set on them.
+        * Constructor defaults are used when instantiating meta components;
+          all component classes must therefore accept ``id`` as their only
+          required keyword argument.
+        * A class whose instances cannot be rebuilt that way (sub-models
+          created after construction, e.g. at rewire) is left unbatched:
+          its components join the batched model as shallow copies with
+          fresh wiring, sharing ports, parameters and sub-models with the
+          source components.
+        """
+        batched = Model(
+            id=f"{self.id}_batched",
+            system_registry=getattr(self._simulation_model, "_system_registry", None),
+        )
+        # the instance-level wiring (which input reaches which measurement),
+        # which the metas' own wiring no longer tells apart
+        batched._batch_source_model = self
+        self._component_to_meta = {}
+        unbatchable: set = set()
+        # Fusable clusters (a zone with its radiator, a pair of zones with
+        # their wall) batch as clusters: the cluster's shape is part of every
+        # member's signature and every meta of one cluster type orders its
+        # instances by the same cluster order, so the arcs between the metas
+        # pair instance i with instance i and the batched model fuses them.
+        cluster_role, cluster_rank = self._cluster_batching_keys()
+
+
+        def _as_is(component, group_idx):
+            """A shallow copy with empty wiring, joined to the batched model."""
+            clone = copy.copy(component)
+            clone.connected_through = []
+            clone.connects_at = []
+            clone._n_c_batched = 1
+            clone._source_component_ids = (component.id,)
+            clone._batched_execution_priority = group_idx
+            batched.add_component(clone)
+            return clone
+
+        # -- Phase 1: create one meta component per signature group --------
+        # Classes that must never be lumped together even when they share a
+        # signature.  Each instance is kept as-is (n_c = 1).
+        no_batch_classes = {
+            "OutdoorEnvironmentSystem",
+            "SensorSystem",
+        }
+
+        for group_idx, group in enumerate(self.simulation_model.execution_order):
+            by_sig: "OrderedDict[Tuple[Any, ...], List[Any]]" = OrderedDict()
+            for comp in _batch_members(group):
+                sig = self._component_signature(comp)
+                if comp.__class__.__name__ in no_batch_classes or (
+                    comp.__class__.__name__ == "ScheduleSystem"
+                    and not getattr(comp, "_allow_component_batching", False)
+                ):
+                    sig = (*sig, id(comp))
+                if comp.id in cluster_role:
+                    sig = (*sig, ("cluster",) + cluster_role[comp.id])
+                by_sig.setdefault(sig, []).append(comp)
+            for blk_idx, (sig, comps) in enumerate(by_sig.items()):
+                if comps[0].id in cluster_rank:
+                    comps = sorted(comps, key=lambda c: cluster_rank[c.id])
+
+                n_c = len(comps)
+                cls = comps[0].__class__
+                # A component whose constructor takes required arguments
+                # (a declared System's settings) declares them in
+                # ``_batch_init_kwargs`` so the meta can be built at all.
+                # Components sharing a batch share those values;
+                # _component_signature keeps differing ones apart.
+                init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
+                if getattr(cls, "_is_declared", False):
+                    # a parameter the constructor must be given (a curve's
+                    # points): the first copy's, until the stacked values
+                    # replace it
+                    for name, decl in cls._declarations["parameter"].items():
+                        if decl.value is core.REQUIRED and getattr(comps[0], name, None) is not None:
+                            init_kwargs.setdefault(name, getattr(comps[0], name).get().detach().clone())
+                if n_c == 1:
+                    # A singleton joins as a shallow copy with fresh wiring
+                    # (the cycle-free load copies components the same way):
+                    # rebuilding it from its constructor would have to
+                    # reproduce every attribute set after construction (a
+                    # transfer node's branch map, a sensor's data source),
+                    # which nothing guarantees.  Ports, parameters and
+                    # sub-models are shared with the source component.
+                    self._component_to_meta[comps[0].id] = (_as_is(comps[0], group_idx), 0)
+                    continue
+                try:
+                    meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
+                    meta = cls(id=meta_id, **init_kwargs)
+                    meta._n_c_batched = n_c
+                    meta._source_component_ids = tuple(c.id for c in comps)
+                    # Component.initialize() sizes every I/O port from ``n_c``.
+                    # Keeping only the mapping metadata at ``_n_c_batched`` left
+                    # non-stateful batched components with scalar ports.
+                    meta.n_c = n_c
+                    self._copy_data_source_attrs(comps[0], meta)
+                    meta._batched_execution_priority = group_idx
+                    self._batch_parameters(meta, comps, n_c)
+                    self._batch_value_settings(meta, comps)
+                    self._copy_init_attrs(meta, comps[0])
+                    self._stack_instance_attrs(meta, comps)
+                except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+                    # A class whose instances cannot be rebuilt from their
+                    # constructor and stacked parameters (sub-models created
+                    # later, e.g. at rewire) is not batched: its components
+                    # stay as they are, one per instance.  Batching is an
+                    # optimisation, so the model must still run.
+                    if cls.__name__ not in unbatchable:
+                        unbatchable.add(cls.__name__)
+                        LOGGER.warning(
+                            "%s is not batched (%s: %s); its %d instance(s) stay separate",
+                            cls.__name__, type(exc).__name__, exc, n_c,
+                        )
+                    for c in comps:
+                        self._component_to_meta[c.id] = (_as_is(c, group_idx), 0)
+                    continue
+
+                for i_c, c in enumerate(comps):
+                    self._component_to_meta[c.id] = (meta, i_c)
+
+                batched.add_component(meta)
+
+        # -- Phase 2: wire connections between meta components -------------
+        # Every original connection is a set of (sender instance, receiver
+        # instance, output slot, input slot) pairs -- one pair for a scalar
+        # link, several for a zone reading several branches of one unit.
+        # All pairs of one (meta, port, meta, port) key go into one batched
+        # connection whose port and component indices are aligned tensors,
+        # so each instance keeps its own slots.
+        def _slots(index):
+            if index is None:
+                return [None]
+            if isinstance(index, torch.Tensor):
+                return [int(v) for v in index.reshape(-1).tolist()]
+            return [int(index)]
+
+        connection_map: Dict[tuple, dict] = {}
+        for group in self.simulation_model.execution_order:
+            for comp in _batch_members(group):
+                for conn in comp.connected_through:
+
+                    for cp in conn.connects_system_at:
+                        receiver = cp.connection_point_of
+                        s_meta, s_ic = self._component_to_meta[comp.id]
+                        r_meta, r_ic = self._component_to_meta[receiver.id]
+
+                        key = (
+                            id(s_meta),
+                            conn.output_port,
+                            id(r_meta),
+                            cp.input_port,
+                        )
+                        if key not in connection_map:
+                            connection_map[key] = {
+                                "s_meta": s_meta,
+                                "r_meta": r_meta,
+                                "output_port": conn.output_port,
+                                "input_port": cp.input_port,
+                                "pairs": [],
+                            }
+                        outs = _slots(cp.output_port_index.get(conn))
+                        ins = _slots(cp.input_port_index.get(conn))
+                        if len(outs) == 1 and len(ins) > 1:
+                            outs = outs * len(ins)
+                        elif len(ins) == 1 and len(outs) > 1:
+                            ins = ins * len(outs)
+                        assert len(outs) == len(ins), (
+                            f"{comp.id}.{conn.output_port} -> {receiver.id}.{cp.input_port}: "
+                            f"{len(outs)} output slots against {len(ins)} input slots"
+                        )
+                        cut = cp.detached_of(conn)
+                        cuts = (
+                            [bool(v) for v in cut.tolist()] if isinstance(cut, torch.Tensor)
+                            else [bool(cut)] * len(outs)
+                        )
+                        if len(cuts) == 1 and len(outs) > 1:
+                            cuts = cuts * len(outs)
+                        for out_v, in_v, d in zip(outs, ins, cuts):
+                            connection_map[key]["pairs"].append((s_ic, r_ic, out_v, in_v, d))
+
+        def _index(values):
+            """One int when every pair agrees on one value, else a tensor."""
+            if all(v is None for v in values):
+                return None
+            if len(values) == 1:
+                return values[0]
+            return torch.tensor(values, dtype=torch.long)
+
+        for info in connection_map.values():
+            pairs = info["pairs"]
+            s_n_c = getattr(info["s_meta"], "_n_c_batched", 1)
+            r_n_c = getattr(info["r_meta"], "_n_c_batched", 1)
+            out_v = _index([p[2] for p in pairs])
+            in_v = _index([p[3] for p in pairs])
+            s_ics = [p[0] for p in pairs]
+            r_ics = [p[1] for p in pairs]
+            cuts = [p[4] for p in pairs]
+            # read without the gradient (split_worlds' cut connections): one flag for all pairs, or one per pair
+            detached = all(cuts) if all(cuts) or not any(cuts) else torch.tensor(cuts, dtype=torch.bool)
+            # Instances aligned pairwise with no vector slots to carry:
+            # plain broadcasting over n_c, as before.
+            aligned = (
+                s_n_c == r_n_c
+                and len(pairs) == s_n_c
+                and sorted(s_ics) == list(range(s_n_c))
+                and all(a == b for a, b in zip(s_ics, r_ics))
+                and not isinstance(out_v, torch.Tensor)
+                and not isinstance(in_v, torch.Tensor)
+            )
+            singleton = s_n_c == 1 and r_n_c == 1 and len(pairs) == 1
+            if (aligned or singleton) and not isinstance(detached, torch.Tensor):
+                batched.add_connection(
+                    info["s_meta"], info["r_meta"], info["output_port"], info["input_port"],
+                    output_port_index=out_v, input_port_index=in_v, detached=detached,
+                )
+                continue
+            batched.add_connection(
+                info["s_meta"], info["r_meta"], info["output_port"], info["input_port"],
+                output_port_index=out_v,
+                input_port_index=in_v,
+                output_component_index=torch.tensor(s_ics, dtype=torch.long),
+                input_component_index=torch.tensor(r_ics, dtype=torch.long),
+                detached=detached,
+            )
+
+        # -- Phase 3: the source model's cycle cuts, as pairs of metas ---------
+        # (a fused block's: its members'); the batched load cuts these first
+        # (SimulationModel._cut_source_cuts), so its one-step lags sit where
+        # the source model's do without searching the batched graph's cycles,
+        # which batching multiplies (23 Oct 2026: more than 300 000 on a large
+        # building's, past the memory).
+        source_sim = self.simulation_model
+        fused = getattr(source_sim, "_fused_components", None) or {}
+
+        def _metas(component_id):
+            block = fused.get(component_id)
+            members = [m.id for m in block._members] if block is not None else [component_id]
+            return tuple(sorted({self._component_to_meta[m][0].id for m in members if m in self._component_to_meta}))
+
+        batched._simulation_model._source_cuts = [
+            (_metas(a), _metas(b)) for a, b in getattr(source_sim, "_removed_cycle_edges", None) or []
+        ]
+        return batched
+
+    def unbatch_histories(self, batched: "Model") -> None:
+        """Write the batched model's port histories back into this model's
+        components, one instance slice each.
+
+        After a simulation or estimate on ``batched = self.batch_components()``
+        the results sit on the meta components' ports, indexed by instance.
+        Copying each instance's slice back lets everything that reads a
+        component's ports (plots, error tables, virtual-sensor frames) work
+        on the original components unchanged.  Ports shared with a copied
+        singleton are the same objects already and are left alone.
+        """
+        for cid, (meta, i_c) in self._component_to_meta.items():
+            component = self.components.get(cid)
+            if component is None or component is meta:
+                continue
+            for direction in ("input", "output"):
+                for name, port in getattr(component, direction).items():
+                    source = getattr(meta, direction).get(name)
+                    if source is None or source is port:
+                        continue
+                    history = getattr(source, "_history", None)
+                    if history is None or history.ndim < 3:
+                        continue
+                    port._history = history[:, :, i_c : i_c + 1].detach().clone()
+                    port._history_is_populated = bool(getattr(source, "_history_is_populated", True))
+                    tensor = getattr(source, "_tensor", None)
+                    if tensor is not None and tensor.ndim >= 2:
+                        port._tensor = tensor[:, i_c : i_c + 1].detach().clone()
+
+    # -- batched-model look-ups -------------------------------------------
+
+    def get_batch_id_for_component(self, component_id: str) -> Optional[str]:
+        """Return the meta-component id that batches *component_id*."""
+        entry = self._component_to_meta.get(component_id)
+        if entry is None:
+            return None
+        meta, _ = entry
+        return meta.id
+
+    def get_batched_component_info(
+        self, component_id: str
+    ) -> Optional[Tuple[Any, int]]:
+        """Return ``(meta_component, i_c_index)`` for an original component.
+
+        Returns ``None`` if *component_id* has not been batched.
+        """
+        return self._component_to_meta.get(component_id)
+
+    # -- data-source attribute copying ------------------------------------
+
+    _DATA_SOURCE_ATTRS = (
+        # boolean flags
+        "use_spreadsheet",
+        "use_database",
+        "use_df",
+        "use_dict",
+        # ScheduleSystem / SensorSystem
+        "filename",
+        "df",
+        "date_column",
+        "value_column",
+        "datecolumn",
+        "valuecolumn",
+        "uuid",
+        "name",
+        "dbconfig",
+        # ScheduleSystem rulesets
+        "weekday_ruleset",
+        "weekend_ruleset",
+        "monday_ruleset",
+        "tuesday_ruleset",
+        "wednesday_ruleset",
+        "thursday_ruleset",
+        "friday_ruleset",
+        "saturday_ruleset",
+        "sunday_ruleset",
+        "default_x",
+        "default_y",
+        # OutdoorEnvironmentSystem
+        "filename_outdoorTemperature",
+        "filename_globalIrradiation",
+        "filename_outdoorCo2Concentration",
+        "datecolumn_outdoorTemperature",
+        "valuecolumn_outdoorTemperature",
+        "datecolumn_globalIrradiation",
+        "valuecolumn_globalIrradiation",
+        "datecolumn_outdoorCo2Concentration",
+        "valuecolumn_outdoorCo2Concentration",
+        "uuid_outdoorTemperature",
+        "dbconfig_outdoorTemperature",
+        "uuid_globalIrradiation",
+        "dbconfig_globalIrradiation",
+        "uuid_outdoorCo2Concentration",
+        "dbconfig_outdoorCo2Concentration",
+    )
+
+    def _copy_data_source_attrs(self, src: Any, dst: Any) -> None:
+        """Copy data-source configuration from *src* to *dst*.
+
+        Copies boolean flags (``use_spreadsheet``, ``use_database``,
+        ``use_df``, ``use_dict``) and their associated file / database /
+        ruleset attributes so that a freshly instantiated component can
+        initialise its data source the same way the original could.
+        """
+        for attr in self._DATA_SOURCE_ATTRS:
+            val = getattr(src, attr, None)
+            if val is None:
+                continue
+            try:
+                setattr(dst, attr, val)
+            except AttributeError:
+                pass
+
+    # -- parameter batching -----------------------------------------------
+
+    @staticmethod
+    def _resolve_dotted_attr(obj: Any, dotted_name: str) -> Any:
+        """Traverse a dotted attribute path (e.g. ``"thermal.C_air"``)."""
+        for part in dotted_name.split("."):
+            obj = getattr(obj, part, None)
+            if obj is None:
+                return None
+        return obj
+
+    @staticmethod
+    def _set_dotted_attr(obj: Any, dotted_name: str, value: Any) -> None:
+        """Set an attribute via a dotted path (e.g. ``"thermal.C_air"``)."""
+        parts = dotted_name.split(".")
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+
+    def _cluster_batching_keys(self):
+        """``(role, rank)`` for the members of fusable clusters: ``role[cid] =
+        (cluster type, role index)`` names the member's place in its cluster's
+        shape (class and fusable arcs), ``rank[cid]`` orders the clusters of
+        one type canonically (by their members' ids), so that the metas of a
+        cluster type line up instance to instance."""
+        clusters, arcs = self.simulation_model._fusable_clusters()
+        role: Dict[str, tuple] = {}
+        by_type: Dict[tuple, list] = {}
+        for members in clusters:
+            if len(members) < 2:
+                continue
+            ids = {m.id for m in members}
+            touching: Dict[str, list] = {m.id: [] for m in members}
+            for sender, s_port, receiver, r_port, pairs in arcs:
+                if sender.id in ids and receiver.id in ids:
+                    slot = pairs[0][3] if pairs else None
+                    slot = 0 if slot is None or isinstance(slot, slice) else int(slot)
+                    touching[sender.id].append(("out", s_port, type(receiver).__name__, r_port, slot))
+                    touching[receiver.id].append(("in", r_port, type(sender).__name__, s_port, slot))
+            # A member's place in the cluster: its class, its fusable arcs
+            # inside the cluster, and its own batching signature -- two
+            # clusters batch together only when every member pair would, so
+            # the metas of one cluster type pair off one to one.
+            role_key = {
+                m.id: (
+                    type(m).__module__,
+                    type(m).__name__,
+                    tuple(sorted(touching[m.id])),
+                    self._component_signature(m),
+                )
+                for m in members
+            }
+            ordered = sorted(members, key=lambda m: (role_key[m.id], m.id))
+            index = {m.id: k for k, m in enumerate(ordered)}
+            cluster_arcs = tuple(sorted(
+                (index[sender.id], s_port, index[receiver.id], r_port)
+                for sender, s_port, receiver, r_port, _ in arcs
+                if sender.id in ids and receiver.id in ids
+            ))
+            type_key = (tuple(role_key[m.id] for m in ordered), cluster_arcs)
+            for m in ordered:
+                role[m.id] = (type_key, index[m.id])
+            by_type.setdefault(type_key, []).append(tuple(m.id for m in ordered))
+        # Clusters of one type in their natural order (the first member's
+        # place in the model), so a meta's instances keep the order its
+        # neighbours outside the cluster have wherever possible.
+        position = {cid: i for i, cid in enumerate(self.simulation_model.components)}
+        rank: Dict[str, int] = {}
+        for type_key, cluster_ids in by_type.items():
+            ordered_clusters = sorted(cluster_ids, key=lambda ids: min(position.get(c, 0) for c in ids))
+            for k, member_ids in enumerate(ordered_clusters):
+                for cid in member_ids:
+                    rank[cid] = k
+        return role, rank
+
+    @staticmethod
+    def _parameter_names(component: Any) -> Tuple[str, ...]:
+        """The attribute paths of a component's parameters: its
+        ``PARAM_NAMES`` (the values ``forward`` reads; a declared System's
+        are its own and its children's by their dotted paths), else the
+        paths its config saves, else the keys of its ``parameter`` map.
+
+        The ``parameter`` map bounds the System's own parameters only, never
+        its children's: a composite with one bounded parameter of its own (an
+        occupancy model's ``exhaustFlowRatio``) left every child's parameter
+        (``mass.V``) unstacked, at the constructor default for every copy.
+        """
+        names = getattr(component, "PARAM_NAMES", None)
+        if names or getattr(type(component), "_is_declared", False):
+            return tuple(names or ())
+        config = getattr(component, "config", None)
+        names = config.get("parameters", ()) if isinstance(config, dict) else ()
+        return tuple(names or getattr(component, "parameter", None) or ())
+
+    def _batch_parameters(self, meta: Any, components: List, n_c: int) -> None:
+
+        """Stack calibration parameters along the ``n_c`` dimension.
+
+        The ``tps.Parameter`` and ``tps.TensorParameter`` attributes named by
+        :meth:`_parameter_names` are batched, bounded or not: a fan's fixed
+        flow range is one value per copy like its estimated betas.  Each
+        original component contributes one slice along ``n_c``.
+
+        A declared parameter of several values per copy
+        (:meth:`System.values_per_copy`: a curve's points, a value per branch,
+        a child per branch) is laid out flat, one copy's values after
+        another; a copy holding one value fills its places with it.
+        """
+        declared = getattr(type(components[0]), "_is_declared", False)
+        parameter_names = self._parameter_names(components[0])
+        if not parameter_names:
+            return
+
+        for param_name in parameter_names:
+            originals = [self._resolve_dotted_attr(c, param_name) for c in components]
+            if any(p is None for p in originals):
+                # Absent on the copies (an optional parameter; copies batch
+                # only with copies that lack it too): nothing to stack.  It
+                # returned here, and every parameter after it went unstacked.
+                continue
+
+            first = originals[0]
+            self._stack_parameter_spec(meta, components, param_name)
+
+            width = components[0].values_per_copy(param_name) if declared else 1
+            if width > 1:
+                self._set_dotted_attr(meta, param_name, self._flat_per_copy(originals, width, param_name))
+                continue
+
+            if isinstance(first, tps.Parameter):
+                if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
+                    # k values per instance (an identified controller's
+                    # selection weights over its k slots), flat (n_c * k,):
+                    # the class reads them per instance
+                    vals = torch.cat([p.get().reshape(-1) for p in originals])
+                    mins = torch.cat([p.min_value.reshape(-1) for p in originals])
+                    maxs = torch.cat([p.max_value.reshape(-1) for p in originals])
+                    width = int(vals.numel())
+                else:
+                    vals = torch.stack([p.get().squeeze() for p in originals])
+                    mins = torch.stack([p.min_value.squeeze() for p in originals])
+                    maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                    width = n_c
+                self._set_dotted_attr(
+                    meta,
+                    param_name,
+                    tps.Parameter(
+                        vals,
+                        min_value=mins,
+                        max_value=maxs,
+                        requires_grad=first.requires_grad,
+                        n_c=width,
+                        scaling=getattr(first, "scaling", "linear"),
+                    ),
+                )
+
+            elif isinstance(first, tps.TensorParameter):
+                vals = torch.stack([p.get().squeeze() for p in originals])
+                mins = (
+                    torch.stack([p.min_value.squeeze() for p in originals])
+                    if first.min_value is not None
+                    else None
+                )
+                maxs = (
+                    torch.stack([p.max_value.squeeze() for p in originals])
+                    if first.max_value is not None
+                    else None
+                )
+                self._set_dotted_attr(
+                    meta,
+                    param_name,
+                    # n_c is the stacked values' length (TensorParameter infers it)
+                    tps.TensorParameter(
+                        vals,
+                        min_value=mins,
+                        max_value=maxs,
+                        normalized=False,
+                        scaling=getattr(first, "scaling", "linear"),
+                    ),
+                )
+
+    @staticmethod
+    def _flat_per_copy(originals, width: int, name: str):
+        """The parameters ``originals`` (``width`` values per copy each, or
+        one) as one parameter of ``len(originals) * width`` values, one copy
+        after another."""
+
+        def per_copy(t):
+            t = torch.as_tensor(t).reshape(-1)
+            if t.numel() == 1:
+                return t.expand(width)
+            if t.numel() != width:
+                raise ValueError(f"{name}: a copy holds {t.numel()} values, not {width}")
+            return t
+
+        first = originals[0]
+        values = torch.cat([per_copy(p.get().detach()) for p in originals])
+        scaling = getattr(first, "scaling", "linear")
+        if isinstance(first, tps.TensorParameter):
+            bounds = [
+                None if getattr(first, attr) is None else torch.cat([per_copy(getattr(p, attr)) for p in originals])
+                for attr in ("min_value", "max_value")
+            ]
+            return tps.TensorParameter(values, min_value=bounds[0], max_value=bounds[1], normalized=False, scaling=scaling)
+        return tps.Parameter(
+            values,
+            min_value=torch.cat([per_copy(p.min_value) for p in originals]),
+            max_value=torch.cat([per_copy(p.max_value) for p in originals]),
+            requires_grad=first.requires_grad,
+            n_c=int(values.numel()),
+            scaling=scaling,
+        )
+
+    @staticmethod
+    def _stack_parameter_spec(meta, components, param_name) -> None:
+        """The meta's ``parameter[leaf]`` bounds, one per instance.
+
+        A component's ``parameter`` spec (``{"lb": .., "ub": ..}``) is what
+        :meth:`System.get_estimable_parameters` reports; the meta is built
+        from the first instance's constructor arguments and would carry
+        that instance's bounds for every slice (a room's occupancy cap
+        from its floor area, say).  When the instances' bounds differ, the
+        meta's spec holds one value per instance; equal bounds stay
+        scalar.
+        """
+        *prefix, leaf = param_name.split(".")
+        path = ".".join(prefix)
+
+        def owner_of(component):
+            try:
+                return rgetattr(component, path) if path else component
+            except AttributeError:
+                return None
+
+        specs = []
+        for component in components:
+            owner = owner_of(component)
+            spec = getattr(owner, "parameter", None) if owner is not None else None
+            bounds = spec.get(leaf) if isinstance(spec, dict) else None
+            if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
+                return
+            specs.append(bounds)
+        meta_owner = owner_of(meta)
+        meta_spec = getattr(meta_owner, "parameter", None) if meta_owner is not None else None
+        if not isinstance(meta_spec, dict):
+            return
+        stacked = {}
+        for key in ("lb", "ub"):
+            values = [float(np.asarray(b[key], dtype=float).reshape(-1)[0]) for b in specs]
+            stacked[key] = values[0] if len(set(values)) == 1 else values
+        if "relative" in specs[0]:
+            # relative bounds (System.size_parameter) hold for the meta only
+            # when every instance was sized; the others keep the absolute ones
+            stacked["sized"] = all(b.get("sized", False) for b in specs)
+        meta_owner.parameter = dict(meta_spec)
+        meta_owner.parameter[leaf] = {**specs[0], **stacked}
+
+    # -- non-parameter attribute copying -----------------------------------
+
+    # Attributes that must be copied verbatim from a source component to
+    # the meta component because they affect model structure (matrix sizes,
+    # topology) but are plain values rather than tps.Parameter instances.
+    # Keyed by fully-qualified class name.  Supports dotted paths for
+    # composite components (e.g. ``"thermal.some_attr"``).
+    _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
+        # A declared System's settings build its meta (``_batch_init_kwargs``)
+        # and its wiring sizes its ports: the wall, the node, the radiator,
+        # the fan-coil and the room need no entry.
+    }
+
+    @staticmethod
+    def _batch_value_settings(meta: Any, components: List) -> None:
+        """A declared System's value settings, one per copy: a setting all
+        copies share stays as it is, differing ones are stacked ``(n_c,)``
+        (``forward`` reads them from ``p``)."""
+        for name in getattr(type(meta), "value_settings", lambda: ())():
+            values = [getattr(c, name) for c in components]
+            if all(v == values[0] for v in values[1:]):
+                continue
+            if all(isinstance(v, bool) for v in values):
+                setattr(meta, name, torch.tensor(values, dtype=torch.bool))
+            else:
+                setattr(meta, name, torch.tensor([float(v) for v in values], dtype=tps.float_dtype()))
+
+    @staticmethod
+    def _stack_instance_attrs(meta: Any, components: List) -> None:
+        """Stack the per-instance values a class declares in
+        ``_batch_stacked_attrs`` (dotted paths) onto the meta, ``(n_c, ...)``.
+
+        For the values that are neither parameters (``_batch_parameters``
+        stacks those) nor shared structure (``_batch_init_kwargs``): an
+        identified controller's ``onOffSignal`` normalisation bounds and its
+        candidates' directions of action, which the rewire sets per loop.  A
+        value an instance does not have (an unbuilt controller) leaves the
+        meta's own."""
+        for name in getattr(components[0], "_batch_stacked_attrs", ()):
+            values = [Model._resolve_dotted_attr(c, name) for c in components]
+            if any(v is None for v in values):
+                continue
+            stacked = torch.stack([torch.as_tensor(v).detach() for v in values])
+            Model._set_dotted_attr(meta, name, stacked)
+
+    def _copy_init_attrs(self, meta: Any, source: Any) -> None:
+        """Copy non-Parameter constructor attributes from *source* to *meta*.
+
+        Only the attributes listed in ``_INIT_ATTRS_TO_COPY`` for the
+        component's class are copied.  This ensures that the meta component
+        has the correct structural values (e.g. ``nelements``) even though
+        ``_batch_parameters`` only handles ``tps.Parameter`` objects.
+        Supports dotted paths for composite components.
+        """
+        fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
+        attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
+        for attr in attrs:
+            val = self._resolve_dotted_attr(source, attr)
+            if val is not None:
+                self._set_dotted_attr(meta, attr, val)
+
+    # -- signature helpers ------------------------------------------------
+
+    def _component_signature(self, component: Any) -> Tuple[Any, ...]:
+        input_signature = self._port_dict_signature(getattr(component, "input", {}))
+        output_signature = self._port_dict_signature(getattr(component, "output", {}))
+
+        parameter_keys: Tuple[str, ...] = tuple(sorted(self._parameter_names(component)))
+        # Copies of a class with an optional parameter batch only with copies
+        # that have it, or that lack it, too (their parameter sets differ).
+        absent = []
+        for name in getattr(component, "PARAM_NAMES", ()):
+            try:
+                if rgetattr(component, name) is None:
+                    absent.append(name)
+            except AttributeError:
+                pass
+        parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
+        # A declared System's values per copy (a curve's points, a value or a
+        # child per branch) must agree: two units with different branch
+        # counts cannot share one layout.
+        if getattr(type(component), "_is_declared", False):
+            children = type(component)._declarations["child"]
+            parameter_keys = parameter_keys + (
+                ("per_copy",)
+                + tuple(component.values_per_copy(name) for name in getattr(component, "PARAM_NAMES", ()))
+                + tuple(component.slots_per_copy(decl) for decl in children.values()),
+            )
+
+        # A component that only replays recorded data (a controller in
+        # playback) is exogenous to the functional composer while its
+        # computing twin is not; they must not share a meta, and neither
+        # must their receivers (a valve fed by a replayed command and one fed
+        # by a computed command are different routing kinds).
+        def _replays(c):
+            r = getattr(c, "replays_data", None)
+            return bool(r()) if callable(r) else False
+
+        state_hints = (
+            getattr(component, "n_states", None),
+            getattr(component, "n_inputs", None),
+            getattr(component, "n_outputs", None),
+            _replays(component),
+        )
+        data_signature = tuple(
+            (name, repr(getattr(component, name)))
+            for name in (
+                "filename",
+                "date_column",
+                "value_column",
+                "weekday_ruleset",
+                "weekend_ruleset",
+            )
+            if hasattr(component, name)
+        )
+        # A component reading its own series (a sensor with a database
+        # ``uuid`` or an in-memory ``df``) is one data source: a meta
+        # carries a single source (``_copy_data_source_attrs`` copies the
+        # first member's), so two sensors on different series must never
+        # share one, or every member would read the first member's data.
+        source_identity = tuple(
+            (name, value if isinstance(value, str) else id(value))
+            for name, value in (
+                ("uuid", getattr(component, "uuid", None)),
+                ("df", getattr(component, "df", None)),
+            )
+            if value is not None
+        )
+        data_signature = data_signature + source_identity
+
+        # Declared batch-construction values (a declared System's settings
+        # and its transformation) are part of the component's identity: batching
+        # two different transformations into one n_c block would silently apply
+        # one of them to both.
+        def _declared_signature(value):
+            if isinstance(value, (str, int, float, bool, type(None))):
+                return value
+            if isinstance(value, (list, tuple)):
+                return tuple(_declared_signature(item) for item in value)
+            if isinstance(value, dict):
+                # a literal (an identified controller's candidate structure):
+                # equal contents are the same structure
+                return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
+            if callable(getattr(value, "signature", None)) and hasattr(value, "to_config"):
+                # A reader: two readers of the same data are the same source.
+                return ("source",) + tuple(value.signature())
+            # A callable (or any other object) counts as identity: two
+            # separately created functions are two transformations as far as
+            # batching is concerned, even if their source is identical.
+            return id(value)
+
+        # A value setting may differ between copies (it is stacked per copy);
+        # the structural ones must match.
+        per_copy = set(type(component).value_settings()) if hasattr(type(component), "value_settings") else set()
+        init_signature = tuple(
+            (name, _declared_signature(value))
+            for name, value in sorted(
+                (getattr(component, "_batch_init_kwargs", None) or {}).items()
+            )
+            if name not in per_copy
+        )
+        outgoing = []
+        for connection in getattr(component, "connected_through", ()):
+            for point in connection.connects_system_at:
+                receiver = point.connection_point_of
+                outgoing.append(
+                    (
+                        connection.output_port,
+                        receiver.__class__.__module__,
+                        receiver.__class__.__name__,
+                        point.input_port,
+                    )
+                )
+        incoming = []
+        for point in getattr(component, "connects_at", ()):
+            for connection in point.connects_system_through:
+                sender = connection.connects_system
+                incoming.append(
+                    (
+                        sender.__class__.__module__,
+                        sender.__class__.__name__,
+                        connection.output_port,
+                        point.input_port,
+                        _replays(sender),
+                    )
+                )
+
+        return (
+            component.__class__.__module__,
+            component.__class__.__name__,
+            input_signature,
+            output_signature,
+            parameter_keys,
+            state_hints,
+            data_signature,
+            init_signature,
+            tuple(sorted(incoming)),
+            tuple(sorted(outgoing)),
+        )
+
+    def _port_dict_signature(self, port_dict: Dict[str, Any]) -> Tuple[Any, ...]:
+        items = []
+        for key in sorted(port_dict.keys()):
+            items.append((key, self._port_signature(port_dict[key])))
+        return tuple(items)
+
+    def _port_signature(self, port: Any) -> Tuple[Any, ...]:
+        if isinstance(port, tps.Scalar):
+            return (
+                "Scalar",
+                bool(getattr(port, "_optional", False)),
+                bool(getattr(port, "_is_leaf", False)),
+            )
+        if isinstance(port, tps.Vector):
+            return (
+                "Vector",
+                getattr(port, "_n_v", None),
+                bool(getattr(port, "_optional", False)),
+                bool(getattr(port, "_is_leaf", False)),
+            )
+        return (port.__class__.__name__,)

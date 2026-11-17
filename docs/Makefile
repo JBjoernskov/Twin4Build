@@ -27,7 +27,11 @@ help:
 
 buildapi:
 	rm -rf source/auto
-	sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
-	python clean_sphinx_docs.py
+	sphinx-apidoc -f --no-toc --maxdepth=1 -o source/auto ../twin4build \
+		../twin4build/tests ../twin4build/examples \
+		../twin4build/generated_files \
+		../twin4build/utils/test_notebook.py \
+		../twin4build/utils/print_progress.py
+	python clean_sphinx_docs.py source/auto
 	@echo "Auto-generation of API documentation finished. " \
 		"The generated files are in 'source/auto/'"

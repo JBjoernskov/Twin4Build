@@ -1,21 +1,13 @@
 coil
 ====
 
-Package
----------
-
-.. toctree::
-   :maxdepth: 1
-
-   twin4build.systems.coil.tests
-
 Modules
 -------
 
-coil\_torch\_system module
---------------------------
+twin4build.systems.coil.coil\_system module
+-------------------------------------------
 
-.. automodule:: twin4build.systems.coil.coil_torch_system
+.. automodule:: twin4build.systems.coil.coil_system
    :members:
    :show-inheritance:
    :undoc-members:

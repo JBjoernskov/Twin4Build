@@ -4,22 +4,21 @@ Graph algorithms for finding cycles and strongly connected components.
 Mathematical Formulation:
 
 1. Simple Cycles:
-   A simple cycle in a directed graph :math:`G = (V, E)` is a path :math:`v_1, v_2, ..., v_k` where:
-   - :math:`v_1 = v_k`
-   - All other vertices are distinct
-   - :math:`(v_i, v_{i+1}) \in E \forall i \in \{1, ..., k-1\}`
+   A simple cycle in a directed graph :math:`G = (V, E)` is a path
+   :math:`v_1, v_2, ..., v_k` where :math:`v_1 = v_k`, all other vertices
+   are distinct, and :math:`(v_i, v_{i+1}) \in E \; \forall i \in \{1, ..., k-1\}`.
 
 2. Strongly Connected Components (SCC):
-   A strongly connected component of a directed graph :math:`G = (V, E)` is a maximal subset :math:`C \subseteq V` where:
-        - For any two vertices :math:`u, v \in C`, there exists a path from :math:`u` to :math:`v`
-        - For any two vertices :math:`u \in C, v \notin C`, either:
-            - There is no path from :math:`u` to :math:`v`, or
-            - There is no path from :math:`v` to :math:`u`
+   A strongly connected component of a directed graph :math:`G = (V, E)` is a
+   maximal subset :math:`C \subseteq V` where for any two vertices
+   :math:`u, v \in C` there exists a path from :math:`u` to :math:`v`, and for
+   any two vertices :math:`u \in C, v \notin C` there is no path from
+   :math:`u` to :math:`v` or no path from :math:`v` to :math:`u`.
 
 3. Tarjan's Algorithm:
-   For each vertex :math:`v \in V`, we maintain:
-        - :math:`index[v]`: The order in which :math:`v` was discovered
-        - :math:`lowlink[v]`: The smallest index of any vertex reachable from :math:`v` through a back edge
+   For each vertex :math:`v \in V`, we maintain :math:`index[v]` (the order in
+   which :math:`v` was discovered) and :math:`lowlink[v]` (the smallest index
+   of any vertex reachable from :math:`v` through a back edge).
 
    A vertex :math:`v` is the root of an SCC if and only if:
 

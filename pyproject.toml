@@ -2,24 +2,39 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages]
-find = {}  # Scan the project directory with the default parameters
+[tool.setuptools.packages.find]
+include = ["twin4build*"]
+# Local simulation outputs often leave __init__.py under generated_files/;
+# never ship those as installable packages.
+exclude = [
+    "twin4build.tests",
+    "twin4build.tests.*",
+    "*.generated_files",
+    "*.generated_files.*",
+]
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = ["*.xlsm", "*.ttl", "*.csv"]
+# Patterns are relative to each package directory (not the repo root). The
+# previous ``"*" = ["*.ttl", ...]`` did not reliably include nested example
+# data, so Colab installs were missing estimator_example CSVs/TTLs.
+"twin4build.examples.estimator_example" = ["*.csv", "*.ttl", "*.xlsm"]
+"twin4build.examples.full_workflow_example" = ["*.csv"]
+"twin4build.core" = ["ontologies/*.ttl"]
 "twin4build.model.semantic_model.mappings" = ["*.yml"]
 
 [project]
 name = "twin4build"
-version = "1.1.2"
+version = "2.0.0rc1"
 authors = [
     { name = "Jakob Bjørnskov", email = "jakob.bjornskov@gmail.com" },
 ]
 description = "Dynamic simulation of buildings and integration with semantic modeling."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -40,29 +55,48 @@ dependencies = [
     "pandas",
     "torch",
     "pydot<=2.0.0",
+    "pygraphviz>=2.0.1",
     "tqdm",
-    "fmpy",
     "scipy",
     "numpy",
     "prettytable",
-    "jupyter",
-    "nbformat",
     "rdflib",
-    "brickschema[persistence]",
+    # brickschema 0.8.0 (2026-09) dropped its importlib-resources dependency but
+    # still imports it in brickify (ModuleNotFoundError on every import of
+    # the semantic model); stay on 0.7 until that is fixed upstream
+    "brickschema[persistence]<0.8",
     "click_spinner",
     "xlrd",
     "rdflib_sqlalchemy",
     "pydotplus",
+    # pyparsing 3.3.3 (2026-09-20) breaks pydotplus' HTML-label parser
+    # (TypeError: sequence item 0: expected str instance, ParseResults found)
+    "pyparsing<3.3.3",
     "typer",
     "openpyxl",
-    "psycopg2",
+    # psycopg2 (reading a PostgreSQL database) is the [database] extra
     "pyarrow",
     "beautifulsoup4",
-    "python-dateutil",
-    "pathlib"
+    # python-dateutil 3.0.0 (2026-10) breaks pandas' time-zone conversion of
+    # dateutil zones (AttributeError: 'NoneType' object has no attribute
+    # 'total_seconds' in pandas.get_dst_info, with pandas 3.0 and 3.1): every
+    # tz.gettz(...) zone fails in simulation_time._steps; stay on 2.x
+    "python-dateutil<3",
+    "pytz",
+    # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
+    # IPOPT backend and collocation transcription.
+    "casadi",
 ]
 
 [project.optional-dependencies]
+# CUDA torch is not on PyPI: the default ``torch`` dependency is whatever
+# wheel PyPI serves (CPU-only on Windows). Install a CUDA 12.8+ build with
+#   pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+# or install torch from that index first. Triton has no Windows wheels, so
+# compiled / CUDA-graph paths need Linux or WSL (issue #167).
+gpu = [
+    "triton; platform_system == 'Linux'",
+]
 dev = [
     "coverage",
     "black",
@@ -72,13 +106,32 @@ dev = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
-    "twine"
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
+    "twine",
+    # the database loader's tests
+    "psycopg2-binary",
+    # the example notebooks' tests (the [notebooks] extra)
+    "jupyter",
+    "nbformat",
 ]
+# Running the example notebooks and twin4build.utils.test_notebook
+# (jupyter brings nbconvert and the kernel).
+notebooks = [
+    "jupyter",
+    "nbformat",
+]
+# Reading sensor and schedule series from a PostgreSQL database
+# (DatabaseSource, load_from_database).
 database = [
     "psycopg2-binary",
     "sqlalchemy",
 ]
 all = [
+    "jupyter",
+    "nbformat",
     "coverage",
     "black",
     "flake8",
@@ -87,6 +140,10 @@ all = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
     "psycopg2-binary",
     "sqlalchemy",
     "twine"
@@ -100,7 +157,7 @@ repository = "https://github.com/JBjoernskov/Twin4Build/"
 # Development tool configurations
 [tool.black]
 line-length = 88
-target-version = ['py39']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -128,6 +185,8 @@ omit = [
 
 [tool.coverage.report]
 exclude_lines = [
+    "if __name__ == '__main__'",
+    "def _",
     "pragma: no cover",
     "def __repr__",
     "raise AssertionError",
@@ -157,4 +216,5 @@ skip_glob = [
     "twin4build/__init__.py",      # Linux/Unix paths  
     "twin4build/core/__init__.py"
 ]
+
 

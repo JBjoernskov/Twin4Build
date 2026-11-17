@@ -1,8 +1,9 @@
 # Local application imports
-from twin4build.systems.saref4syst.system import System
+import twin4build.core as core
+from twin4build.systems.saref4syst.declarations import Input, Output
 
 
-class ToDegKFromDegC(System):
+class ToDegKFromDegC(core.System):
     """
     System for converting temperature from Celsius to Kelvin.
 
@@ -11,19 +12,10 @@ class ToDegKFromDegC(System):
     .. math::
 
        T_{K} = T_{C} + 273.15
-
-    where:
-    - :math:`T_{K}` is temperature in Kelvin
-    - :math:`T_{C}` is temperature in Celsius
     """
 
-    def __init__(self):
-        super().__init__()
-        self.input = {"C": None}
-        self.output = {"K": None}
+    C = Input(doc="Temperature [°C]")
+    K = Output(doc="Temperature [K]")
 
-    def initialize(self, start_time=None, end_time=None, step_size=None, model=None):
-        pass
-
-    def do_step(self, secondTime=None, dateTime=None, step_size=None):
-        self.output["K"].set(self.input["C"] + 273.15)
+    def forward(self, x, inputs, p, step_size):
+        return x, {"K": inputs["C"] + 273.15}

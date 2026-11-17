@@ -3,11 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Twin4Build's documentation!
-========================================
-
-.. image:: _static/Twin4build_logo.jpg
-   :width: 600
+Twin4Build documentation
+========================
 
 Overview
 --------
@@ -17,8 +14,10 @@ This documentation is organized into three main sections:
 **Getting Started**
    Contains tutorials and installation instructions to help you begin using Twin4Build:
     
-   * Installation - Instructions for installing Twin4Build and its dependencies    
+   * Installation - Instructions for installing Twin4Build and its dependencies
    * Examples and Tutorials - Step-by-step guides showing basic usage
+   * Benchmarks - Reproducible performance methodology and canonical notebooks
+   * Settings - The library's knobs, their environment variables and defaults
 
 **API Reference**
    Detailed documentation of all Twin4Build modules and their components.
@@ -34,6 +33,8 @@ This documentation is organized into three main sections:
 
    manual/installation
    manual/examples_and_tutorials
+   manual/benchmarks
+   manual/settings
 
 .. toctree::
    :maxdepth: 2
@@ -48,34 +49,28 @@ This documentation is organized into three main sections:
    :hidden:
 
    manual/developer_reference
+   manual/differentiable_system_models
    
 
 
-.. include:: ../../README.md
-   :parser: myst_parser.sphinx_
-   :start-after: twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
-   :end-before: A typical workflow would look like this:
+Core workflow
+-------------
 
+Twin4Build has one primary workflow:
 
+1. Construct a :class:`~twin4build.model.model.Model` directly, or translate a
+   :class:`~twin4build.model.semantic_model.semantic_model.SemanticModel`.
+2. Call ``model.load()`` and, when needed, ``model.to(device, dtype)``.
+3. Create a :class:`~twin4build.simulator.simulator.Simulator` and run it.
+4. Pass that simulator to an
+   :class:`~twin4build.estimator.estimator.Estimator` or
+   :class:`~twin4build.optimizer.optimizer.Optimizer`.
 
-A typical workflow would look like this:
+Backend-specific solver settings belong in the ``options`` argument of
+``estimate`` or ``optimize``. Execution policy belongs to ``Simulator``.
 
-.. image:: _static/t4b_workflow.png
-   :width: 1000
-
-
-
-
-
-.. include:: ../../README.md
-   :parser: myst_parser.sphinx_
-   :start-after: The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
-   :end-before: ## Installation
-
-
-.. include:: ../../README.md
-   :parser: myst_parser.sphinx_
-   :start-after: ## Publications
+See the `project README <https://github.com/JBjoernskov/Twin4Build/>`_ for
+installation badges, publications, and citation information.
 
 Indices and tables
 ==================

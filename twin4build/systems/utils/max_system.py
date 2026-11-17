@@ -1,45 +1,36 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
 # Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output
 
 
 class MaxSystem(core.System):
     r"""
     Max System.
 
-    This class implements a max system for a given system.
+    Reduces a vector input to a single scalar output by taking a smooth
+    (differentiable) maximum over its elements, computed as
+    :math:`\mathrm{logsumexp}(k \cdot x) / k` with sharpness :math:`k = 50`.
+    Useful e.g. for combining several control signals into one, while keeping
+    the operation differentiable for gradient-based optimization.
+
+    Inputs:
+        - "inputs": Vector of values to take the maximum over.
+
+    Outputs:
+        - "value": Smooth maximum of the input values.
 
     Args:
         **kwargs: Additional keyword arguments
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    inputs = Input(size="wired", doc="Values to take the maximum over, one slot per connection")
+    value = Output(doc="Smooth maximum of the input values")
 
-        self.input = {"inputs": tps.Vector()}
-        self.output = {"value": tps.Scalar()}
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: ``logsumexp(k x) / k`` over the slots, ``k = 50``."""
+        k = 50.0
+        return x, {"value": torch.logsumexp(k * inputs["inputs"], dim=-1) / k}
 
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> None:
-        pass
-
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        self.output["value"].set(torch.max(self.input["inputs"].get()), stepIndex)

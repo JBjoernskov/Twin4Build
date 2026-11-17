@@ -1,5 +1,5 @@
 Installation Guide
-=================
+==================
 
 This guide covers how to install Twin4Build for both users and developers.
 
@@ -16,7 +16,7 @@ The easiest way to install Twin4Build is using pip:
     pip install twin4build
 
 Install with Optional Dependencies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For additional functionality, you can install optional dependencies:
 
@@ -24,8 +24,14 @@ For additional functionality, you can install optional dependencies:
 
     # For database connectivity
     pip install twin4build[database]
-    
-    # For all optional dependencies
+
+    # To run the example notebooks
+    pip install twin4build[notebooks]
+
+    # CUDA torch (PyPI's default wheel is CPU-only on Windows)
+    pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+
+    # For all optional dependencies (dev + database; not CUDA torch)
     pip install twin4build[all]
 
 For Developers
@@ -35,23 +41,27 @@ Install from Source
 ~~~~~~~~~~~~~~~~~~~
 
 1. **Clone the repository**:
+
    .. code-block:: bash
 
        git clone https://github.com/JBjoernskov/Twin4Build.git
        cd Twin4Build
 
 2. **Create a virtual environment**:
+
    .. code-block:: bash
 
        python -m venv venv
        source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. **Install in development mode**:
+
    .. code-block:: bash
 
        pip install -e .
 
 4. **Install development dependencies**:
+
    .. code-block:: bash
 
        pip install -e .[dev]
@@ -60,27 +70,27 @@ Prerequisites
 -------------
 
 System Requirements
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
-- **Python**: 3.9 or higher
+- **Python**: 3.10 or higher
 - **Operating System**: Windows, macOS, or Linux
+- **Graphviz**: bundled via the pygraphviz wheel; no system install is required
 
 Python Dependencies
 ~~~~~~~~~~~~~~~~~~~
 
 Core dependencies (automatically installed):
+
 - matplotlib
 - seaborn
 - pandas
 - torch
 - pydot
+- pygraphviz (bundles Graphviz for model drawing)
 - tqdm
-- fmpy
 - scipy
 - numpy
 - prettytable
-- jupyter
-- nbformat
 - rdflib
 - brickschema
 - click_spinner
@@ -89,22 +99,61 @@ Core dependencies (automatically installed):
 - pydotplus
 - typer
 - openpyxl
-- psycopg2
 - pyarrow
 - beautifulsoup4
 - python-dateutil
 - pathlib
+- pytz
+- casadi (IPOPT solver and collocation transcription for the Estimator)
 
-Development dependencies:
-- coverage
-- black
-- flake8
-- mypy
-- sphinx
-- sphinx-rtd-theme
+Optional dependencies:
+
+- ``[database]``: psycopg2-binary, sqlalchemy.  Reading series from a
+  PostgreSQL database (``DatabaseSource``, ``load_from_database``) needs it;
+  without it, reading a database raises an ``ImportError`` that names the
+  extra, and everything else works.
+- ``[gpu]``: Triton on Linux. CUDA torch itself is not on PyPI; pass
+  ``--extra-index-url https://download.pytorch.org/whl/cu128`` (or install
+  ``torch`` from that index first). See :ref:`gpu-cuda-installation`.
+- ``[notebooks]``: jupyter and nbformat, to run the example notebooks and
+  ``twin4build.utils.test_notebook``; twin4build itself imports neither.
+- ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser,
+  pytest, pytest-cov, pytest-html, build, twine, psycopg2-binary (the database loader's tests), and
+  ``[notebooks]`` (the example notebooks' tests)
+- ``[all]``: ``[dev]`` + ``[notebooks]`` + ``[database]`` (not CUDA torch)
+
+.. _gpu-cuda-installation:
+
+GPU / CUDA installation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``pip install twin4build`` follows PyPI's default ``torch`` wheel. On Windows
+that is the CPU-only build, so ``torch.cuda.is_available()`` is False even
+when the machine has a supported GPU.
+
+Install a CUDA 12.8+ build (Blackwell needs cu128 or newer):
+
+.. code-block:: bash
+
+    pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+
+If CPU torch is already installed, reinstall it from that index:
+
+.. code-block:: bash
+
+    pip install torch --index-url https://download.pytorch.org/whl/cu128
+    pip install twin4build[gpu]
+
+Compiled / CUDA-graph paths (``compile_step``,
+``execution_backend="cuda_graph"``) need **Linux or WSL** because Triton
+ships no Windows wheels. Native Windows can use CUDA eager execution after
+the CUDA torch install.
+
+``model.to("cuda")`` raises with this install line when the process has no
+CUDA.
 
 Verifying Installation
----------------------
+----------------------
 
 To ensure everything is working properly, run the test suite:
 
@@ -120,34 +169,55 @@ For developers, you can also run tests with coverage:
     coverage report
 
 Troubleshooting
---------------
+---------------
 
 Common Issues
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
+
+**``torch.cuda.is_available()`` is False / Torch not compiled with CUDA**
+
+- Default ``pip install twin4build`` on Windows is CPU-only. Install CUDA
+  torch as in :ref:`gpu-cuda-installation`.
+- Compiled / CUDA-graph paths need Linux or WSL (no Triton wheels on Windows).
 
 **Import Error: No module named 'twin4build'**
+
 - Ensure you're in the correct virtual environment
-- Verify the package was installed correctly: `pip list | grep twin4build`
+- Verify the package was installed correctly: ``pip list | grep twin4build``
+
+**ImportError: No module named 'casadi'**
+
+- CasADi is a core dependency (used by the Estimator's IPOPT backend);
+  reinstall with ``pip install --upgrade twin4build`` or ``pip install casadi``
 
 **Database Connection Issues**
+
 - Ensure PostgreSQL is installed and running
-- Check database configuration in `database_config_example.ini`
+- Check database configuration in ``database_config_example.ini``
+
+**Graph drawing / missing ``dot``**
+
+- Drawing comes from the ``pygraphviz`` wheel. Reinstall with
+  ``pip install --upgrade twin4build`` or ``pip install 'pygraphviz>=2.0.1'``.
+- ``Model.load()`` skips drawing and warns if Graphviz is unavailable.
+  Set ``draw_semantic_model=False`` / ``draw_simulation_model=False`` to silence it.
 
 **Test Failures**
-- Ensure all dependencies are installed: `pip install -e .[dev]`
+
+- Ensure all dependencies are installed: ``pip install -e .[dev]``
 - Check that the virtual environment is activated
-- Verify Python version compatibility (3.9+)
+- Verify Python version compatibility (3.10+)
 
 Getting Help
------------
+------------
 
 If you encounter installation issues:
 
-1. Check the [GitHub Issues](https://github.com/JBjoernskov/Twin4Build/issues) for similar problems
-2. Review the [troubleshooting section](developer_reference.rst#debugging-tips) in the developer reference
+1. Check the `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for similar problems
+2. Review the debugging tips in :doc:`developer_reference`
 3. Create a new issue with detailed error information
 
-For more detailed development setup, see the [Developer Reference](developer_reference.rst).
+For more detailed development setup, see the :doc:`developer_reference`.
 
 
 

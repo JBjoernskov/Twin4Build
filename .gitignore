@@ -6,6 +6,11 @@ twin4build/test/
 
 generated_files/
 
+# Canonical benchmark runtime artifacts
+benchmarks/.ipynb_checkpoints/
+benchmarks/**/__pycache__/
+benchmarks/**/*_results.*
+benchmarks/**/*_cache.*
 
 example_database_loader.py
 database_config_example.ini

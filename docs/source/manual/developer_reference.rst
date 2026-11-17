@@ -1,67 +1,86 @@
-Developer Reference
-========================================
+Developer reference
+===================
 
-A comprehensive guide for developers who want to contribute to Twin4Build.
-This guide will help you understand the codebase structure, development workflow, and how to contribute effectively.
+This guide describes the Twin4Build 2.0 source tree, development workflow,
+public execution model, documentation build, and release process. For the
+tensor execution contract, also read :doc:`differentiable_system_models`.
 
-Architecture Overview
---------------------
+Architecture
+------------
 
-.. image:: ../_static/Twin4Build_UML_diagram.png
-   :width: 600
-   :alt: UML diagram of Twin4Build classes
+The preferred public workflow is:
 
-Core Components
-~~~~~~~~~~~~~~~
+1. Construct a :class:`~twin4build.model.model.Model`, or translate a
+   :class:`~twin4build.model.semantic_model.semantic_model.SemanticModel`.
+2. Call :meth:`~twin4build.model.model.Model.load`.
+3. Optionally move the model with
+   :meth:`~twin4build.model.model.Model.to`.
+4. Create a :class:`~twin4build.simulator.simulator.Simulator` and call
+   :meth:`~twin4build.simulator.simulator.Simulator.simulate`.
+5. Pass that simulator to an
+   :class:`~twin4build.estimator.estimator.Estimator` or
+   :class:`~twin4build.optimizer.optimizer.Optimizer`.
 
-Twin4Build is organized around five main components which are exposed through the main module:
+Execution mode and backend belong to ``Simulator``. Model layout is configured
+separately with ``Model.batch_components()``. Solver-specific settings belong
+in the ``options`` argument of ``estimate`` or ``optimize``.
 
-- **Model**: Container for building systems, components, and connections
-- **Simulator**: Handles time-based simulations and time stepping
-- **Translator**: Generates models from semantic descriptions
-- **Estimator**: Performs parameter estimation and calibration
-- **Optimizer**: Optimizes building operation and control
+The **core**—Model, Simulator, Estimator, Optimizer, Translator and their
+interactions—must remain stable and predictable. **Adjacent modules** (e.g.,
+component models and GPU backends) extend the system but must respect explicit
+boundaries, documented contracts, and shared interfaces so contributors
+understand how their work interacts with the foundations.
 
-The **core**—Model, Simulator, Estimator, Optimizer, Translator and their interactions—must remain stable and predictable. **Adjacent modules** (e.g., component models and GPU backends) extend the system but must respect explicit boundaries, documented contracts, and shared interfaces so contributors understand how their work interacts with the foundations.
-
-Package Structure
+Repository layout
 ~~~~~~~~~~~~~~~~~
 
 ::
 
-    twin4build/
-    ├── core/           # Core functionality and base classes
-    ├── model/          # Model components and building systems
-    ├── simulator/      # Simulation engine and time stepping
-    ├── translator/     # Semantic model translation
-    ├── estimator/      # Parameter estimation and calibration
-    ├── optimizer/      # Optimization algorithms
-    ├── systems/        # Building system components
-    ├── utils/          # Utility functions and helpers
-    ├── examples/       # Example notebooks and scripts
-    └── tests/          # Test suite
+   Twin4Build/
+   ├── twin4build/
+   │   ├── core/                 # Stable convenience imports and ontologies
+   │   ├── model/                # Model, SimulationModel, and SemanticModel
+   │   ├── simulator/            # Object and functional execution
+   │   ├── estimator/            # Calibration and transcription backends
+   │   ├── optimizer/            # Optimization and Pareto-front support
+   │   ├── translator/           # Semantic-to-simulation translation
+   │   ├── systems/              # Reusable component models
+   │   ├── utils/                # Ports, results, logging, plotting, and helpers
+   │   ├── examples/             # Tutorials and their data
+   │   └── tests/                # Unit and integration tests
+   ├── benchmarks/               # Canonical benchmark notebooks and shared code
+   ├── docs/
+   │   ├── source/manual/        # Hand-written documentation
+   │   └── source/auto/          # Generated API pages
+   ├── scripts/                  # Development setup and validation
+   ├── .github/workflows/        # CI and tagged PyPI publication
+   └── pyproject.toml            # Package metadata, version, and tool settings
 
-Development Environment Setup
-----------------------------
+Do not treat ``generated_files/``, test fixtures, examples, or benchmark
+helpers as public API. Generated results must not be added to API navigation.
 
-Prerequisites
-~~~~~~~~~~~~~
+Development setup
+-----------------
 
-- Python 3.9 or higher (3.12 recommended)
+- Python 3.10 or higher (3.12 recommended)
 - Git
 - A code editor (VS Code, PyCharm, etc.)
 - **Conda** (recommended) or any Python environment manager
 
+Graph drawing uses the pygraphviz 2.0 wheel (no system Graphviz install).
+
 **Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
 
-Installation from Source
-~~~~~~~~~~~~~~~~~~~~~~~~
+From the repository root:
 
-**Automated Setup (Recommended)**
+.. code-block:: console
 
-The easiest way to set up your development environment is using the provided setup script:
+   python scripts/setup_dev.py
+   python scripts/setup_dev.py --python 3.12 --env t4bdev
 
-.. code-block:: bash
+The script creates a Conda environment, installs ``.[dev]``, and runs the
+discovered unittest suite. Use ``--help`` for its current options. It requires
+Conda; it is not a generic virtual-environment bootstrapper.
 
     # Clone the repository
     git clone https://github.com/JBjoernskov/Twin4Build.git
@@ -82,7 +101,7 @@ The easiest way to set up your development environment is using the provided set
 
 **Script options:**
 
-- ``--python VERSION``: Specify Python version (e.g., 3.9, 3.10, 3.11, 3.12)
+- ``--python VERSION``: Specify Python version (e.g., 3.10, 3.11, 3.12)
 - ``--env NAME``: Specify conda environment name (default: t4bdev)
 - ``--help``: Show all available options
 
@@ -101,14 +120,20 @@ If you prefer to set up manually or need a different environment manager:
     conda activate t4bdev
 
     # Install in development mode with dependencies
-    pip install -e .[dev]
+    pip install -e ".[dev]"
+    # CUDA torch (optional; PyPI's default wheel is CPU-only on Windows):
+    pip install -e ".[dev,gpu]" --extra-index-url https://download.pytorch.org/whl/cu128
 
-**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
+**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
 
-Code Style and Conventions
--------------------------
+With ``venv``, replace the two conda commands with the platform-appropriate
+environment creation and activation commands. Keep the editable install so
+source changes are imported immediately.
 
-Python Style Guide
+Code style and conventions
+--------------------------
+
+Python style guide
 ~~~~~~~~~~~~~~~~~~
 
 - Follow PEP 8 style guidelines
@@ -116,8 +141,8 @@ Python Style Guide
 - Keep line length under 88 characters (Black formatter default)
 - Use meaningful variable and function names
 
-Naming Conventions
-~~~~~~~~~~~~~~~~~
+Naming conventions
+~~~~~~~~~~~~~~~~~~
 
 - **Classes**: PascalCase (e.g., `Model`, `SpaceHeaterSystem`)
 - **Functions and variables**: snake_case (e.g., `run_simulation`, `temperature_data`)
@@ -126,8 +151,8 @@ Naming Conventions
 - **Private attributes**: prefix with underscore (e.g., `_components`)
 - **Keys used in System.input and System.output dictionaries**: camelCase (e.g., `indoorTemperature`, `co2Concentration`)
 
-Docstring Standards
-~~~~~~~~~~~~~~~~~~
+Docstring standards
+~~~~~~~~~~~~~~~~~~~
 
 Use Google-style docstrings and type hints:
 
@@ -135,20 +160,21 @@ Use Google-style docstrings and type hints:
 
     def calculate_energy_consumption(self, temperature: float, duration: float) -> float:
         """Calculate energy consumption for a given temperature and duration.
-        
+
         Args:
             temperature: The target temperature in Celsius
             duration: The duration in hours
-            
+
         Returns:
             Energy consumption in kWh
-            
+
         Raises:
             ValueError: If temperature is outside valid range
         """
         pass
 
-For public class properties (acessed from outside the class), use the @property decorator:
+For public class properties (accessed from outside the class), use the
+``@property`` decorator:
 
 .. code-block:: python
 
@@ -157,24 +183,28 @@ For public class properties (acessed from outside the class), use the @property 
         def property_name(self) -> Any:
             """Description of the property."""
             return self._property_name
-    
+
 Avoid defining setter methods for public class properties unless necessary.
-This way, we avoid accidently changing the value of a property.
-If necessary, define a setter method for the property.
+This way, we avoid accidentally changing the value of a property.
+If necessary, define a setter method for the property:
 
 .. code-block:: python
 
     class MyClass:
+        @property
+        def property_name(self) -> Any:
+            """Description of the property."""
+            return self._property_name
+
         @property_name.setter
         def property_name(self, value: Any) -> None:
-            """Description of the property."""
             self._property_name = value
 
-Development Workflow
--------------------
+Development workflow
+--------------------
 
-Branching Strategy
-~~~~~~~~~~~~~~~~~
+Branching strategy
+~~~~~~~~~~~~~~~~~~
 
 Twin4Build follows a disciplined branching model to keep development organized and reversible:
 
@@ -186,49 +216,55 @@ Twin4Build follows a disciplined branching model to keep development organized a
   - Once complete, features merge into dev (never directly into main)
   - Main contributors can make exemptions to this rule
 
-Git Workflow
-~~~~~~~~~~~
+Git workflow
+~~~~~~~~~~~~
 
-1. **Create a GitHub issue** describing the work to be done
+1. **Create a GitHub issue** describing the work to be done.
 
-2. **Create a feature branch** from `dev`:
-   ::
+2. **Create a feature branch** from ``dev``:
 
-       git checkout dev
-       git pull origin dev
-       git checkout -b YY/issue-XX/description
+   .. code-block:: console
 
-   Replace `YY` with the type of branch (feature, bugfix, docs) and `XX` with the issue number and `description` with a brief description.
+      git checkout dev
+      git pull origin dev
+      git checkout -b type/issue-XX/description
 
-3. **Make your changes** and commit with descriptive message using imperative mood:
-   ::
+   Replace ``type`` with the branch type (see `Branch naming conventions`_),
+   ``XX`` with the issue number, and ``description`` with a brief description.
 
-       git commit -m "Add new HVAC component for variable air volume systems"
+3. **Make your changes** and commit with a descriptive message in the
+   imperative mood:
+
+   .. code-block:: console
+
+      git commit -m "Add new HVAC component for variable air volume systems"
 
 4. **Push your branch** and create a pull request:
-   ::
 
-       git push origin feature/issue-XX/description
+   .. code-block:: console
 
-Branch Naming Conventions
-~~~~~~~~~~~~~~~~~~~~~~~~
+      git push origin type/issue-XX/description
 
-All branches must reference a GitHub issue and follow this pattern: `type/issue-XX/description`
+Branch naming conventions
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- `feature/issue-XX/description`: New features
-- `bugfix/issue-XX/description`: Bug fixes
-- `docs/issue-XX/description`: Documentation updates
-- `test/issue-XX/description`: Test additions or improvements
-- `refactor/issue-XX/description`: Code refactoring
+All branches must reference a GitHub issue and follow the pattern
+``type/issue-XX/description``:
+
+- ``feature/issue-XX/description``: New features
+- ``bugfix/issue-XX/description``: Bug fixes
+- ``docs/issue-XX/description``: Documentation updates
+- ``test/issue-XX/description``: Test additions or improvements
+- ``refactor/issue-XX/description``: Code refactoring
 
 **Examples:**
 
-- `feature/issue-88/increase-test-coverage`
-- `bugfix/issue-42/fix-simulator-memory-leak`
-- `docs/issue-15/update-installation-guide`
+- ``feature/issue-88/increase-test-coverage``
+- ``bugfix/issue-42/fix-simulator-memory-leak``
+- ``docs/issue-15/update-installation-guide``
 
-Definition of Done
-~~~~~~~~~~~~~~~~~
+Definition of done
+~~~~~~~~~~~~~~~~~~
 
 A feature is considered "done" when:
 
@@ -238,208 +274,423 @@ A feature is considered "done" when:
 - Documentation is updated
 - UML/architecture notes are provided when complexity requires it
 
-This checklist ensures consistency, transparency, and predictable development velocity.
+This checklist ensures consistency, transparency, and predictable development
+velocity.
 
-Pull Request Process
-~~~~~~~~~~~~~~~~~~~
+Pull request process
+~~~~~~~~~~~~~~~~~~~~
 
-1. **Run code validation**: `python scripts/validate_code.py`
-2. **Run test suite locally**: Ensure all tests pass before pushing
+1. **Run code validation**: ``python scripts/validate_code.py``
+2. **Run the test suite locally**: ensure all tests pass before pushing
 3. Update documentation if needed
 4. Add tests for new functionality
 5. Provide UML diagrams or architecture notes for moderately complex features
 6. Add examples if applicable
 7. Request review from maintainers
 
-Note: A pull request is required for any changes made to main and dev branches.
+Note: a pull request is required for any change made to the ``main`` and
+``dev`` branches.
 
-Testing
--------
+Style and compatibility
+-----------------------
 
-Testing Strategy
-~~~~~~~~~~~~~~~
+Follow PEP 8, use type hints on public interfaces, and format Python with the
+repository's Black and isort settings. Public Python identifiers use
+``snake_case`` for parameters and methods and ``PascalCase`` for classes.
 
-Twin4Build aims for a practical balance: ensure stability without over-engineering.
+Port names are model schema keys and many remain camelCase, for example
+``indoorTemperature``. That does not make camelCase Python parameters
+preferred. Use ``start_time``, ``end_time``, ``step_size``,
+``weekday_ruleset``, and other snake_case parameters.
 
-**Core Requirements:**
+Use the 2.0 system class names such as ``BuildingSpaceSystem``,
+``DamperSystem`` and ``WallSystem``. Names ending in
+``TorchSystem`` are migration aliases scheduled for removal and must not be
+introduced in new examples or documentation.
 
-- All core features require component and integration tests to verify correctness of the Model→Simulator→Estimator→Optimizer chain
-- **Public methods MUST have unit tests**
-- **Private methods CAN have unit tests for critical functionality**
-- Adjacent modules should include targeted tests to validate their interfaces with the core
-- Before pushing to a branch, the test suite must be run locally to avoid pushing broken code
+Docstrings
+~~~~~~~~~~
 
-Tests serve two purposes: quality assurance and developer guidance, helping newcomers understand expected behavior.
-
-Running Tests
-~~~~~~~~~~~~
-
-Run the test suite using unittest:
-::
-
-    python -m unittest discover twin4build/tests/
-
-Run specific test files:
-::
-
-    python -m unittest twin4build.tests.test_examples
-
-Run with coverage:
-::
-
-    coverage run -m unittest discover twin4build/tests/
-    coverage report
-    coverage html  # Generate HTML coverage report
-
-Alternatively, you can use pytest which provides cleaner output and better reporting.
-pytest is fully compatible with unittest and requires no code changes.
-
-Install pytest:
-::
-
-    pip install pytest pytest-html pytest-cov
-
-Run the test suite using pytest:
-::
-
-    pytest twin4build/tests/
-
-Run specific test files:
-::
-
-    pytest twin4build/tests/systems/junction/test_junction_systems.py
-
-Run with verbose output:
-::
-
-    pytest twin4build/tests/ -v
-
-Generate HTML test report:
-::
-
-    pytest twin4build/tests/ --html=report.html --self-contained-html
-
-Run with coverage:
-::
-
-    pytest twin4build/tests/ --cov=twin4build --cov-report=html --cov-report=term-missing
-
-Code Quality Validation
-~~~~~~~~~~~~~~~~~~~~~~
-
-Before committing code, run the validation script to ensure your code meets Twin4Build standards:
-
-**Check code quality** (recommended before every commit):
-::
-
-    python scripts/validate_code.py
-
-**Auto-fix formatting issues**:
-::
-
-    python scripts/validate_code.py --fix
-
-**Include test suite in validation**:
-::
-
-    python scripts/validate_code.py --test
-
-**Combine options** (fix issues and run tests):
-::
-
-    python scripts/validate_code.py --fix --test
-
-**What the validation script checks**:
-
-- **Code formatting** (Black): Ensures consistent code style
-- **Import sorting** (isort): Organizes import statements
-- **Code style** (flake8): Checks for style violations, syntax errors, unused variables, etc.
-- **File issues**: Trailing whitespace, missing newlines, etc.
-- **Tests**: Runs the full test suite
-
-**Manual tool usage** (if needed):
-::
-
-    # Format code
-    black .
-    
-    # Sort imports (uses pyproject.toml config)
-    isort .
-    
-    # Check style (uses .flake8 config)
-    flake8 .
-
-Writing Tests
-~~~~~~~~~~~~
-
-Use unittest framework for all tests:
+Public APIs use type hints and Google-style docstrings, which Sphinx parses
+through Napoleon:
 
 .. code-block:: python
 
-    import unittest
-    from twin4build import Model
+   def energy_used(power: float, duration: float) -> float:
+       """Return energy use.
 
-    class TestModel(unittest.TestCase):
-        
-        def setUp(self):
-            """Set up test fixtures."""
-            self.model = Model()
-        
-        def test_component_addition(self):
-            """Test adding components to model."""
-            component = self.create_test_component()
-            self.model.add_component(component)
-            self.assertIn(component, self.model.components)
-        
-        def test_simulation_run(self):
-            """Test basic simulation execution."""
-            result = self.model.simulate(start_time=0, end_time=100, step_size=1)
-            self.assertIsNotNone(result)
-            self.assertGreater(len(result), 0)
+       Args:
+           power: Power in kW.
+           duration: Duration in hours.
 
-    if __name__ == '__main__':
-        unittest.main()
+       Returns:
+           Energy in kWh.
 
-Test Organization
+       Raises:
+           ValueError: If duration is negative.
+       """
+       if duration < 0:
+           raise ValueError("duration must be non-negative")
+       return power * duration
+
+Document user-visible behavior, units, tensor shapes, and exceptions. Avoid
+restating implementation details that can change without affecting the API.
+
+Model and simulator usage
+-------------------------
+
+Construct components and connect sender output ports to receiver input ports:
+
+.. code-block:: python
+
+   import datetime as dt
+   from dateutil import tz
+   import twin4build as tb
+
+   model = tb.Model(id="developer_example")
+   source = tb.ScheduleSystem(
+       weekday_ruleset={"ruleset_default_value": 0.5},
+       id="source",
+   )
+   damper = tb.DamperSystem(id="damper")
+   model.add_connection(
+       source,
+       damper,
+       output_port="scheduleValue",
+       input_port="damperPosition",
+   )
+   model.load(
+       draw_semantic_model=False,
+       draw_simulation_model=False,
+   )
+
+   start_time = dt.datetime(2025, 1, 1, tzinfo=tz.UTC)
+   simulator = tb.Simulator(
+       model,
+       execution_mode="object",
+       execution_backend="eager",
+   )
+   simulator.simulate(
+       start_time=start_time,
+       end_time=start_time + dt.timedelta(hours=1),
+       step_size=600,
+       show_progress_bar=False,
+   )
+   values = damper.output["airFlowRate"].history()
+
+``Model.add_connection`` adds both components when necessary. Call
+``Model.add_component`` explicitly for an unconnected component. ``Model``
+does not have a ``simulate`` method; simulation is owned by ``Simulator`` and
+results remain on component port histories.
+
+Use timezone-aware datetimes. A single period accepts scalar datetime and
+integer arguments; batched periods accept equally sized lists. The interval is
+half-open: timesteps begin at ``start_time`` and stop before ``end_time``.
+
+Semantic translation
+~~~~~~~~~~~~~~~~~~~~
+
+Translate explicitly in new code:
+
+.. code-block:: python
+
+   semantic_model = tb.SemanticModel(rdf_file="building.ttl", id="building")
+   model = tb.Translator().translate(semantic_model)
+   model.load()
+
+Passing ``semantic_model_filename`` to ``Model.load`` is deprecated. Restoring
+a serialized simulation model uses ``model.load(filename=...)``.
+
+Model layout, execution, and devices
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These are independent dimensions:
+
+* ``model_layout="standard"`` is the ordinary model returned by ``Model.load``;
+  ``model_layout="batched"`` is produced by ``model.batch_components()``.
+* ``execution_mode="object"`` is the general port/history engine;
+  ``execution_mode="functional"`` executes the reusable functional model.
+* ``execution_backend="eager"`` is the default. The CUDA-only
+  ``execution_backend="cuda_graph"`` captures and replays fixed-shape
+  functional execution.
+
+CUDA Graph is a backend, not a mode. Inspect batching with
+``get_batched_component_info`` and ``get_batch_id_for_component``. Functional
+tooling is also available directly through ``build_functional_model``,
+``record_exogenous_inputs``, and ``rollout_functional``.
+
+Move a loaded model with ``model.to(device, dtype)``. The default precision is
+float64. Device and precision materially affect numerical results and
+performance and must be recorded in experiments.
+
+Testing and validation
+----------------------
+
+CI runs the suite with pytest (``pytest.ini`` sets the test path and output
+options; pytest is included in ``.[dev]``):
+
+.. code-block:: console
+
+   python -m pytest
+   python -m pytest twin4build/tests/systems/junction/test_junction_systems.py
+   python -m pytest twin4build/tests/ --cov=twin4build --cov-report=term-missing
+   python -m pytest twin4build/tests/ --html=report.html --self-contained-html
+
+Every test is a ``unittest.TestCase``, so unittest runs the same suite without
+pytest installed:
+
+.. code-block:: console
+
+   python -m unittest discover twin4build/tests/ -v
+   python -m unittest twin4build.tests.simulator.test_simulator -v
+
+For formatting and static checks:
+
+.. code-block:: console
+
+   python scripts/validate_code.py
+   python scripts/validate_code.py --fix
+   python scripts/validate_code.py --test
+
+The validation script runs Black, isort, flake8, file checks, and optionally
+tests. Review auto-fixes before committing.
+
+Tests are ``unittest.TestCase`` methods in ``test_*.py`` files and do not
+import pytest: ``unittest.mock`` replaces monkeypatch, ``subTest`` replaces
+parametrize, ``unittest.skipIf`` replaces skipif, ``tempfile`` replaces
+tmp_path, and ``setUp`` replaces fixtures. ``twin4build/tests/test_test_style.py``
+fails on a module-level test function, a ``Test*`` class that is not a
+TestCase, or a pytest import. Public
+behavior needs unit coverage; interactions among Model, Simulator, Estimator,
+Optimizer, and Translator need integration coverage.
+
+Testing strategy
 ~~~~~~~~~~~~~~~~
 
-Organize tests using unittest's test discovery patterns:
+Twin4Build aims for a practical balance: ensure stability without
+over-engineering.
 
-- **Test files**: Named `test_*.py`
-- **Test classes**: Inherit from `unittest.TestCase`
-- **Test methods**: Start with `test_`
+**Core requirements:**
 
-Advanced Testing Features
-~~~~~~~~~~~~~~~~~~~~~~~~~
+- All core features require component and integration tests to verify
+  correctness of the Model→Simulator→Estimator→Optimizer chain
+- **Public methods MUST have unit tests**
+- **Private methods CAN have unit tests for critical functionality**
+- Adjacent modules should include targeted tests to validate their interfaces
+  with the core
+- Before pushing to a branch, the test suite must be run locally to avoid
+  pushing broken code
 
-Use unittest's advanced features for better testing:
+Tests serve two purposes: quality assurance and developer guidance, helping
+newcomers understand expected behavior.
+
+Writing components
+------------------
+
+Custom components inherit :class:`~twin4build.systems.saref4syst.system.System`
+and are written as class-level declarations plus one ``forward`` (ADR 0001):
 
 .. code-block:: python
 
-    class TestAdvanced(unittest.TestCase):
-        
-        @unittest.skipIf(condition, "reason")
-        def test_conditional_skip(self):
-            """Skip test based on condition."""
-            pass
-        
-        @unittest.expectedFailure
-        def test_known_failure(self):
-            """Mark test as expected to fail."""
-            pass
-        
-        def test_with_subtest(self):
-            """Use subtests for parameterized testing."""
-            test_cases = [1, 2, 3, 4]
-            for case in test_cases:
-                with self.subTest(case=case):
-                    self.assertTrue(case > 0)
+   import twin4build as tb
+   from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
+
+   class GainSystem(tb.System):
+       value = Input(doc="Signal")
+       value = Output(doc="Signal times the gain")
+       gain = Parameter(1.0, lb=0.0, ub=10.0)
+
+       def forward(self, x, inputs, p, step_size):
+           return x, {"value": p["gain"] * inputs["value"]}
+
+The base builds the ports, parameters, settings, states and children from the
+declarations, sizes the vector ports at load, and steps the System through
+``forward`` in object mode and in the functional engine alike; a System does
+not write ``initialize`` or ``do_step``. ``derive(p, step_size)`` computes what
+depends only on the parameters and the step size, and a data source defines
+``series(timestamps, step_size)`` instead of ``forward``. Follow
+:doc:`differentiable_system_models` for the rules ``forward`` keeps.
+
+For performance, use torch operations so automatic differentiation works, use
+vectorized operations when possible, and profile code to identify bottlenecks.
+
+Every System passes the conformance check, in Twin4Build and in packages that
+build on it:
+
+.. code-block:: python
+
+   import unittest
+   from twin4build.testing import check_system
+
+   class TestGain(unittest.TestCase):
+       def test_the_gain_conforms(self):
+           check_system(GainSystem(id="gain", gain=2.0), inputs={"value": 1.5})
+
+:func:`~twin4build.testing.check_system` steps the System in a model of its
+own and checks save and reload, a deepcopy, object mode against the functional
+engine, two batched copies against the copies stepped separately, finite
+gradients, and CUDA when a GPU is present. Twin4Build's own table of examples
+is ``twin4build/tests/test_check_system.py``.
+
+On a model, ``model.check(start_time, end_time, step_size)`` (or
+``simulator.simulate(..., check=True)``) probes every System once at the run
+start: ``derive`` must give a dict and ``forward`` exactly the declared
+outputs at their sizes and a state of the state's shape. The probe runs on
+request only.
+
+External component packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A component does not have to live in Twin4Build. A separate, versioned package
+can provide ordinary ``System`` subclasses and the signature patterns that
+bind them, and an application makes them known by registering each class on a
+:class:`~twin4build.systems.registry.SystemRegistry` under a stable type id.
+Built-in systems need no registration.
+
+A minimal provider package:
+
+.. code-block:: python
+
+   # acme_components/__init__.py
+   from .coil import CustomCoilSystem, coil_pattern
+
+   __version__ = "1.4.2"
+   PROVIDER = "acme-t4b-components"
+
+
+   def register(registry):
+       registry.register(
+           CustomCoilSystem,
+           type_id="acme:CoilSystem@1",
+           provider=PROVIDER,
+           version=__version__,
+       )
+
+
+   def patterns():
+       return [coil_pattern()]  # SignaturePattern(..., system=CustomCoilSystem)
+
+The application registers the provider once and then translates, serializes,
+and loads as usual:
+
+.. code-block:: python
+
+   import acme_components
+   import twin4build as tb
+   from twin4build.examples.patterns import default_patterns
+
+   acme_components.register(tb.system_registry)
+
+   model = tb.Translator().translate(
+       semantic_model, patterns=default_patterns() + acme_components.patterns()
+   )
+   model.load()
+   model.serialize()
+
+   # In another process, after the same registration:
+   restored = tb.Model(id="restored")
+   restored.load(filename="path/to/instance_graph.ttl")
+
+``tb.system_registry`` is the default registry. An application that wants an
+explicit whitelist creates its own registry and passes it on:
+
+.. code-block:: python
+
+   registry = tb.SystemRegistry()
+   acme_components.register(registry)
+
+   model = tb.Translator(system_registry=registry).translate(
+       semantic_model, patterns=default_patterns() + acme_components.patterns()
+   )
+   restored = tb.Model(id="restored", system_registry=registry)
+
+The contract:
+
+* A serialized component of a registered class records ``system_type_id``,
+  ``system_provider``, and ``system_provider_version``. Built-in components
+  are serialized as before.
+* Loading resolves the class from the type id through the registry of the
+  model. Nothing is imported from the model file, and a type that is not
+  registered raises
+  :class:`~twin4build.systems.registry.UnknownSystemTypeError` naming the
+  component, the type id, and the provider and version the model was written
+  with.
+* The type id is ``<namespace>:<name>`` with an optional ``@<revision>``. Keep
+  it when the class is renamed or moved; change the revision when models
+  written by the old class can no longer be loaded by the new one. The
+  provider version is recorded for diagnostics and does not take part in the
+  resolution.
+* Type ids are unique in a registry and a class has one type id. Registering
+  the same class again with the same type id, provider, and version does
+  nothing; anything else raises unless ``replace=True`` is passed.
+* ``Translator(system_registry=registry)`` rejects a pattern bound to a class
+  that is neither built in nor registered. ``translate(systems=[...])`` stays
+  an allow-list that drops the patterns of other classes.
+* A model that records only class names loads as before: a built-in class by
+  its name, then the registered class of that name.
 
 Documentation
-------------
+-------------
 
-Documentation Standards
-~~~~~~~~~~~~~~~~~~~~~~
+Hand-written pages live in ``docs/source/manual/``. API pages in
+``docs/source/auto/`` are generated and should not be edited by hand.
+
+From ``docs/`` on Linux or macOS:
+
+.. code-block:: console
+
+   make buildapi
+   make html
+
+From ``docs\`` on Windows:
+
+.. code-block:: doscon
+
+   make.bat buildapi
+   make.bat html
+
+``buildapi`` replaces ``docs/source/auto/`` and excludes tests, examples,
+generated modules, benchmark code, and private implementation modules.
+``html`` writes local output to ``docs/build/html/``. Open
+``docs/build/html/index.html`` to inspect it. On Read the Docs,
+``READTHEDOCS_OUTPUT`` controls the output directory.
+
+For a clean local rebuild, remove ``docs/build/`` and
+``docs/source/auto/``, then run both commands again. Do not remove hand-written
+manual pages.
+
+Notebook links
+~~~~~~~~~~~~~~
+
+Example and benchmark badges contain ``GITHUB_NOTEBOOK_BRANCH`` in source.
+``docs/source/conf.py`` substitutes a resolvable Git ref:
+
+* ``latest`` uses ``main``;
+* named Read the Docs branch and tag builds use that branch or tag;
+* external pull-request previews use the commit SHA;
+* local builds use the checked-out branch, falling back to ``dev``.
+
+Canonical performance notebooks live in ``benchmarks/``; tutorials live in
+``twin4build/examples/``. See :doc:`benchmarks` and
+:doc:`examples_and_tutorials`.
+
+API generation policy
+~~~~~~~~~~~~~~~~~~~~~
+
+The API reference documents supported package modules. Exclude:
+
+* ``twin4build.tests`` and generated test fixtures;
+* ``twin4build.examples``;
+* ``twin4build.generated_files``;
+* repository-level ``benchmarks``;
+* private modules whose names begin with an underscore.
+
+When adding a public package, regenerate the API pages and verify that it is
+reachable from ``auto/twin4build``. Do not solve unwanted API pages only with
+navigation hiding; prevent their generation.
+
+Documentation standards
+~~~~~~~~~~~~~~~~~~~~~~~
 
 - Keep documentation up to date with code changes
 - Include code examples for all public APIs
@@ -447,255 +698,83 @@ Documentation Standards
 - Include diagrams and visual aids when helpful
 - Follow reStructuredText formatting for manual pages
 
-Architecture Documentation
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Architecture documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For moderately complex features, contributors should provide lightweight but effective architecture documentation:
+For moderately complex features, contributors should provide lightweight but
+effective architecture documentation:
 
 - Small UML-style diagrams or flow charts summarizing class interactions
 - Data flow diagrams when relevant
 - Component lifecycle documentation
 - Interface contracts and boundaries
 
-This documentation supports knowledge transfer, helps reviewers rapidly understand intent, reduces onboarding friction, and prevents duplicate or conflicting design efforts.
-
-**Note**: Features naturally change the architecture of the library over time. The goal of architecture documentation is not purely technical—it's communicational: to define a ubiquitous language for developer onboarding and establish a traceable history of architectural decisions.
-
-Building Documentation
-~~~~~~~~~~~~~~~~~~~~~
-
-Twin4Build uses Sphinx for documentation generation. The documentation build process requires **two steps**:
-
-**Step 1: Generate API Documentation**
-
-This step auto-generates API documentation from your Python docstrings:
-
-.. code-block:: bash
-
-    cd docs
-
-    # On Windows:
-    .\make buildapi
-
-    # On Linux/Mac:
-    make buildapi
-
-**Step 2: Build HTML Documentation**
-
-This step compiles all documentation (manual + API) into HTML:
-
-.. code-block:: bash
-
-    # On Windows:
-    .\make html
-
-    # On Linux/Mac:
-    make html
-
-
-**buildapi**: 
-    - Scans your Python code for docstrings
-    - Generates `.rst` files in `source/auto/`
-    - Creates API reference documentation
-    - Runs cleanup scripts
-
-**html**:
-- Compiles all `.rst` files (manual + auto-generated)
-- Applies Sphinx theme
-- Generates final HTML documentation
-- Creates cross-references and search index
-
-**View Documentation**
-
-For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
-
-Writing Documentation
-~~~~~~~~~~~~~~~~~~~~
-
-**Manual Documentation**: Edit files in `docs/source/manual/`
-
-**API Documentation**: Add docstrings to your Python code:
-
-.. code-block:: python
-
-    def calculate_energy(temperature: float, duration: float) -> float:
-        """Calculate energy consumption for given conditions.
-        
-        This function computes energy usage based on temperature
-        and duration parameters for building simulation.
-        
-        Args:
-            temperature: Target temperature in Celsius
-            duration: Time duration in hours
-            
-        Returns:
-            Energy consumption in kWh
-            
-        Example:
-            >>> energy = calculate_energy(22.0, 8.0)
-            >>> print(f"Energy used: {energy} kWh")
-            Energy used: 24.5 kWh
-        """
-        return temperature * duration * 1.2
-
-Troubleshooting Documentation Build
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Common Issues:**
-
-- **Sphinx not found**: Install dev dependencies with `pip install -e .[dev]`
-- **Import errors in API docs**: Ensure Twin4Build is installed in development mode
-- **Missing modules**: Check that all dependencies are installed
-- **Build fails**: Try cleaning first: delete `docs/build/` and `docs/source/auto/` directories
-
-**Clean Build:**
-
-.. code-block:: bash
-
-    # Remove generated files and rebuild
-    cd docs
-    rm -rf build/ source/auto/  # Linux/Mac
-    rmdir /s build source\auto  # Windows
-    
-    # Then rebuild
-    make buildapi && make html  # Linux/Mac
-    .\make buildapi && .\make html  # Windows
-
-Creating Examples
-~~~~~~~~~~~~~~~~~
-
-- Use Jupyter notebooks for examples
-- Place examples in `twin4build/examples/`
-- Include both basic and advanced use cases
-- Ensure examples are self-contained and runnable
-- After adding an example, also add it to the test suite: `twin4build/tests/test_examples.py`
-
-Contributing Guidelines
-----------------------
-
-Reporting Bugs
-~~~~~~~~~~~~~
-
-- Provide python version and operating system
-- Twin4Build version
-- Minimal code example to reproduce the issue
-- Expected vs. actual behavior
-- Error messages and stack traces
-
-Suggesting Features
-~~~~~~~~~~~~~~~~~~
-
-- Describe the use case and motivation
-- Provide examples of how the feature would be used
-- Consider implementation complexity
-- Discuss potential impacts on existing functionality
-- Clearly distinguish whether the feature extends core functionality or is an adjacent module
-
-Code Contribution Process
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. **Fork the repository** on GitHub
-2. **Create a feature branch** following naming conventions
-3. **Make your changes** following code style guidelines
-4. **Add examples (optional)** for new functionality
-5. **Add tests** for new functionality (required for public methods)
-6. **Update documentation** as needed
-7. **Add architecture documentation** if the feature is moderately complex
-8. **Run the test suite** to ensure everything works
-9. **Submit a pull request** with a clear description
-
-Advanced Topics
---------------
-
-Extending the Package
-~~~~~~~~~~~~~~~~~~~~
-
-Creating Custom Components
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-To create a custom component:
-
-1. Inherit from :class:`~twin4build.systems.saref4syst.system.System` and either :class:`~torch.nn.Module` or :class:`~twin4build.systems.utils.fmu_system.FMUSystem`
-2. Implement required methods
-3. Add proper type hints and documentation
-4. Include tests for your component
-
-Example:
-::
-    class CustomHVACComponent(System):
-        """Custom HVAC component for specific use case."""
-        
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            # Initialize component-specific attributes
-
-        def initialize(self, start_time=None, end_time=None, step_size=None, simulator=None):
-            super().__init__(**kwargs)
-            # Initialize component-specific attributes
-            
-        def do_step(self, second_time, date_time, step_size, step_index):
-            """Perform one simulation step."""
-            # Implement simulation logic
-            pass
-
-Performance Considerations
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- Always use torch operations to enable automatic differentiation
-- Use vectorized operations when possible
-- Profile code to identify bottlenecks
-
-Debugging Tips
-~~~~~~~~~~~~~
-
-- Use logging for debugging information
-- Set breakpoints in your IDE
-- Use `pdb` for interactive debugging
-- Check component connections and data flow
-
-Release Process
---------------
-
-Version Management
-~~~~~~~~~~~~~~~~~
-
-Twin4Build follows semantic versioning (MAJOR.MINOR.PATCH) to maintain clarity for users and contributors:
-
-- **MAJOR**: Structural changes to the core or breaking interface updates
-- **MINOR**: New features or non-breaking improvements
-- **PATCH**: Hotfixes and stability updates
-
-Version updates occur in both **dev** and **main** branches:
-
-- Every merge into the dev branch bumps the version number with a pre-release tag
-- Main branch receives version updates only for stable releases
-
-Building and Distributing
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Update version number in `pyproject.toml`
-2. Run full test suite
-3. Build documentation
-4. Create release notes for significant changes
-5. Tag releases in Git
-6. Create distribution:
-   ::
-
-       python -m build
-
-7. Upload to PyPI (maintainers only)
-
-Getting Help
------------
-
-- **GitHub Issues**: For bug reports and feature requests
-- **Documentation**: Check the online docs first
-- **Examples**: Review the example notebooks
-- **Code**: Examine the source code and tests
-
-Contact Information
-~~~~~~~~~~~~~~~~~~
-
-- **Maintainer**: Jakob Bjørnskov (jabj@mmmi.sdu.dk)
-- **GitHub**: https://github.com/JBjoernskov/Twin4Build/
-- **Documentation**: https://twin4build.readthedocs.io/
+This documentation supports knowledge transfer, helps reviewers rapidly
+understand intent, reduces onboarding friction, and prevents duplicate or
+conflicting design efforts.
+
+**Note**: Features naturally change the architecture of the library over time.
+The goal of architecture documentation is not purely technical—it's
+communicational: to define a ubiquitous language for developer onboarding and
+establish a traceable history of architectural decisions.
+
+Contribution workflow
+---------------------
+
+Create focused branches from the repository's current integration branch,
+link the work to its GitHub issue (see `Development workflow`_), and use
+descriptive imperative commit messages. Before requesting review:
+
+* run relevant tests and static checks;
+* update public API documentation and migration notes;
+* add architecture notes for changes with non-obvious boundaries;
+* ensure examples use preferred 2.0 names and parameters;
+* avoid committing generated runtime data.
+
+Changes to ``main`` and ``dev`` are reviewed through pull requests. Confirm the
+current branch policy with maintainers rather than relying on a hard-coded
+exception in this guide.
+
+Release process
+---------------
+
+``pyproject.toml`` is the source of truth for the package version. Twin4Build
+uses semantic versioning: increment MAJOR for incompatible API changes, MINOR
+for backward-compatible features, and PATCH for backward-compatible fixes.
+
+For a release:
+
+1. Set ``[project].version`` in ``pyproject.toml``.
+2. Add release notes to ``CHANGELOG.md`` and verify migration guidance.
+3. Run the full test matrix locally where practical.
+4. Regenerate and build the documentation with warnings treated as errors.
+5. Build and validate distributions:
+
+   .. code-block:: console
+
+      python -m build
+      python -m twine check dist/*
+
+6. Merge the reviewed release changes.
+7. Create and push an annotated ``vMAJOR.MINOR.PATCH`` tag that exactly matches
+   ``pyproject.toml`` (``v2.0.0rc1`` for a release candidate whose
+   ``pyproject.toml`` says ``2.0.0rc1``).
+
+The ``Publish to PyPI`` workflow builds and publishes only pushed tags whose
+names start with ``v`` and only for the configured maintainer actor. It fails
+unless the tag without its ``v`` is the ``pyproject.toml`` version (compared as
+PEP 440 versions), then runs the CI workflow on the tagged commit, and builds
+and publishes only when every CI job passes. PyPI uses
+trusted publishing; contributors should not run ``twine upload`` as part of
+the normal release path. Branch merges alone do not publish a release, and
+the repository does not automatically bump the version on every ``dev``
+merge.
+
+Getting help
+------------
+
+Use `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for
+reproducible bug reports and feature discussions. Include the Twin4Build and
+Python versions, operating system, device and dtype where relevant, a minimal
+example, and the complete error message. When suggesting a feature, clearly
+distinguish whether it extends core functionality or is an adjacent module.

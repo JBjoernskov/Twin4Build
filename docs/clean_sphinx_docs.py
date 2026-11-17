@@ -3,6 +3,14 @@ import os
 import re
 from pathlib import Path
 
+NO_INDEX_API_PAGES = {
+    "twin4build.model",
+    "twin4build.model.simulation_model",
+    "twin4build.systems.controller.controller_identification",
+    "twin4build.translator",
+    "twin4build.utils",
+}
+
 
 def clean_rst_files(directory="source/auto"):
     """Clean up auto-generated RST files."""
@@ -102,6 +110,16 @@ def clean_rst_files(directory="source/auto"):
         # Remove module contents section (this is redundant)
         content = remove_module_contents_section(content)
 
+        # Some classes expose descriptor-backed fields that Sphinx discovers
+        # twice in the same generated page. Keep those pages visible, but do
+        # not register their duplicate descriptors in the Python index.
+        if file.stem in NO_INDEX_API_PAGES:
+            content = re.sub(
+                r"(\.\. automodule::[^\n]+\n)(?!   :no-index:\n)",
+                r"\1   :no-index:\n",
+                content,
+            )
+
         # Write the modified content back to the file
         with open(file, "w", encoding="utf-8") as f:
             f.write(content)
@@ -126,10 +144,21 @@ def remove_module_contents_section(content):
     # First check if this is the main twin4build package file
     if (
         ".. automodule:: twin4build\n" in content
-        and not ".. automodule:: twin4build." in content
+        and ".. automodule:: twin4build." not in content
     ):
         # This is the main twin4build package, change "Module contents" to "Note"
         content = content.replace("Module contents\n---------------", "Note\n----")
+        # Keep only the package docstring here. With a curated ``__all__``,
+        # ``:members:`` dumps the entire public API onto this landing page
+        # (stable docs never did that because the package had no ``__all__``).
+        # Must use ``:no-members:`` — ``autodoc_default_options`` sets
+        # ``members: True`` globally, so a bare ``automodule`` still expands.
+        content = re.sub(
+            r"(\.\. automodule:: twin4build\n)(?:[ ]+:[^\n]*\n)*",
+            r"\1   :no-members:\n",
+            content,
+            count=1,
+        )
         return content
 
     # For all other modules, remove the Module contents section

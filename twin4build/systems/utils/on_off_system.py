@@ -1,56 +1,42 @@
-# Standard library imports
-import datetime
-from typing import Optional
+# Third party imports
+import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 
 
 class OnOffSystem(core.System):
     r"""
     On-Off System.
 
-    If value>=threshold set to on_value else set to off_value
+    Gates a signal based on a criteria input: if the "criteriaValue" input is
+    greater than or equal to ``threshold``, the "value" input is passed through
+    to the output; otherwise the output is set to ``is_off_value``.
 
     Args:
-        threshold: Threshold value
-        is_on_value: Value to set when value>=threshold
-        is_off_value: Value to set when value<threshold
+        threshold: Threshold that the "criteriaValue" input is compared against.
+        is_on_value: Currently unused. The argument is accepted but never
+            stored; when the criteria is met, the "value" input is passed
+            through instead.
+        is_off_value: Output value when criteriaValue < threshold.
         **kwargs: Additional keyword arguments
     """
 
-    def __init__(
-        self,
-        threshold: float = None,
-        is_on_value: float = None,
-        is_off_value: float = None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.threshold = threshold
-        self.is_off_value = is_off_value
+    threshold = Setting(None, doc="What criteriaValue is compared against")
+    is_on_value = Setting(None, doc="Unused (accepted for compatibility)")
+    is_off_value = Setting(None, doc="The output while criteriaValue < threshold")
+    value = Input(doc="Passed through while criteriaValue >= threshold")
+    criteriaValue = Input(doc="Compared against the threshold")
+    value = Output(doc="The gated value")
 
-        self.input = {"value": tps.Scalar(), "criteriaValue": tps.Scalar()}
-        self.output = {"value": tps.Scalar()}
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: ``value`` where ``criteriaValue >= threshold``, else ``is_off_value``."""
+        input_value = inputs["value"]
+        output_value = torch.where(
+            inputs["criteriaValue"] >= self.threshold,
+            input_value,
+            torch.full_like(input_value, self.is_off_value),
+        )
+        return x, {"value": output_value}
 
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> None:
-        pass
-
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        if self.input["criteriaValue"] >= self.threshold:
-            self.output["value"].set(self.input["value"], stepIndex)
-        else:
-            self.output["value"].set(self.is_off_value, stepIndex)

@@ -4,8 +4,8 @@ data\_loaders
 Modules
 -------
 
-load module
------------
+twin4build.utils.data\_loaders.load module
+------------------------------------------
 
 .. automodule:: twin4build.utils.data_loaders.load
    :members:

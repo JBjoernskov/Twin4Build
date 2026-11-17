@@ -3,82 +3,109 @@ from __future__ import annotations
 # Standard library imports
 import datetime
 import functools
-
-# import multiprocessing
 import math
 import pickle
+import re as _re
+import time as time_module
 import warnings
+from contextlib import nullcontext as _nullcontext
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
 import torch
-import torch.multiprocessing as multiprocessing
 import torch.nn as nn
-from fmpy.fmi1 import FMICallException
-from scipy._lib._array_api import array_namespace
-from scipy.optimize import Bounds, least_squares, minimize
+from scipy.optimize import Bounds, basinhopping, dual_annealing, least_squares, minimize
 
 # Local application imports
 import twin4build.core as core
+import twin4build.systems as systems
 import twin4build.utils.types as tps
-from twin4build.utils.deprecation import deprecate_args
+from twin4build import settings as _settings
+from twin4build.systems.utils.smooth_saturation import saturation_mode
+from twin4build.estimator._batched_solvers import (
+    BatchedObjectiveEvaluator,
+    solve_batched_multistart,
+)
+from twin4build.estimator._collocation import solve_collocation
+from twin4build.estimator._single_shooting import FunctionalEstimationObjective
+from twin4build.solvers.ipopt import solve_ipopt
+from twin4build.solvers.registry import (
+    EstimationProblem,
+    find_solver,
+    is_solver,
+    registered_solvers,
+)
+from twin4build.utils._cuda_graph import is_cuda_graph_capture_invalidated
+from twin4build.utils.deprecation import reject_unexpected_kwargs
+from twin4build.utils.logger import LOGGER
+from twin4build.utils.problem_variables import estimator_parameters
+from twin4build.utils.method_spec import parse_method
+from twin4build.utils.result import ResultDict
 from twin4build.utils.rgetattr import rgetattr
 
-
-def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
-    """
-    Recursively expand the dimension of an array to at least `ndim`.
-
-    Parameters
-    ----------
-    x : array
-        Input array to expand.
-    ndim : int
-        The minimum number of dimensions for the result.
-    xp : array_namespace
-        The standard-compatible namespace for `x`.
-
-    Returns
-    -------
-    res : array
-        An array with ``res.ndim`` >= `ndim`.
-        If ``x.ndim`` >= `ndim`, `x` is returned.
-        If ``x.ndim`` < `ndim`, `x` is expanded by prepending new axes
-        until ``res.ndim`` equals `ndim`.
-
-    Examples
-    --------
-    >>> import array_api_strict as xp
-    >>> import array_api_extra as xpx
-    >>> x = xp.asarray([1])
-    >>> xpx._atleast_nd(x, ndim=3, xp=xp)
-    Array([[[1]]], dtype=array_api_strict.int64)
-
-    >>> x = xp.asarray([[[1, 2],
-    ...                  [3, 4]]])
-    >>> xpx._atleast_nd(x, ndim=1, xp=xp) is x
-    True
-    """
-    if x.ndim < ndim:
-        x = xp.expand_dims(x, axis=0)
-        x = _atleast_nd(x, ndim=ndim, xp=xp)
-    return x
+# Per-sensor lower bound on the standard deviation used inside
+# ``measurements="auto"`` (both for the placeholder when sensor data
+# isn't loaded yet and for the data-driven path).  Equal to 5 % of a
+# normalized actuator full scale, 0.05 K on temperatures, and 0.05 kg/s
+# on supply-air flows -- all below typical instrument resolution but
+# large enough that ``1/sd**2`` weighting cannot let one channel dwarf
+# the rest.  Hand-built measurement lists pass their own ``sd`` and are
+# **not** affected by this floor (see ``estimate`` -- only the IDs
+# returned by :meth:`_auto_measurements` are refreshed against the
+# loaded ``actual_readings``).
+AUTO_SD_FLOOR = 0.05
 
 
 class Estimator:
     r"""
     A class for parameter estimation in the twin4build framework.
 
-    This class provides methods for estimating model parameters using maximum likelihood
-    estimation (MLE), with two different optimization approaches: Automatic Differentiation (AD)
-    and Finite Difference (FD) methods.
+    This class estimates model parameters from measured data using maximum
+    likelihood estimation (MLE). Gradients are computed by automatic
+    differentiation (AD): every component is a torch module.
 
     Args:
-        simulator : The simulator instance for running simulations.
+        simulator: The simulator instance for running simulations.
 
-    Mathematical Formulation:
-    =========================
+    Overview
+    --------
+
+    Two *transcriptions* of the estimation problem are supported:
+
+    - **Single-shooting** (default): the model is simulated over the full
+      horizon from a fixed initial state, and only the physical parameters
+      are decision variables. Available with all optimizer backends.
+    - **Collocation**: the state at every timestep boundary is promoted to a
+      decision variable and the dynamics are enforced as sparse equality
+      constraints. Available with the CasADi/IPOPT backend only; robust to
+      poor initial parameter guesses and returns the estimated initial state
+      as part of the fit.
+
+    Three optimizer *backends* are supported:
+
+    - **SciPy** (``method=("scipy", <optimizer>, <mode>)``): local optimizers
+      (SLSQP, L-BFGS-B, TNC, trust-constr, trf, dogbox) and global optimizers
+      (dual_annealing, basinhopping).
+    - **CasADi/IPOPT** (``method=("casadi", "ipopt", "ad")``): the IPOPT
+      interior-point solver, optionally with the collocation transcription
+      (``method=("casadi", "ipopt", "ad", "collocation")``).
+    - **Custom torch** (``method=("custom", <optimizer>, "ad")``): experimental
+      batched BFGS, Levenberg-Marquardt, and stabilized exact Newton solvers
+      for functional single-shooting.
+    - **Plug-in** solvers: any object with a ``method`` tuple and a
+      ``solve(problem, options)`` method, registered through
+      :func:`twin4build.solvers.registry.register_solver` or passed as
+      ``method=`` directly (see :mod:`twin4build.solvers.registry`).
+
+    Functional execution is selected on :class:`Simulator`, not through
+    estimator options: ``Simulator(model, execution_mode="functional")``.
+
+    Mathematical Formulation
+    ------------------------
+
+    Maximum Likelihood Estimation
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     The general parameter estimation problem is formulated as a maximum likelihood estimation:
 
@@ -94,14 +121,16 @@ class Estimator:
         - :math:`\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y})` is the likelihood function
         - :math:`\boldsymbol{Y}` are the observed measurements
 
-    **Dimensions:**
+    Dimensions
+    ^^^^^^^^^^
 
     - :math:`n_t`: Number of time steps in the simulation period
     - :math:`n_p`: Number of parameters to estimate
     - :math:`n_x`: Number of input variables (disturbances, setpoints, etc.)
     - :math:`n_y`: Number of output variables (measurements, performance metrics)
 
-    **Model Structure:**
+    Model Structure
+    ^^^^^^^^^^^^^^^
 
     The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components
     and edges represent input/output connections.
@@ -123,7 +152,8 @@ class Estimator:
     where :math:`\mathcal{M}` represents the complete simulation model. See :class:`~twin4build.simulator.simulator.Simulator`
     for detailed explanation of the simulation process.
 
-    **Likelihood Function:**
+    Likelihood Function
+    ^^^^^^^^^^^^^^^^^^^
 
     Using the Kennedy-O'Hagan (KOH) Bayesian model formulation, the relationship between observations
     :math:`\boldsymbol{Y}`, model response :math:`\boldsymbol{\hat{Y}}`, and measurement errors :math:`\boldsymbol{\epsilon}` is:
@@ -166,7 +196,8 @@ class Estimator:
 
 
 
-    **Parameter Bounds:**
+    Parameter Bounds
+    ^^^^^^^^^^^^^^^^
 
     For each parameter :math:`\theta_{i}`:
 
@@ -179,7 +210,88 @@ class Estimator:
         - :math:`\theta_{i}^{lb}` is the lower bound
         - :math:`\theta_{i}^{ub}` is the upper bound
 
-    See method docstrings for details on the specific optimization algorithms and implementation.
+    Single-Shooting (default)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Single-shooting evaluates the objective by simulating the *entire*
+    horizon from a fixed initial state :math:`\boldsymbol{x}_0`. With the
+    one-step state-transition map :math:`f` (one simulator step of the full
+    model) the predicted trajectory is the :math:`n_t`-fold composition of
+    :math:`f` with itself:
+
+    .. math::
+
+            \boldsymbol{x}_{t+1} = f(\boldsymbol{x}_t, \boldsymbol{X}_t, \boldsymbol{\theta}),
+            \qquad
+            \hat{\boldsymbol{Y}}_t = g(\boldsymbol{x}_t, \boldsymbol{X}_t, \boldsymbol{\theta}),
+            \qquad t = 0, \ldots, n_t - 1
+
+    and only :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}` is a decision
+    variable. The problem is solved as the unconstrained (bound-constrained)
+    minimization of the negative log-likelihood above.
+
+    Gradients are obtained by backpropagating through the unrolled
+    trajectory (AD mode; all components are torch modules). The gradient
+    flows through the full composition
+    :math:`f \circ f \circ \cdots \circ f`, i.e. a product of per-step
+    Jacobians. For unstable or oscillatory dynamics this product is badly
+    conditioned on long horizons (the exploding/vanishing-gradient problem of
+    backprop through time) -- the classical argument for simultaneous
+    transcriptions. Dissipative building models are largely insensitive to
+    this: the per-step Jacobians contract, so single-shooting remains well
+    behaved even on multi-week horizons.
+
+    For composable torch models, ``Simulator(..., execution_mode="functional")``
+    builds a pure
+    one-step map :math:`F_{\text{aug}}` by composing the components'
+    ``forward`` methods, captures the exogenous inputs once from a reference
+    rollout, and evaluates the same objective as a plain sequential torch
+    rollout -- removing the per-step object dispatch. Every functionally
+    compatible component's ``do_step`` delegates to the same ``forward`` the
+    functional model threads, so the functional objective is exact by
+    construction; the estimator uses the object objective for incompatible models with
+    SciPy/CasADi; custom batched methods require full composability.
+
+    Collocation
+    ~~~~~~~~~~~
+
+    The collocation (simultaneous) transcription promotes the state at every
+    timestep boundary :math:`\boldsymbol{s}_i` to a decision variable,
+    stacked alongside the physical parameters. The dynamics are enforced as
+    hard equality *continuity defects*:
+
+    .. math::
+
+            \boldsymbol{d}_i = f(\boldsymbol{s}_i, \boldsymbol{X}_i, \boldsymbol{\theta}) - \boldsymbol{s}_{i+1} = \boldsymbol{0},
+            \qquad i = 0, \ldots, n_t - 2
+
+    yielding the equality-constrained problem:
+
+    .. math::
+
+            \underset{\boldsymbol{\theta}, \boldsymbol{s}_0, \ldots, \boldsymbol{s}_{n_t-1}}{\operatorname{minimize}}
+            \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{j,t} - \hat{Y}_{j,t}}{\sigma_j}\right)^2
+            \quad \text{subject to} \quad \boldsymbol{d}_i = \boldsymbol{0} \; \forall i
+
+    Gradients only ever flow through a *single* simulation step. In
+    practice the benefits of this transcription are robustness to poor
+    initial parameter guesses (the state decision variables can stay close
+    to the data even while :math:`\boldsymbol{\theta}` is far off), the
+    sparse block-bidiagonal NLP structure that IPOPT exploits, and the
+    estimated initial state coming out of the fit for free. The boundary
+    states are nuisance variables: after the fit only
+    :math:`\boldsymbol{\theta}` is reported (the per-period initial states
+    are additionally returned as ``estimated_initial_state``).
+
+    The solve hands IPOPT the defects as sparse equality constraints with an
+    explicit block-bidiagonal Jacobian, a Gauss-Newton Hessian of the
+    least-squares objective, and patience-based early stopping. It requires
+    the CasADi/IPOPT backend
+    (``method=("casadi", "ipopt", "ad", "collocation")``). A defect audit is
+    returned as
+    ``collocation_audit`` so the quality of the converged solution can be
+    inspected (max defect, per-sensor RMSE consistency between the NLP
+    solution and a forward rollout).
 
     Examples
     --------
@@ -194,28 +306,15 @@ class Estimator:
     >>> simulator = tb.Simulator(model)
     >>> estimator = tb.Estimator(simulator)
     >>>
-    >>> # Define parameters to estimate
-    >>> parameters = {
-    ...     "private": {
-    ...         "efficiency": {
-    ...             "components": [component1, component2],
-    ...             "x0": [0.8, 0.85],
-    ...             "lb": [0.5, 0.6],
-    ...             "ub": [1.0, 1.0]
-    ...         }
-    ...     },
-    ...     "shared": {
-    ...         "heatTransferCoefficient": {
-    ...             "components": [[component1, component2]],
-    ...             "x0": [[0.5]],
-    ...             "lb": [[0.1]],
-    ...             "ub": [[2.0]]
-    ...         }
-    ...     }
-    ... }
+    >>> # Define parameters to estimate: (component, attribute, x0, lb, ub)
+    >>> parameters = [
+    ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),
+    ...     (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7),
+    ...     ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
+    ... ]
     >>>
-    >>> # Define measuring devices
-    >>> measurements = [measuring_device1, measuring_device2]
+    >>> # Define measuring devices (sensors with historical readings)
+    >>> measurements = [temperature_sensor, co2_sensor]
     >>>
     >>> # Set time period
     >>> start = datetime.datetime(2024, 1, 1, tzinfo=pytz.UTC)
@@ -232,35 +331,40 @@ class Estimator:
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
 
-    >>> # Alternative: Use L-BFGS-B with automatic differentiation
+    Functional single-shooting for compatible torch models:
+
+    >>> simulator = tb.Simulator(model, execution_mode="functional")
+    >>> estimator = tb.Estimator(simulator)
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method=("scipy", "L-BFGS-B", "ad")
+    ...     method=("scipy", "SLSQP", "ad")
     ... )
 
-    >>> # For non-PyTorch models: Use finite difference method
+    IPOPT single-shooting via CasADi:
+
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method=("scipy", "trf", "fd"),
-    ...     n_cores=4  # Required for FD mode
+    ...     method=("casadi", "ipopt", "ad")
     ... )
 
-    >>> # Legacy string format (still supported)
+    Collocation transcription:
+
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method="scipy"  # Defaults to SLSQP with AD
+    ...     method=("casadi", "ipopt", "ad", "collocation"),
+    ...     options={"maxiter": 500, "early_stopping": {"patience": 20}}
     ... )
     """
 
@@ -277,322 +381,680 @@ class Estimator:
         self.simulator = simulator
         self.tol = 1e-10
 
+    @property
+    def _device(self) -> torch.device:
+        """The model's device.  Solver-facing numpy boundaries convert inbound
+        theta vectors to this device and outbound values via .cpu().numpy();
+        scipy/IPOPT itself always runs on the CPU."""
+        return self.simulator.model.device
+
     def estimate(
         self,
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
-        step_size: Union[float, List[float]] = None,
-        parameters: Union[Dict[str, Dict], List[Tuple]] = None,
-        measurements: List[core.System] = None,
+        step_size: Union[int, List[int]] = None,
+        parameters: Union[str, List[Tuple]] = None,
+        measurements: Union[str, List[Tuple[core.System, float]]] = None,
         n_warmup: int = 60,
-        method: Union[str, Tuple[str, str, str]] = "scipy",
-        n_cores: Optional[int] = None,
+        method: Union[str, Tuple[str, str, str], Tuple[str, str, str, str]] = "scipy",
         options: Optional[Dict] = None,
+        schedule: Optional[List[Dict[str, Any]]] = None,
         **kwargs: Dict,
     ) -> EstimationResult:
         """
         Perform parameter estimation using specified method and configuration.
 
-        This method sets up and executes the parameter estimation process, supporting
-        both automatic differentiation (AD) and finite difference (FD) optimization methods.
+        This method sets up and executes the parameter estimation process, with the
+        gradients by automatic differentiation (AD).
 
         Args:
-            start_time: Start time(s) for estimation period(s). Can be a single datetime or list
-                of datetimes for multiple periods.
+            start_time: Start time(s) for estimation period(s). Can be a single date_time or list
+                of date_times for multiple periods.
 
-            end_time: End time(s) for estimation period(s). Can be a single datetime or list
-                of datetimes for multiple periods. Must be later than corresponding start_time.
+            end_time: End time(s) for estimation period(s). Can be a single date_time or list
+                of date_times for multiple periods. Must be later than corresponding start_time.
 
             step_size: Step size(s) for simulation in seconds. Can be a single value or list
                 of values for multiple periods.
 
-            parameters: Parameter specifications in one of two formats:
+            parameters: Parameter specifications. Either the string ``"auto"`` or
+                a list/dict as described below.
 
-                **New format (recommended)**: List of tuples where each tuple contains:
-                    - component: The component object or list of component objects
-                    - attr: Parameter attribute name (str)
-                    - x0: Initial value (float)
-                    - lb: Lower bound (float or None)
-                    - ub: Upper bound (float or None)
-                    - parameter_type: "private" or "shared" (optional, defaults to "private")
+                **Variables**: an entry may also be a :class:`tb.Variable
+                <twin4build.utils.types.Variable>` or a bare ``tb.Parameter``
+                (a ``Variable`` with its defaults): the parameter object names
+                itself, its bounds default to the ones its component declares
+                (else its own ``min_value`` / ``max_value``), ``x0=None``
+                starts from its current value, and ``components="private"``
+                gives each listed component its own value (``"shared"``: one
+                for all of them).  They resolve to the tuples below::
 
-                Parameter types:
-                    - "private": Each component gets its own independent parameter
-                    - "shared": All components in the list share the same parameter value
+                    parameters = [space.thermal.C_air, tb.Variable(controller.kp, lb=1e-5, ub=1.0)]
 
-                Examples:
-                    ```python
+                **Auto-discovery**: Passing ``parameters="auto"`` walks every
+                component on the model and collects parameter tuples from those
+                that implement ``get_estimable_parameters()``.
+
+                List of tuples ``(component, attr, x0, lb, ub[, parameter_type])``
+                where ``component`` is a component object or list of component
+                objects, ``attr`` is the parameter attribute name, ``x0`` is
+                the initial value (or ``None`` to use the parameter's current
+                value after the eager ``model.initialize`` that runs at the
+                start of ``estimate``), ``lb``/``ub`` are the bounds, and the
+                optional ``parameter_type`` is ``"private"`` (each listed
+                component gets its own independent parameter; default) or
+                ``"shared"`` (all listed components share one parameter
+                value).
+
+                Omitting ``x0`` (``None``) is useful when a component already
+                holds a sensible starting value -- for example a space heater's
+                ``UA``, solved from its nominal heat flow and temperatures when
+                it is built -- so the estimation starts there without
+                hard-coding it::
+
+                    parameters = [
+                        (space_heater, "UA", None, 1, 100),  # use initialized UA
+                    ]
+
+                Example::
+
                     # Private parameters (default)
                     parameters = [
                         (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # implicit "private"
                         (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7, "private"),  # explicit
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),  # separate kp for each
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),
                     ]
 
                     # Shared parameters
                     parameters = [
-                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),  # same C_air value
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),  # same kp value
+                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
                     ]
-                    ```
 
-                **Legacy format (deprecated)**: Dictionary containing parameter specifications:
-                    - "private": Parameters unique to each component
-                    - "shared": Parameters shared across components
+            measurements: Measurement specification. Either the string ``"auto"``
+                or a list of ``(sensor, sd)`` tuples, where ``sensor`` is a
+                measuring device whose ``input["measuredValue"]`` holds historical
+                data and ``sd`` is the measurement standard deviation used to
+                weight that sensor's residuals (:math:`\\sigma_j` in the likelihood).
+                An entry may also be the sensor alone, or give ``None`` as
+                ``sd``: the sensor's ``measurement_sd`` is used then, and an
+                entry with neither is an error.  With a functional simulator
+                the samples a sensor's ``scoring_mask`` marks ``False`` are
+                not scored.
 
-                Each parameter entry contains:
-                    - "components": List of components or single component
-                    - "x0": List of initial values or single initial value
-                    - "lb": List of lower bounds or single lower bound
-                    - "ub": List of upper bounds or single upper bound
+                Passing ``measurements="auto"`` includes every sensor that is
+                driven by a non-sensor upstream component and has a wired data
+                source, with ``sd = max(0.1 * data_std, 0.05)``. Build the list
+                manually for custom weighting or sensor selection.
 
-            measurements : List of measuring devices used for estimation. Each device should have
-                an "input" attribute with a "measuredValue" that contains historical data.
+            n_warmup: Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
 
-            n_warmup : Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
+            method: Estimation method specification. Either a legacy string
+                (``"scipy"`` or any supported optimizer name such as
+                ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``, ``"trust-constr"``,
+                ``"trf"``, ``"dogbox"``) or, recommended, a tuple
+                ``(library, optimizer, mode)`` or
+                ``(library, optimizer, mode, transcription)`` where
+                ``library`` is ``"scipy"``, ``"casadi"``, or ``"custom"``,
+                ``optimizer`` is
+                the algorithm name, ``mode`` is ``"ad"`` (automatic
+                differentiation), and the
+                optional ``transcription`` is ``"single_shooting"`` (default),
+                ``"multiple_shooting"`` (single shooting per period, the
+                periods' initial states estimated and tied together; see
+                ``options``) or ``"collocation"`` (requires the CasADi/IPOPT
+                backend).
 
-            method: Estimation method specification. Can be specified in two formats:
+                Supported optimizers by backend and mode:
 
-                1. String format (legacy):
-                - "scipy": Uses default SLSQP optimizer with automatic differentiation
-                - Other valid strings: Any optimizer name that matches the supported algorithms
-                    (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
+                - SciPy backend, AD mode, local optimizers: ``"SLSQP"``
+                  (preferred for most problems), ``"L-BFGS-B"``, ``"TNC"``,
+                  ``"trust-constr"``, and the least-squares solvers ``"trf"``
+                  and ``"dogbox"``.
+                - SciPy backend, AD mode, global optimizers: ``"dual_annealing"``
+                  (generalized simulated annealing; explores broadly at high
+                  temperature to find the right basin, then anneals and
+                  polishes with a local gradient-based minimizer; options
+                  ``initial_temp``, ``restart_temp_ratio``, ``visit``,
+                  ``accept``, ``maxiter``, ``maxfun``, ``no_local_search``,
+                  ``local_search_method``) and ``"basinhopping"`` (random
+                  perturbation plus local minimization with Metropolis
+                  acceptance; options ``niter``, ``T``, ``stepsize``,
+                  ``local_search_method``). Good for non-convex landscapes
+                  with many local minima.
+                - CasADi backend:
+                  ``("casadi", "ipopt", "ad")`` is an IPOPT interior-point
+                  solve of the same single-shooting objective as the SciPy
+                  backends -- only the optimizer changes.
+                  ``("casadi", "ipopt", "ad", "collocation")`` is the
+                  simultaneous (collocation) transcription -- every
+                  timestep-boundary state becomes a decision variable tied by
+                  sparse hard continuity constraints. Robust to poor initial
+                  parameter guesses. See the class docstring's Collocation
+                  section for the formulation.
+                - Custom backend (AD, functional single-shooting only):
+                  ``"batched-sqp"``, ``"batched-bfgs"``, ``"batched-lm"``,
+                  and ``"batched-newton"``. Batched SQP uses bound-constrained
+                  BFGS quadratic subproblems and is the closest custom
+                  analogue to SciPy SLSQP. Its dense default can be replaced
+                  with independent curvature blocks via
+                  ``sqp_curvature_blocks`` (an equal block size, a list of
+                  block sizes, or explicit index blocks). Options include
+                  ``n_starts``, ``batch_size`` (defaults to ``n_starts``;
+                  lower it to limit GPU memory),
+                  ``start_seed``, ``start_strategy`` (``"uniform_bounds"`` by
+                  default, or ``"local"`` with ``start_spread``),
+                  ``normalized_starts``,
+                  ``maxiter``, ``gtol``, ``ftol``, and
+                  ``sqp_max_backtracks``. CUDA
+                  Graph capture applies to objective values and first-order
+                  gradients; residual Jacobians and exact Hessians remain
+                  eager because PyTorch cannot safely replay those
+                  higher-order transforms.
 
-                2. Tuple format (recommended):
-                - (library, optimizer, mode) where:
-                    - library: "scipy" (currently the only supported library)
-                    - optimizer: The specific optimization algorithm
-                    - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                Examples: ``("scipy", "SLSQP", "ad")`` for most PyTorch
+                models; ``("scipy", "dual_annealing", "ad")`` for non-convex
+                problems; ``("casadi", "ipopt", "ad", "collocation")`` for
+                long horizons; ``("scipy", "trf", "ad")`` for
+                least-squares problems; ``"scipy"`` defaults to
+                ``("scipy", "SLSQP", "ad")``.
 
-                Supported optimizers by mode:
+            options: Additional options for the chosen optimization method.
 
-                Automatic Differentiation (AD) mode:
-                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                - "L-BFGS-B": Limited-memory BFGS with bounds
-                - "TNC": Truncated Newton algorithm with bounds
-                - "trust-constr": Trust-region constrained optimization
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
+                Common keys (all backends):
 
-                Finite Difference (FD) mode:
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
+                - "maxiter": Maximum iterations
+                - "ftol": Function tolerance (SciPy: solver default applies
+                  when omitted; CasADi: mapped to IPOPT's ``tol``)
+                - "verbose": Verbosity level
 
-                Mode selection guidelines:
-                - "ad": Use when all components are torch.nn.Module (preferred, faster)
-                - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
+                Multiple shooting transcription only (``(library, optimizer,
+                mode, "multiple_shooting")``; the functional objective:
+                ``Simulator(execution_mode="functional")`` and AD).  Every
+                period's initial state is a decision variable, the first
+                period's too (no warm-up is needed), boxed at 25 % of the
+                state's magnitude around the model's state at the period's
+                start.  The end of each period is tied to the start of the
+                next by a continuity defect: one residual column per state,
+                divided by the state's tolerance.  The periods must be
+                contiguous (each starts where the one before ends, else
+                ``ValueError``; see ``continuity_gaps``) and of equal length,
+                and the fit has one phase (no ``schedule`` of several).
 
-                Examples:
-                - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
-                - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                - "continuity_sd_rel" (default 0.01): a state's tolerance is
+                  this fraction of how much the state varies over the
+                  periods' starts and ends.
+                - "continuity_energy_tol" (J, default 3.6e5, 0.1 kWh): a
+                  state that stores heat is held to at most this heat per
+                  jump, the tolerance divided by its heat capacity
+                  (``System.state_heat_capacities``): a jump in a wall or the
+                  shared interior costs by the heat it creates, a jump in
+                  room air or a radiator hardly more than its range allows.
+                - "continuity_gaps" (default False): the periods may leave
+                  gaps between them (several spans of data in one fit).  A
+                  period that does not start where the one before ends is
+                  not tied to it: it starts free, like the first period,
+                  while the periods within each span stay tied.
 
-            n_cores: Number of CPU cores to use for parallel computation. Required when using
-                finite difference (FD) mode for Jacobian computation. Not used in automatic
-                differentiation (AD) mode.
+                On a model split into worlds
+                (``twin4build.model.partition.split_worlds``, which records
+                them as ``model.worlds``), a component and its copies in
+                other worlds (``Worlds.copies``) are one state: their
+                variables start every period from one box and one start
+                (per state entry, the union of their boxes and their mean
+                start).
 
-                - For FD mode: Must be specified (typically 2-8 cores depending on system)
-                - For AD mode: Ignored (not needed for automatic differentiation)
-                - Default: None (will raise error if FD mode is used without specifying)
+                The result carries the estimated states
+                (``estimated_initial_state_instances``) and the jumps at the
+                boundaries (``continuity_jumps_instances``,
+                ``continuity_tolerance_instances``).
 
-            options: Additional options for the chosen optimization method:
+                Collocation transcription only:
 
-                For scipy optimizers:
-                    - "ftol": Function tolerance (default: 1e-8)
-                    - "xtol": Parameter tolerance (default: 1e-8)
-                    - "gtol": Gradient tolerance (default: 1e-8)
-                    - "maxiter": Maximum iterations
-                    - "verbose": Verbosity level
+                - "hessian": ``"exact"`` (default), ``"gauss_newton"``, or
+                  ``"limited_memory"``. Exact includes objective and nonlinear
+                  constraint curvature; Gauss-Newton omits constraint
+                  curvature; limited-memory delegates curvature to IPOPT.
+                  CUDA graph policy is selected only by
+                  ``Simulator.execution_backend``.
+                - "early_stopping" (bool or dict, default: enabled unless
+                  limited-memory curvature is selected): Patience-based stop
+                  with a best-feasible-iterate checkpoint. A dict overrides
+                  the defaults: ``patience`` (10), ``feas_tol`` (1e-2),
+                  ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4).
+                - "pin_initial_state" (bool, default False): Fix each
+                  period's initial boundary state at its warm-start value so
+                  the feasible set is exactly the single-shooting trajectory
+                  manifold (mainly for equivalence testing).
+                - "profile_phases" (bool, default False): Record synchronized
+                  wall-clock timings for collocation setup, IPOPT, and the
+                  post-solve audit in ``result["collocation_timing"]``.
+                  CUDA synchronization makes this a benchmarking option, not
+                  a production-performance setting.
+                - "boundary_state_margin" (float, default 6.0): The box on
+                  the collocation boundary states is each dimension's
+                  warm-start min/max widened by this many normalized units
+                  (standard deviations of that dimension over the warm-start
+                  trajectory).  The box therefore always contains the warm
+                  start; raise it only if a fit needs excursions far beyond
+                  the warm start's range.
+                - "boundary_state_init" ({"auto", "data", "rollout"},
+                  default "auto"): Where the collocation boundary states
+                  start.  **You normally do not set this** -- "auto"
+                  measures the warm start and decides.
 
-        Returns
-        -------
-        EstimationResult
-            Object containing the estimation results including optimized parameters,
-            component information, and metadata.
+                  * ``"auto"`` -- evaluate the warm-start rollout against
+                    the measurements and pick.  The score is the mean
+                    weighted squared residual, so it reads in units of
+                    measurement standard deviations; a rollout already
+                    within ~5 sd is treated as a refinement and preserved,
+                    anything worse is seeded from data.  The decision and
+                    its score are logged.
+                  * ``"data"`` -- cold start: seed the directly-observed
+                    boundary states from the MEASUREMENTS.  Keeps the solve
+                    out of bad local minima when ``theta`` starts far off,
+                    at the cost of violating the continuity defects (it
+                    plants data into the states).
+                  * ``"rollout"`` -- refinement: the boundary states are the
+                    warm-start trajectory itself, so the solve begins ON the
+                    trajectory manifold at that solution's own fit.  Because
+                    the best-feasible-iterate checkpoint can only adopt a
+                    *feasible* ``x0`` as its incumbent, this is also what
+                    lets ``early_stopping`` guarantee the solve never
+                    returns a point worse than the one it was given.
 
-        Raises
-        ------
-        AssertionError
-            If method specification is invalid or input parameters are inconsistent.
-        ValueError
-            If method format is incorrect or unsupported.
-        FMICallException
-            If simulation fails during parameter evaluation.
+                  Only force a value to pin behaviour for a reproducible
+                  experiment.  Forcing ``"rollout"`` on a solve that was NOT
+                  warm-started from a converged fit is the classic misuse:
+                  the solve starts feasible-but-bad, stagnates, and the
+                  best-feasible checkpoint hands ``x0`` straight back.  The
+                  older ``"data_warmstart"`` boolean is still accepted and
+                  maps to ``"data"``/``"rollout"``.
 
-        Notes
-        -----
-        - The method automatically handles parameter normalization and bounds checking.
-        - For AD mode, all components must be torch.nn.Module instances.
-        - For FD mode, n_cores must be specified for parallel Jacobian computation.
-        - Results are automatically saved to disk in the model's estimation_results directory.
-        - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
+            schedule: Multi-phase continuation schedule -- the single,
+                self-contained way to drive parameter estimation.
 
-        Examples
-        --------
-        >>> # New list format (recommended)
-        >>> parameters = [
-        ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # private (default)
-        ...     ([space1, space2], "thermal.C_wall", 2e+6, 1e+6, 1e+7, "shared"),  # shared
-        ...     (heating_controller, "kp", 0.001, 1e-5, 1, "private"),  # explicit private
-        ... ]
-        >>> result = estimator.estimate(
-        ...     parameters=parameters,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600,
-        ...     method=("scipy", "SLSQP", "ad")
-        ... )
+                A list of dicts, one per phase.  Each phase warm-starts
+                from the converged solution of the previous phase.
+                When ``None`` (default), a single phase with all
+                defaults is run -- equivalent to ``schedule=[{}]``.
 
-        >>> # Legacy dict format (deprecated but still supported)
-        >>> parameters = {
-        ...     "private": {
-        ...         "efficiency": {
-        ...             "components": [component1, component2],
-        ...             "x0": [0.8, 0.85],
-        ...             "lb": [0.5, 0.6],
-        ...             "ub": [1.0, 1.0]
-        ...         }
-        ...     }
-        ... }
-        >>> result = estimator.estimate(
-        ...     parameters=parameters,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600
-        ... )
+                Recognised keys per phase (all optional):
+
+                - ``regularization_lambda`` (float, default ``0.0``):
+                  Weight for the binarization penalty
+                  ``P(x) = x(1 - x)`` summed over the phase's
+                  ``regularization_components``.  Set ``0.0`` to
+                  disable.
+                - ``regularization_components`` (list of
+                  :class:`core.System`, default ``None``): Components
+                  whose ``compute_binarization_penalty()`` is summed.
+                  When ``None`` and ``regularization_lambda > 0``,
+                  components with that method are auto-detected from
+                  the parameter components.
+                - ``saturation_mode`` (``"smooth"`` | ``"hard"``,
+                  default = current process-global mode): Scopes
+                  :func:`twin4build.systems.utils.smooth_saturation.saturation_mode`
+                  around the phase's solver call.  Use ``"smooth"``
+                  for cold-start exploration (gradient flows through
+                  deep windup) and ``"hard"`` for bias-correction
+                  refinement (forward exact at bounds).
+                - ``options`` (dict): Per-phase solver-option overrides
+                  merged on top of the top-level ``options`` dict
+                  (top-level ``options`` is the base; per-phase keys
+                  win on conflict).
+
+                Example -- "explore then refine" workflow::
+
+                    schedule = [
+                        {"saturation_mode": "smooth", "regularization_lambda": 0.0},
+                        {"saturation_mode": "hard",   "regularization_lambda": 0.1,
+                         "options": {"ftol": 1e-9}},
+                    ]
+
+                Example -- binarization annealing with final hard
+                refinement::
+
+                    schedule = [
+                        {"regularization_lambda": 0.0,   "saturation_mode": "smooth"},
+                        {"regularization_lambda": 0.01,  "saturation_mode": "smooth"},
+                        {"regularization_lambda": 0.1,   "saturation_mode": "smooth"},
+                        {"regularization_lambda": 0.1,   "saturation_mode": "hard",
+                         "options": {"ftol": 1e-9}},
+                    ]
+
+
+        Returns:
+            EstimationResult: Dict-like object containing the optimized parameters
+                (``result_x``), component information, bounds, iteration metadata,
+                and convergence status. Additional fields:
+
+                - ``estimated_initial_state``: Per-component initial states
+                  recovered from the fit (collocation also estimates the
+                  boundary states; single-shooting reports the warm-up result).
+                - ``collocation_audit`` (collocation only): Solution-quality
+                  audit with the maximum continuity defect, per-sensor RMSE
+                  consistency (NLP solution vs. forward rollout vs. object
+                  ``do_step`` rollout), and active-bound counts.
+
+        Raises:
+            AssertionError: If method specification is invalid or input parameters are inconsistent.
+            ValueError: If method format is incorrect or unsupported.
+
+        Notes:
+            - The method automatically handles parameter normalization and bounds checking.
+            - For AD mode, all components must be torch.nn.Module instances.
+            - Results are automatically saved to disk in the model's estimation_results
+              directory and can be reloaded with
+              :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
+            - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
+            - The fit's simulations log the measuring devices only; every port's
+              logging (``set_save_simulation_result``) is put back as it was when
+              ``estimate`` returns or raises, so a simulation after it logs what
+              one before it did.
+            - On a model split into worlds (``split_worlds``, ``model.worlds``),
+              a parameter and its copies in other worlds (``Worlds.shared``)
+              are one parameter: list the original, and its copies join its
+              entry with its start and bounds (a private original becomes one
+              shared entry with them; a shared group takes them in).  A copy
+              listed with another start or bounds, or without its original,
+              raises ``ValueError``.
+
+        Examples:
+            >>> # New list format (recommended)
+            >>> parameters = [
+            ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # private (default)
+            ...     ([space1, space2], "thermal.C_wall", 2e+6, 1e+6, 1e+7, "shared"),  # shared
+            ...     (heating_controller, "kp", 0.001, 1e-5, 1, "private"),  # explicit private
+            ... ]
+            >>> result = estimator.estimate(
+            ...     parameters=parameters,
+            ...     measurements=[(temperature_sensor, 0.1)],
+            ...     start_time=start,
+            ...     end_time=end,
+            ...     step_size=3600,
+            ...     method=("scipy", "SLSQP", "ad")
+            ... )
+
+            >>> # Collocation transcription for long horizons
+            >>> result = estimator.estimate(
+            ...     parameters=parameters,
+            ...     measurements=[(temperature_sensor, 0.1)],
+            ...     start_time=start,
+            ...     end_time=end,
+            ...     step_size=3600,
+            ...     method=("casadi", "ipopt", "ad", "collocation"),
+            ...     options={"maxiter": 500}
+            ... )
         """
-        deprecated_args = ["startTime", "endTime", "stepSize", "n_initialization_steps"]
-        new_args = ["start_time", "end_time", "step_size", "n_warmup"]
-        position = [1, 2, 3, None]
-        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
-        start_time = value_map.get("start_time", start_time)
-        end_time = value_map.get("end_time", end_time)
-        step_size = value_map.get("step_size", step_size)
-        n_warmup = value_map.get("n_warmup", n_warmup)
+        # The fit logs its measuring devices only (set below); every port's
+        # flag is put back when it returns or raises.
+        flags = _port_logging(self.simulator.model)
+        try:
+            return self._estimate(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                parameters=parameters,
+                measurements=measurements,
+                n_warmup=n_warmup,
+                method=method,
+                options=options,
+                schedule=schedule,
+                **kwargs,
+            )
+        finally:
+            _restore_port_logging(flags)
+
+    def _estimate(
+        self, start_time, end_time, step_size, parameters, measurements, n_warmup, method, options, schedule, **kwargs
+    ) -> EstimationResult:
+        """:meth:`estimate`'s body; :meth:`estimate` puts the ports' logging back."""
+        # Reject removed kwargs with clear migration messages.
+        for legacy_key in (
+            "startTime",
+            "endTime",
+            "stepSize",
+            "n_initialization_steps",
+            "regularization_lambda",
+            "regularization_components",
+        ):
+            if legacy_key in kwargs:
+                if legacy_key in (
+                    "startTime",
+                    "endTime",
+                    "stepSize",
+                    "n_initialization_steps",
+                ):
+                    rename = {
+                        "startTime": "start_time",
+                        "endTime": "end_time",
+                        "stepSize": "step_size",
+                        "n_initialization_steps": "n_warmup",
+                    }
+                    raise TypeError(
+                        f"`{legacy_key}` has been removed. Use "
+                        f"`{rename[legacy_key]}` instead."
+                    )
+                raise TypeError(
+                    f"`{legacy_key}` is no longer a top-level argument of "
+                    f"Estimator.estimate().  Move it into a per-phase entry "
+                    f"of `schedule=[...]`, e.g. "
+                    f"`schedule=[{{'{legacy_key}': ...}}]`.  See the "
+                    f"`schedule` argument's docstring for the full set of "
+                    f"recognised per-phase keys."
+                )
+        if "lambda_schedule" in kwargs:
+            raise TypeError(
+                "`lambda_schedule` has been removed.  It was a special case "
+                "of the unified `schedule` argument.  Migrate "
+                "`lambda_schedule=[(lam, opts), ...]` to "
+                "`schedule=[{'regularization_lambda': lam, 'options': opts}, ...]`. "
+                "Per-phase entries also accept 'saturation_mode' and "
+                "'regularization_components'; see the `schedule` argument's "
+                "docstring."
+            )
+        self._log_parameters = bool(kwargs.pop("log_parameters", False))
+        # ``identifiability``: "auto" (default) runs the post-fit local
+        # identifiability analysis whenever a residual Jacobian is cheap
+        # (functional objective, or a few parameters under object-mode AD),
+        # True forces it, False skips it.  See ``_log_identifiability``.
+        self._identifiability = kwargs.pop("identifiability", "auto")
+        if self._identifiability not in ("auto", True, False):
+            raise ValueError("identifiability must be 'auto', True or False")
+        reject_unexpected_kwargs("Estimator.estimate", kwargs)
 
         # Input validation and preprocessing
         if parameters is None:
             parameters = []
 
-        # Convert old dict format to new list format if needed
+        # -- Pre-expand multi-branch parameters -------------------------------
+        # Multi-branch sub-components (AHU supply / exhaust dampers,
+        # heat-recovery effectiveness vector, fan polynomial
+        # coefficients, ...) only get ``Parameter.expand_to_n_c(
+        # n_branches)`` called from inside *their owner's*
+        # ``initialize``.  If we let that happen later, inside the
+        # first ``simulator.simulate(...)`` of the optimization loop,
+        # then ``_process_parameters_list`` below has already read the
+        # pre-expand ``n_c=1`` and allocated a single shared theta
+        # slot per parameter -- ``Parameter.set``'s
+        # ``_broadcast_for_n_c`` then fans the optimizer's lone update
+        # out to every branch, locking all branches at the same value
+        # regardless of how the per-room flow rates / effectiveness
+        # coefficients actually differ.  Running ``model.initialize``
+        # once here forces every component through its ``expand_to_n_c``
+        # path so ``_process_parameters_list`` sees the post-expand
+        # ``n_c`` and the solver gets one theta slot per branch.  A
+        # bare ``initialize`` (no simulate) is cheap;
+        # ``time_series_input`` caches by ``(start, end, step_size)``,
+        # so the per-device init below + the simulate loop's own
+        # ``model.initialize`` skip the historian fetch.  We normalize
+        # ``start_time`` / ``end_time`` / ``step_size`` to lists up
+        # front so this and the per-device init both see the same
+        # batched shape -- the later normalization block at "Set up
+        # time periods" then becomes idempotent.
+        if not isinstance(start_time, list):
+            start_time = [start_time]
+        if not isinstance(end_time, list):
+            end_time = [end_time]
+        if not isinstance(step_size, list):
+            step_size = [step_size] * len(start_time)
+
+        # Guard against degenerate / inverted periods up front -- otherwise the
+        # eager ``model.initialize`` below crashes inside ``ScheduleSystem``
+        # with an opaque ``IndexError`` ("index -7 is out of bounds for axis 1
+        # with size 0") before the per-period validation block can produce a
+        # readable error.
+        for s, e, ss in zip(start_time, end_time, step_size):
+            if not isinstance(ss, int) or ss <= 0:
+                raise ValueError(f"step_size must be a positive integer, got {ss!r}")
+            if s >= e:
+                raise ValueError(
+                    f"start_time ({s}) must be strictly less than end_time ({e})"
+                )
+
+        # tb.Variable / bare parameters -> (component, path) tuples, before the
+        # eager initialize: it may replace a parameter object (a multi-branch
+        # component widens it), and the path is what stays (#235)
+        parameters = estimator_parameters(parameters, self.simulator.model)
+        self.simulator.model.initialize(start_time, end_time, step_size)
+
+        # ``parameters="auto"`` / ``measurements="auto"`` sentinels.
+        # Both walk every component on the underlying simulation model
+        # once and assemble the standard estimation set from anything
+        # that satisfies the per-side contract:
+        #
+        #   * ``parameters="auto"`` -> call ``c.get_estimable_parameters()``
+        #     on every component that implements it.  The contract returns
+        #     a list of ``(comp, attr, x0, lb, ub)`` tuples (see
+        #     :meth:`ControllerIdentificationSystem.get_estimable_parameters`
+        #     for the canonical implementation).
+        #
+        #   * ``measurements="auto"`` -> walk every :class:`SensorSystem`
+        #     with a wired data source and include it as a measurement
+        #     with sd = ``max(0.1 * data_std, 1e-3)``.  If users want
+        #     anything else (skip sensors, custom sd, instrument-specific
+        #     weighting) they should build the list manually -- ``"auto"``
+        #     is deliberately opinionated.
+        # Reset the auto-discovery set so a previous ``estimate`` call's
+        # state can't bleed into an explicit measurement list on a
+        # subsequent call (which would otherwise refresh and overwrite
+        # the caller's hand-picked ``sd``).
+        self._auto_measurement_ids = set()
+        if isinstance(parameters, str) and parameters == "auto":
+            parameters = self._auto_parameters()
+        if isinstance(measurements, str) and measurements == "auto":
+            measurements = self._auto_measurements()
+        measurements = self._resolve_measurements(measurements)
+
         if isinstance(parameters, dict):
-            # Issue deprecation warning for dict format
-            warnings.warn(
-                "The dictionary format for the 'parameters' argument is deprecated and will be "
-                "removed in a future version. Please use the new list format: "
-                "parameters = [(component, attr, x0, lb, ub), ...]. "
-                "See the documentation for examples of the new format.",
-                DeprecationWarning,
-                stacklevel=2,
+            raise TypeError(
+                "The dictionary format for the 'parameters' argument has been removed. "
+                "Use the list-of-tuples format: "
+                "parameters = [(component, attr, x0, lb, ub), ...] "
+                "or [(components, attr, x0, lb, ub, 'private'|'shared'), ...]."
             )
-            parameters = self._convert_dict_to_list_format(parameters)
         elif isinstance(parameters, list):
-            # Validate the new list format
             parameters = self._validate_list_format(parameters)
         else:
             raise ValueError(
-                "The 'parameters' argument must be either a list of tuples "
-                "[(component, attr, x0, lb, ub), ...] or a dictionary (deprecated format)."
+                "The 'parameters' argument must be a list of tuples "
+                "[(component, attr, x0, lb, ub), ...] "
+                "or [(components, attr, x0, lb, ub, 'private'|'shared'), ...]."
             )
+        # On a model split into worlds, a parameter and its copies are one
+        # parameter: the copies join their original's entry.
+        parameters = _join_world_copies(parameters, self.simulator.model)
 
         # Process parameters in new list format
         self._process_parameters_list(parameters)
 
+        _settings.log_active("estimate")
+
+        # Optional per-iteration parameter dump.  Enabled via
+        # ``estimate(..., log_parameters=True)``; when on, every new
+        # objective evaluation logs the full denormalized theta vector as
+        # ``compID.attr=value`` pairs so the caller can see *which* parameter
+        # the solver is moving (or not moving) when convergence stalls.
+        LOGGER.task("Estimating parameters")
+        LOGGER.add_level()
+
         # Define allowed optimization methods
         allowed_methods = [
-            ("scipy", "trf", "fd"),
-            ("scipy", "dogbox", "fd"),
             ("scipy", "trf", "ad"),
             ("scipy", "dogbox", "ad"),
-            ("scipy", "L-BFGS-B", "fd"),
             ("scipy", "L-BFGS-B", "ad"),
-            ("scipy", "TNC", "fd"),
             ("scipy", "TNC", "ad"),
-            ("scipy", "SLSQP", "fd"),
             ("scipy", "SLSQP", "ad"),
-            ("scipy", "trust-constr", "fd"),
             ("scipy", "trust-constr", "ad"),
+            ("scipy", "dual_annealing", "ad"),
+            ("scipy", "basinhopping", "ad"),
+            # IPOPT via CasADi (optional dependency).  Single-shooting: same
+            # objective as the SciPy backends, only the optimizer changes.
+            ("casadi", "ipopt", "ad"),
+            ("custom", "batched-sqp", "ad"),
+            ("custom", "batched-bfgs", "ad"),
+            ("custom", "batched-lm", "ad"),
+            ("custom", "batched-newton", "ad"),
         ]
+        # Plug-in solvers (twin4build.solvers.registry): a registered method
+        # is accepted by name, and a solver instance may be passed directly
+        # as ``method``.  Either takes precedence over a built-in backend of
+        # the same name.
+        self._solver_instance = None
+        if is_solver(method):
+            self._solver_instance = method
+            method = tuple(method.method)
+        for registered in registered_solvers():
+            if registered not in allowed_methods:
+                allowed_methods.append(registered)
+        if self._solver_instance is not None and method not in allowed_methods:
+            allowed_methods.append(method)
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
         default_mode = (
             "ad"  # Always choose automatic differentiation mode when ambiguous
         )
 
-        # Process method specification
-        if isinstance(method, str):
-            valid_methods = list(
-                set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
-            )
-            assert (
-                method in valid_methods
-            ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
+        # Transcription mode (4th, optional tuple element).  Governs *how* the
+        # dynamics enter the NLP, orthogonally to the (library, optimizer, mode)
+        # optimizer choice. See twin4build.utils.method_spec.parse_method.
+        method, transcription = parse_method(
+            method,
+            allowed_methods=allowed_methods,
+            default_methods=default_methods,
+            default_mode=default_mode,
+            default_none_method=default_none_method,
+            allow_transcription=True,
+        )
+        self._transcription = transcription or "single_shooting"
 
-            # Try to match with default methods first
-            matched = False
-            for t in default_methods:
-                if t[0] == method:
-                    method = t
-                    matched = True
-                    break
+        LOGGER.config("Method: %s", method)
 
-            # If no match found, look for candidates
-            if not matched:
-                candidates = []
-                for m in allowed_methods:
-                    if m[1] == method:
-                        candidates.append(m)
-
-                if len(candidates) == 1:
-                    method = candidates[0]
-                elif len(candidates) > 1:
-                    # Choose the one with default mode
-                    for c in candidates:
-                        if c[2] == default_mode:
-                            method = c
-                            break
-
-        elif isinstance(method, tuple):
-            assert (
-                len(method) == 3
-            ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
-            assert method[0] in [
-                l[0] for l in allowed_methods
-            ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[1] in [
-                l[1] for l in allowed_methods
-            ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[2] in [
-                l[2] for l in allowed_methods
-            ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
-
-            # Validate the method tuple
-            method_ = None
-            for t in allowed_methods:
-                if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
-                    method_ = t
-                    break
-            assert (
-                method_ is not None
-            ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
-            method = method_
-        elif method is None:
-            method = default_none_method
-        else:
-            raise ValueError(
-                f'The "method" argument must be a string or a tuple - "{method}" was provided.'
-            )
+        # The periods' initial states as decision variables, tied together by
+        # continuity defects (the multiple_shooting transcription).  The
+        # options leave ``options`` here and never reach a solver.
+        options = dict(options or {})
+        self._multiple_shooting = _initial_state_config(self._transcription, options, start_time, end_time)
+        if self._multiple_shooting is not None and len(schedule or [{}]) > 1:
+            # a later phase would start the windows from their recorded states again
+            raise ValueError("multiple_shooting fits in one phase: give no schedule of several phases")
 
         # Set up time periods
-        self._n_init_steps = n_warmup
+        self._n_warmup = n_warmup
         if not isinstance(start_time, list):
             start_time = [start_time]
         if not isinstance(end_time, list):
             end_time = [end_time]
         if not isinstance(step_size, list):
-            step_size = [step_size]
+            step_size = [step_size] * len(start_time)
+
+        # Initialise regularization state to defaults.  The schedule
+        # loop overwrites both per-phase from the entry dict, so these
+        # values are only ever observed for the trivial 1-phase
+        # ``schedule=[{}]`` default.
+        self._regularization_lambda = 0.0
+        self._regularization_components = None
 
         # Validate time periods
         for startTime_, endTime_, stepSize_ in zip(start_time, end_time, step_size):
@@ -604,57 +1066,553 @@ class Estimator:
         self._end_time = end_time
         self._stepSize = step_size
 
+        n_periods = len(start_time)
+        LOGGER.config("Time periods: %d", n_periods)
+        LOGGER.add_level()
+        for i, (s, e, ss) in enumerate(zip(start_time, end_time, step_size)):
+            LOGGER.config("Period %d: start=%s | end=%s | step=%ss", i + 1, s, e, ss)
+        LOGGER.remove_level()
+
         # Store configuration
         self._parameters_list = parameters  # Store the list format
         self._measurements = measurements
         self._mse_scaled = None
         self._n_timesteps = 0
 
-        # Load actual measurements
-        for i, (startTime_, endTime_, stepSize_) in enumerate(
-            zip(self._start_time, self._end_time, self._stepSize)
-        ):
-            self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            self._n_timesteps += (
-                len(self.simulator.secondTimeSteps) - self._n_init_steps
-            )
-            actual_readings = self.simulator.get_actual_readings(
-                start_time=startTime_, end_time=endTime_, step_size=stepSize_
-            )
-            if i == 0:
-                self.actual_readings = {}
-                for measuring_device, sd in self._measurements:
-                    self.actual_readings[measuring_device.id] = actual_readings[
-                        measuring_device.id
-                    ].to_numpy()
-            else:
-                for measuring_device, sd in self._measurements:
-                    self.actual_readings[measuring_device.id] = np.concatenate(
-                        (
-                            self.actual_readings[measuring_device.id],
-                            actual_readings[measuring_device.id].to_numpy(),
-                        ),
-                        axis=0,
-                    )
+        LOGGER.task("Initializing measurement devices")
+        self.actual_readings = {}
+        for measuring_device, sd in self._measurements:
+            measuring_device.initialize(start_time, end_time, step_size)
+            df = measuring_device.get_physical_readings(start_time, end_time, step_size)
+            self.actual_readings[measuring_device.id] = df  # list of
 
-        # Validate bounds
-        assert np.all(
-            self._x0 >= self._lb
-        ), f"The provided x0 must be larger than the provided lower bound lb for parameter {np.array(self._parameter_names)[self._x0 < self._lb][0]}"
-        assert np.all(
-            self._x0 <= self._ub
-        ), f"The provided x0 must be smaller than the provided upper bound ub for parameter {np.array(self._parameter_names)[self._x0 > self._ub][0]}"
+        # -- Refresh ``sd`` for auto-discovered measurements -------------------
+        # ``_auto_measurements`` runs *before* the devices are
+        # initialized, so its only data source is whatever
+        # ``time_series_input.values`` happens to be cached on each
+        # sensor at that point.  In practice almost everything falls
+        # through to the ``AUTO_SD_FLOOR`` placeholder, which gives the
+        # ``1/sd**2`` loss weight wildly different magnitudes per
+        # sensor (e.g. AHU supply-air-temp ends up with the floor while
+        # zone-air-temp gets data-driven 0.16 K -> SAT carries 10x the
+        # weight even though both are temperatures in the same units).
+        # Now that ``actual_readings`` are loaded for *all* measurements
+        # we can compute ``0.1 * data_std`` directly and replace the
+        # placeholder, capped at ``AUTO_SD_FLOOR`` so a near-constant
+        # window still produces a sane weight.  We only touch the
+        # measurements ``_auto_measurements`` returned -- hand-built
+        # measurement lists keep whatever ``sd`` the caller chose.
+        auto_ids = getattr(self, "_auto_measurement_ids", set())
+        if auto_ids:
+            refreshed: List[Tuple[core.System, float]] = []
+            for md, sd in self._measurements:
+                if md.id in auto_ids:
+                    try:
+                        dfs = self.actual_readings.get(md.id, [])
+                        vals = np.concatenate(
+                            [np.asarray(d.values).flatten() for d in dfs]
+                        )
+                        vals = vals[np.isfinite(vals)]
+                        if vals.size > 1:
+                            data_std = float(np.nanstd(vals))
+                            if np.isfinite(data_std):
+                                sd = max(0.1 * data_std, AUTO_SD_FLOOR)
+                    except Exception:  # noqa: BLE001
+                        sd = max(sd, AUTO_SD_FLOOR)
+                refreshed.append((md, sd))
+            self._measurements = refreshed
+
+        measuring_devices = [
+            measuring_device for measuring_device, sd in self._measurements
+        ]
+        self.simulator.model.set_save_simulation_result(flag=False)
+        self.simulator.model.set_save_simulation_result(flag=True, c=measuring_devices)
+
+        for df_ in df:
+            self._n_timesteps += len(df_.index)
+
+        LOGGER.config(
+            "Measurements: %d devices, %d total timesteps",
+            len(self._measurements),
+            self._n_timesteps,
+        )
+
+        # -- Per-measurement summary ------------------------------------------
+        # Cheap diagnostic that tells "no data" vs "saturated" vs "well-excited"
+        # apart at a glance, before the solver hides these in RMSE aggregates.
+        # For each sensor log: min, max, mean, std, and fraction of samples
+        # near the observed min/max (saturation detection).  A measurement
+        # that is (say) 98% at 0 carries almost no information about PID
+        # gains / integral time, and its parameters will look "stuck" for
+        # reasons that have nothing to do with the optimizer.
+        LOGGER.task("Measurement statistics")
+        LOGGER.add_level()
+        for md, sd in self._measurements:
+            dfs = self.actual_readings.get(md.id, [])
+            vals_list = []
+            for df_ in dfs:
+                try:
+                    vals_list.append(np.asarray(df_.values).flatten())
+                except AttributeError:
+                    vals_list.append(np.asarray(df_).flatten())
+            if not vals_list:
+                LOGGER.iter("%s  sd=%.4g  <no data>", md.id, sd)
+                continue
+            v = np.concatenate(vals_list)
+            v = v[np.isfinite(v)]
+            if v.size == 0:
+                LOGGER.iter("%s  sd=%.4g  <all NaN>", md.id, sd)
+                continue
+            vmin, vmax = float(np.min(v)), float(np.max(v))
+            vmean, vstd = float(np.mean(v)), float(np.std(v))
+            vrange = vmax - vmin
+            if vrange > 0:
+                tol = 0.01 * vrange
+                frac_lo = 100.0 * float(np.mean(v <= vmin + tol))
+                frac_hi = 100.0 * float(np.mean(v >= vmax - tol))
+                sat_str = f" near_min={frac_lo:.0f}% near_max={frac_hi:.0f}%"
+            else:
+                sat_str = "  CONSTANT"
+            LOGGER.iter(
+                "%s  sd=%.4g  min=%.3g max=%.3g mean=%.3g std=%.3g%s",
+                md.id,
+                sd,
+                vmin,
+                vmax,
+                vmean,
+                vstd,
+                sat_str,
+            )
+        LOGGER.remove_level()
+
+        # Validate bounds.  ``_x0`` / ``_lb`` / ``_ub`` are unique-theta length
+        # (shared groups collapsed); ``_parameter_names`` is flat (one entry per
+        # component member).  Build labels aligned with theta for error messages.
+        unique_labels = self._unique_theta_labels()
+        below = self._x0 < self._lb
+        if np.any(below):
+            i = int(np.flatnonzero(below)[0])
+            raise ValueError(
+                f"The provided x0 must be >= lower bound lb for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]}, lb={self._lb[i]})"
+            )
+        above = self._x0 > self._ub
+        if np.any(above):
+            i = int(np.flatnonzero(above)[0])
+            raise ValueError(
+                f"The provided x0 must be <= upper bound ub for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]}, ub={self._ub[i]})"
+            )
+        nonfinite = ~np.isfinite(self._x0)
+        if np.any(nonfinite):
+            i = int(np.flatnonzero(nonfinite)[0])
+            raise ValueError(
+                f"The provided x0 must be finite for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]})"
+            )
 
         # Set up parameter bounds and normalization
         self._set_bounds(normalize=True)
 
         # Run optimization based on method
-        if method[0] == "scipy":
-            if options is None:
-                options = {}
-            return self._scipy_solver(method=method, n_cores=n_cores, **options)
-        else:
+        if (
+            method[0] not in ("scipy", "casadi", "custom")
+            and self._solver_instance is None
+            and find_solver(method) is None
+        ):
             raise ValueError(f"Unsupported library: {method[0]}")
+
+        if options is None:
+            options = {}
+
+        # Fast-path for notebook example tests: keep every cell exercising
+        # the full Estimator API (so we still catch wiring / API
+        # regressions) but stop the solver after a single iteration.
+        # Honors the ``testing`` setting, which ``utils.test_notebook``
+        # turns on (``TWIN4BUILD_TESTING=1``); the regular
+        # ``test_estimator.py`` suite already passes ``maxiter=2``
+        # explicitly so this is a no-op for them.
+        #
+        # The cap is applied here (top-level ``options``) *and* again
+        # inside :meth:`_run_schedule` after the per-phase merge -- so a
+        # notebook that defines a multi-phase schedule with explicit
+        # per-phase ``maxiter`` values (e.g. ``[{"options": {"maxiter":
+        # 100}}, {"options": {"maxiter": 50}}]``) still collapses to
+        # one iteration per phase in tests instead of overriding the
+        # top-level cap during the schedule merge.
+        if _settings.value("testing"):
+            options = {**options, "maxiter": 1}
+
+        # --- Schedule dispatch ---
+        # ``schedule=None`` collapses to a single phase with all
+        # defaults so the trivial single-phase API stays terse:
+        # ``estimator.estimate(parameters=..., ...)``.
+        if schedule is None:
+            schedule = [{}]
+
+        LOGGER.task("Running schedule with %d phase(s)", len(schedule))
+        LOGGER.add_level()
+        result = self._run_schedule(
+            schedule=schedule,
+            method=method,
+            base_options=options,
+        )
+        LOGGER.remove_level()
+        LOGGER.ok(
+            "Running schedule with %d phase(s)",
+            len(schedule),
+            change_status=True,
+            ignore_no_match=True,
+        )
+        LOGGER.remove_level()
+        LOGGER.ok(
+            "Estimating parameters",
+            change_status=True,
+            ignore_no_match=True,
+        )
+        return result
+
+    # Recognised keys for entries in the unified ``schedule`` argument.
+    # Centralised here so a typo in a phase dict raises early instead of
+    # being silently ignored.
+    _SCHEDULE_PHASE_KEYS = frozenset(
+        {
+            "regularization_lambda",
+            "saturation_mode",
+            "options",
+            "regularization_components",
+        }
+    )
+
+    def _run_schedule(
+        self,
+        schedule: List[Dict[str, Any]],
+        method: tuple,
+        base_options: Dict,
+    ) -> "EstimationResult":
+        """Run a multi-phase optimisation schedule.
+
+        Each phase is a dict.  Recognised keys (all optional):
+
+        - ``regularization_lambda`` (float, default ``0.0``)
+        - ``regularization_components`` (list, default ``None``)
+        - ``saturation_mode`` (``"smooth"`` | ``"hard"``, default =
+          inherited process-global mode)
+        - ``options`` (dict, merged onto ``base_options``)
+
+        Phases warm-start from the previous phase's solution by
+        copying ``self._last_x_norm`` into ``self._x0_norm``; the
+        ``_mse_scaled`` cache is reset per phase so each rescales from
+        its own initial MSE.
+
+        Parameters
+        ----------
+        schedule : list of dicts
+            Per-phase config.  Empty dicts run the phase with all
+            defaults (no regularization, inherited saturation mode,
+            ``base_options`` only).
+        method : tuple
+            Solver method tuple, forwarded to :meth:`_solve`.
+        base_options : dict
+            Top-level ``options`` dict; per-phase ``options`` are
+            merged on top.
+
+        Returns
+        -------
+        EstimationResult
+            Result from the **final** phase.  The penultimate phase's
+            result is also written to disk by ``_solve`` but is
+            overwritten by the final phase.
+        """
+        n_phases = len(schedule)
+        result = None
+
+        for phase_idx, raw_entry in enumerate(schedule):
+            entry = self._normalize_schedule_entry(raw_entry, phase_idx)
+
+            lam = entry.get("regularization_lambda", 0.0)
+            mode = entry.get("saturation_mode")  # None => keep current global
+            phase_opts = entry.get("options") or {}
+            phase_reg_comps = entry.get("regularization_components", None)
+            fit_wide = sorted(INITIAL_STATE_OPTIONS & set(phase_opts))
+            if fit_wide:
+                raise ValueError(
+                    f"Schedule entry at index {phase_idx}: {fit_wide} hold for the whole fit; give them in "
+                    "estimate(options=...)"
+                )
+
+            merged_options = {**base_options, **phase_opts}
+
+            # Re-apply the notebook-test fast-path cap after the
+            # per-phase merge so an explicit per-phase ``maxiter`` in
+            # the schedule cannot accidentally undo the ``testing`` cap
+            # (see :meth:`estimate` for the top-level pass).
+            if _settings.value("testing"):
+                merged_options["maxiter"] = 1
+
+            self._regularization_lambda = lam
+            self._regularization_components = phase_reg_comps
+            self._mse_scaled = None  # rescale per phase
+
+            LOGGER.config(
+                "Phase %d/%d | lambda=%s | saturation_mode=%s",
+                phase_idx + 1,
+                n_phases,
+                lam,
+                mode if mode is not None else "<inherit>",
+            )
+
+            # Scope the saturation-mode override to this phase only;
+            # nullcontext() preserves the inherited global mode when no
+            # override is requested.
+            ctx = saturation_mode(mode) if mode is not None else _nullcontext()
+            with ctx:
+                result = self._solve(method=method, **merged_options)
+
+            # Warm-start next phase from this phase's converged x.
+            self._x0_norm = self._last_x_norm.copy()
+
+            obj_val = result.get("final_objective", None)
+            LOGGER.ok(
+                "Phase %d/%d | objective=%s",
+                phase_idx + 1,
+                n_phases,
+                obj_val,
+            )
+
+        return result
+
+    def _normalize_schedule_entry(self, entry: Any, phase_idx: int) -> Dict[str, Any]:
+        """Validate one schedule entry.  Unknown keys raise so typos
+        surface early instead of silently being ignored.
+        """
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Schedule entry at index {phase_idx} must be a dict; "
+                f"got {type(entry).__name__}: {entry!r}"
+            )
+
+        unknown = set(entry) - self._SCHEDULE_PHASE_KEYS
+        if unknown:
+            raise ValueError(
+                f"Schedule entry at index {phase_idx} contains unknown "
+                f"keys {sorted(unknown)!r}; allowed: "
+                f"{sorted(self._SCHEDULE_PHASE_KEYS)!r}"
+            )
+
+        mode = entry.get("saturation_mode")
+        if mode is not None and mode not in ("smooth", "hard"):
+            raise ValueError(
+                f"Schedule entry at index {phase_idx}: saturation_mode "
+                f"must be 'smooth' or 'hard', got {mode!r}"
+            )
+        return entry
+
+    def _auto_parameters(self) -> List[Tuple]:
+        """Build the estimation parameter list automatically.
+
+        Implements the ``parameters="auto"`` sentinel of :meth:`estimate`.
+        Walks every component on the underlying simulation model and
+        collects parameter tuples from those that implement the
+        ``get_estimable_parameters()`` contract -- the canonical example
+        being :class:`ControllerIdentificationSystem`, which returns
+        ``(comp, attr, x0, lb, ub)`` tuples seeded from its post-rewire
+        state.
+
+        Returns:
+            The concatenated parameter list, ready to be passed through
+            :meth:`_validate_list_format`.  Empty when no component
+            implements the contract (so the caller will hit the existing
+            "no parameters" error path naturally).
+        """
+        model = self.simulator.model
+        params: List[Tuple] = []
+        for component in model.components.values():
+            getter = getattr(component, "get_estimable_parameters", None)
+            if not callable(getter):
+                continue
+            try:
+                params.extend(getter())
+            except Exception as ex:  # noqa: BLE001
+                LOGGER.warning(
+                    "[Estimator] component %r get_estimable_parameters() "
+                    "raised: %s -- skipping.",
+                    getattr(component, "id", component),
+                    ex,
+                )
+        return params
+
+    def _auto_measurements(
+        self,
+    ) -> List[Tuple[core.System, float]]:
+        """Build the measurement list automatically.
+
+        Implements the ``measurements="auto"`` sentinel of
+        :meth:`estimate`.  A :class:`SensorSystem` is included iff:
+
+        * its ``input["measuredValue"]`` receives a connection from a
+          **non-sensor** upstream component (typically a controller
+          or a physics system) -- so the simulation actually produces
+          a fresh prediction on it, rather than the sensor just being
+          a pass-through wrapper over another sensor, and
+        * it has a wired data source (database / spreadsheet / df) so
+          ground truth is available for the loss.
+
+        The standard deviation is ``max(0.1 * data_std, AUTO_SD_FLOOR)``
+        with ``AUTO_SD_FLOOR = 0.05`` -- the cross-domain noise floor we
+        adopt for the canonical sensor families ``"auto"`` discovers:
+        actuator commands on [0, 1] (5 % of full scale), zone air
+        temperatures (0.05 K is below typical wall-mount thermistor
+        precision so it cannot dominate the residual), and supply air
+        flows (0.05 kg/s ~ a few %  of typical AHU branch design flow).
+        Anything tighter risks the ``1/sd**2`` weighting making one
+        channel dwarf the rest.  ``data_std`` is computed from
+        ``time_series_input.values`` when already loaded; otherwise the
+        floor is used as a *placeholder* and ``estimate`` refreshes
+        every auto-discovered ``sd`` right after
+        ``measuring_device.initialize`` has populated
+        ``actual_readings``.
+
+        The ``0.1 * data_std`` heuristic (rather than a tighter
+        fraction) is deliberate: the estimator scales the loss
+        gradient as ``1/sd**2``, so an over-tight ``sd`` makes SLSQP /
+        L-BFGS line searches overshoot and bounce.  ``0.1 * data_std``
+        matches the empirical sweet spot used by the legacy hand-tuned
+        Mortar examples (``sd=0.02`` absolute on 0-1 actuator signals
+        with ``std ~ 0.2``) and yields well-behaved descent on the
+        building-controls test suite.
+
+        Sensors excluded by this filter:
+
+        * **Leaf** sensors (``connects_at == []``) -- they *are* the
+          data sources for loop inputs (room temp, setpoint, ...);
+          their ``input["measuredValue"]`` is never populated.
+        * **Sensor-to-sensor pass-throughs** (e.g.
+          BRICK ``hasRef`` wrappers around a leaf data sensor) -- the
+          simulation just propagates the upstream sensor's value, so
+          fitting model parameters to make them match the data is
+          ill-posed.
+
+        Any user need for finer-grained control (skip sensors, custom
+        sd per instrument, alternate noise model) should drop ``"auto"``
+        and build the list manually.
+
+        Returns:
+            A list of ``(sensor, sd)`` tuples.  Empty when no qualifying
+            sensor is present, which will surface naturally via the
+            existing "no measurements" assertion.
+        """
+        model = self.simulator.model
+        out: List[Tuple[core.System, float]] = []
+        for component in model.components.values():
+            if not isinstance(component, systems.SensorSystem):
+                continue
+            # Pure leaf sensors have no measuredValue input history at
+            # all -- skip them up front.
+            if len(component.connects_at) == 0:
+                continue
+            # Look for at least one upstream component on the
+            # ``measuredValue`` input that is *not* itself a sensor.
+            # This is what distinguishes a CITS-output actuator (CITS
+            # -> sensor.measuredValue, included) from a BRICK
+            # ``hasRef`` pass-through (leaf-sensor ->
+            # wrapper-sensor.measuredValue, excluded).
+            has_non_sensor_driver = False
+            for cp in component.connects_at:
+                if cp.input_port != "measuredValue":
+                    continue
+                for conn in cp.connects_system_through:
+                    upstream = conn.connects_system
+                    if upstream is None:
+                        continue
+                    if not isinstance(upstream, systems.SensorSystem):
+                        has_non_sensor_driver = True
+                        break
+                if has_non_sensor_driver:
+                    break
+            if not has_non_sensor_driver:
+                continue
+            # ``time_series_input`` is set by the run start and may not
+            # exist yet on the first ``"auto"`` resolution.
+            if not component.has_data:
+                continue
+
+            sd = AUTO_SD_FLOOR
+            ts = getattr(component, "time_series_input", None)
+            if ts is not None and hasattr(ts, "values"):
+                try:
+                    arr = np.asarray(ts.values).flatten()
+                    if arr.size > 1:
+                        std = float(np.nanstd(arr))
+                        if np.isfinite(std):
+                            sd = max(0.1 * std, AUTO_SD_FLOOR)
+                except Exception:  # noqa: BLE001
+                    sd = AUTO_SD_FLOOR
+            out.append((component, sd))
+        # Stash the auto-discovered IDs so ``estimate`` can recompute
+        # their ``sd`` from the freshly-loaded ``actual_readings``
+        # *without* clobbering any user-supplied ``sd`` values in
+        # measurements lists that callers built by hand.
+        self._auto_measurement_ids = {c.id for c, _ in out}
+        return out
+
+    @staticmethod
+    def _resolve_measurements(measurements) -> List[Tuple[core.System, float]]:
+        """The ``measurements`` argument of :meth:`estimate` as a list of
+        ``(sensor, sd)``.
+
+        An entry is ``(sensor, sd)``, ``(sensor,)`` or the sensor alone; a
+        missing or ``None`` ``sd`` is the sensor's ``measurement_sd``.
+
+        Raises:
+            ValueError: If an entry gives no standard deviation and its
+                sensor carries none.
+        """
+        resolved = []
+        for entry in measurements:
+            if isinstance(entry, (tuple, list)):
+                sensor = entry[0]
+                sd = entry[1] if len(entry) > 1 else None
+            else:
+                sensor, sd = entry, None
+            if sd is None:
+                sd = getattr(sensor, "measurement_sd", None)
+            if sd is None:
+                raise ValueError(
+                    f"The measurement '{getattr(sensor, 'id', sensor)}' has no standard "
+                    "deviation: give it as (sensor, sd) or set sensor.measurement_sd."
+                )
+            resolved.append((sensor, sd))
+        return resolved
+
+    @staticmethod
+    def _parameter_value_as_array(param) -> np.ndarray:
+        """Return a flat float numpy array from a ``Parameter.get()`` value."""
+        val = param.get()
+        if isinstance(val, torch.Tensor):
+            return val.detach().cpu().numpy().astype(float).flatten()
+        return np.asarray(val, dtype=float).flatten()
+
+    def _resolve_x0(self, component, attr, x0):
+        """
+        Resolve an initial value, substituting the current parameter value when
+        ``x0`` is ``None``.
+
+        This is intended for parameters that already have a meaningful value
+        (for example a space heater's ``UA``, solved from its nominal
+        conditions when it is built).
+        """
+        if x0 is not None:
+            return x0
+        param = rgetattr(component, attr)
+        resolved = self._parameter_value_as_array(param)
+        LOGGER.debug(
+            "Resolved omitted x0 for %s.%s from current value: %s",
+            getattr(component, "id", component),
+            attr,
+            resolved,
+        )
+        return resolved
 
     def _validate_list_format(self, parameters_list: List[Tuple]) -> List[Tuple]:
         """
@@ -666,7 +1624,9 @@ class Estimator:
                 (component(s), attr, x0, lb, ub, parameter_type)
 
         Returns:
-            Validated list of parameter tuples with explicit parameter_type
+            Validated list of parameter tuples with explicit parameter_type.
+            ``x0`` may be ``None``, meaning the current parameter value
+            (after ``model.initialize``) should be used as the start.
 
         Raises:
             ValueError: If tuple format is invalid
@@ -682,16 +1642,19 @@ class Estimator:
                     f"Each parameter must be a tuple. Got {type(param_tuple)} at index {i}"
                 )
 
-            # Handle both 5-element and 6-element tuples
+            # Handle 5-, 6- and 7-element tuples
+            member_index = None
             if len(param_tuple) == 5:
                 component_s, attr, x0, lb, ub = param_tuple
                 parameter_type = "private"  # default
             elif len(param_tuple) == 6:
                 component_s, attr, x0, lb, ub, parameter_type = param_tuple
+            elif len(param_tuple) == 7:
+                component_s, attr, x0, lb, ub, parameter_type, member_index = param_tuple
             else:
                 raise ValueError(
-                    f"Each parameter tuple must have either 5 or 6 elements: "
-                    f"(component(s), attr, x0, lb, ub[, parameter_type]). "
+                    f"Each parameter tuple must have 5, 6 or 7 elements: "
+                    f"(component(s), attr, x0, lb, ub[, parameter_type[, member_index]]). "
                     f"Got {len(param_tuple)} elements at index {i}: {param_tuple}"
                 )
 
@@ -722,9 +1685,9 @@ class Estimator:
                     f"Attribute must be a non-empty string at index {i}. Got: {attr}"
                 )
 
-            # Validate numeric values
-            if x0 is None:
-                raise ValueError(f"Initial value (x0) cannot be None at index {i}")
+            # ``x0=None`` means "use the parameter's current value" and is
+            # resolved in ``_process_parameters_list`` after the eager
+            # ``model.initialize`` at the start of ``estimate``.
 
             # Convert None bounds to infinity
             if lb is None:
@@ -740,134 +1703,45 @@ class Estimator:
                     UserWarning,
                     stacklevel=3,
                 )
-
-            validated_params.append((components, attr, x0, lb, ub, parameter_type))
-
+            # member_index: per member, ``None`` (the member spans the whole
+            # group) or the group elements its own n_c elements map onto --
+            # an occupancy's per-VAV dampers onto the AHU's per-branch
+            # dampers ``[None, [1, 2, 3, 4]]``.  The first member defines the
+            # group's width and must span it.
+            if member_index is not None:
+                if parameter_type != "shared":
+                    raise ValueError(
+                        f"member_index is only meaningful for 'shared' parameters (index {i})"
+                    )
+                if not isinstance(member_index, (list, tuple)) or len(member_index) != len(
+                    components
+                ):
+                    raise ValueError(
+                        f"member_index at index {i} must list one entry per component "
+                        f"({len(components)}), got {member_index!r}"
+                    )
+                if member_index[0] is not None:
+                    raise ValueError(
+                        f"member_index at index {i}: the first member defines the group "
+                        "and must be None (span the whole group)"
+                    )
+                member_index = [
+                    None if m is None else [int(k) for k in m] for m in member_index
+                ]
+            else:
+                member_index = [None] * len(components)
+            validated_params.append(
+                (components, attr, x0, lb, ub, parameter_type, member_index)
+            )
         return validated_params
-
-    def _convert_dict_to_list_format(
-        self, parameters_dict: Dict[str, Dict]
-    ) -> List[Tuple]:
-        """
-        Convert old dict format to new list format.
-
-        Args:
-            parameters_dict: Dictionary in legacy format with "private" and "shared" keys
-
-        Returns:
-            List of tuples in format (components, attr, x0, lb, ub, parameter_type)
-
-        Raises:
-            ValueError: If dict format is invalid
-        """
-        if not isinstance(parameters_dict, dict):
-            raise ValueError("Parameters dict must be a dictionary")
-
-        # Ensure required dictionary structure
-        if "private" not in parameters_dict:
-            parameters_dict["private"] = {}
-        if "shared" not in parameters_dict:
-            parameters_dict["shared"] = {}
-
-        parameters_list = []
-
-        # Process private parameters
-        for attr, par_dict in parameters_dict["private"].items():
-            # Ensure components is a list
-            components = par_dict["components"]
-            if not isinstance(components, list):
-                components = [components]
-
-            # Ensure x0, lb, ub are lists with correct length
-            x0_list = par_dict["x0"]
-            if not isinstance(x0_list, list):
-                x0_list = [x0_list] * len(components)
-            elif len(x0_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "x0" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            lb_list = par_dict["lb"]
-            if not isinstance(lb_list, list):
-                lb_list = [lb_list] * len(components)
-            elif len(lb_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "lb" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            ub_list = par_dict["ub"]
-            if not isinstance(ub_list, list):
-                ub_list = [ub_list] * len(components)
-            elif len(ub_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "ub" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            # Add each component as a separate private parameter
-            for component, x0, lb, ub in zip(components, x0_list, lb_list, ub_list):
-                parameters_list.append(([component], attr, x0, lb, ub, "private"))
-
-        # Process shared parameters
-        for attr, par_dict in parameters_dict["shared"].items():
-            components_lists = par_dict["components"]
-            if not isinstance(components_lists, list):
-                raise ValueError(
-                    f'The "components" key in the shared dictionary must be a list for attribute {attr}.'
-                )
-
-            # Ensure components is a list of lists
-            if components_lists and not isinstance(components_lists[0], list):
-                components_lists = [components_lists]
-
-            x0_lists = par_dict["x0"]
-            if not isinstance(x0_lists, list):
-                x0_lists = [
-                    [x0_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif x0_lists and not isinstance(x0_lists[0], list):
-                x0_lists = [x0_lists]
-
-            lb_lists = par_dict["lb"]
-            if not isinstance(lb_lists, list):
-                lb_lists = [
-                    [lb_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif lb_lists and not isinstance(lb_lists[0], list):
-                lb_lists = [lb_lists]
-
-            ub_lists = par_dict["ub"]
-            if not isinstance(ub_lists, list):
-                ub_lists = [
-                    [ub_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif ub_lists and not isinstance(ub_lists[0], list):
-                ub_lists = [ub_lists]
-
-            # Each group of components shares the same parameter values
-            for components_list, x0_list, lb_list, ub_list in zip(
-                components_lists, x0_lists, lb_lists, ub_lists
-            ):
-                # All components in this group get the same parameter values
-                shared_x0 = x0_list[0] if isinstance(x0_list, list) else x0_list
-                shared_lb = lb_list[0] if isinstance(lb_list, list) else lb_list
-                shared_ub = ub_list[0] if isinstance(ub_list, list) else ub_list
-
-                # Create one shared parameter entry for this group
-                parameters_list.append(
-                    (components_list, attr, shared_x0, shared_lb, shared_ub, "shared")
-                )
-
-        return parameters_list
 
     def _process_parameters_list(self, parameters_list: List[Tuple]) -> None:
         """
         Process the parameter list and extract component and parameter information.
+
+        ``x0=None`` entries are resolved to the component's current parameter
+        value (via ``Parameter.get()``), which is typically the value left by
+        the eager ``model.initialize`` at the start of ``estimate``.
 
         Args:
             parameters_list: List of tuples in format (components, attr, x0, lb, ub, parameter_type)
@@ -881,17 +1755,22 @@ class Estimator:
             self._lb = np.array([])
             self._ub = np.array([])
             self._theta_mask = np.array([], dtype=int)
+            self._theta_slices = []  # (start, end) for each unique param in theta
+            self._theta_index = []
+            self._unique_param_n_c = []  # n_c for each unique param
             self._flat_components_private = []
             self._parameter_names_private = []
             self._flat_components_shared = []
             self._parameter_names_shared = []
+            LOGGER.warning("No parameters to estimate.")
             return
 
         # Separate private and shared parameters
         private_params = []
         shared_params = []
+        shared_member_index = []
 
-        for components, attr, x0, lb, ub, parameter_type in parameters_list:
+        for components, attr, x0, lb, ub, parameter_type, member_index in parameters_list:
             if parameter_type == "private":
                 # For private parameters, each component gets its own parameter
                 for component in components:
@@ -899,36 +1778,41 @@ class Estimator:
             elif parameter_type == "shared":
                 # For shared parameters, all components share one parameter
                 shared_params.append((components, attr, x0, lb, ub))
+                shared_member_index.append(member_index)
+
+        LOGGER.config(
+            "Parameters: %d private, %d shared", len(private_params), len(shared_params)
+        )
+        LOGGER.add_level()
+        for comp, attr, x0, lb, ub in private_params:
+            LOGGER.debug(
+                "Private: %s.%s (x0=%s, lb=%s, ub=%s)", comp.id, attr, x0, lb, ub
+            )
+        for comps, attr, x0, lb, ub in shared_params:
+            comp_ids = [c.id for c in comps]
+            LOGGER.debug(
+                "Shared: %s.%s (x0=%s, lb=%s, ub=%s)", comp_ids, attr, x0, lb, ub
+            )
+        LOGGER.remove_level()
 
         # Build flat lists for private parameters
         self._flat_components_private = [param[0] for param in private_params]
         self._parameter_names_private = [param[1] for param in private_params]
-        private_x0 = [param[2] for param in private_params]
-        private_lb = [
-            param[3] if param[3] is not None else -np.inf for param in private_params
-        ]
-        private_ub = [
-            param[4] if param[4] is not None else np.inf for param in private_params
-        ]
 
         # Build flat lists for shared parameters
-        # For shared params, we only need one entry per shared parameter group
         self._flat_components_shared = []
         self._parameter_names_shared = []
-        shared_x0 = []
-        shared_lb = []
-        shared_ub = []
+        # Per flat member: None, or the group elements the member's own
+        # elements map onto (element-mapped sharing).
+        self._theta_index = [None] * len(private_params)
 
-        for components, attr, x0, lb, ub in shared_params:
-            # Add all components for this shared parameter
-            for component in components:
+        for (components, attr, x0, lb, ub), member_index in zip(
+            shared_params, shared_member_index
+        ):
+            for component, idx in zip(components, member_index):
                 self._flat_components_shared.append(component)
                 self._parameter_names_shared.append(attr)
-
-            # But only add the parameter values once
-            shared_x0.append(x0)
-            shared_lb.append(lb if lb is not None else -np.inf)
-            shared_ub.append(ub if ub is not None else np.inf)
+                self._theta_index.append(None if idx is None else np.asarray(idx, dtype=int))
 
         # Combine all components and parameters
         self._flat_components = (
@@ -938,405 +1822,347 @@ class Estimator:
             self._parameter_names_private + self._parameter_names_shared
         )
 
-        # Combine parameter values
-        all_x0 = private_x0 + shared_x0
-        all_lb = private_lb + shared_lb
-        all_ub = private_ub + shared_ub
-
-        self._x0 = np.array(all_x0) if all_x0 else np.array([])
-        self._lb = np.array(all_lb) if all_lb else np.array([])
-        self._ub = np.array(all_ub) if all_ub else np.array([])
-
         # Get parameter objects
         self._flat_parameters = [
             rgetattr(component, attr)
             for component, attr in zip(self._flat_components, self._parameter_names)
         ]
 
-        # Create parameter mask
-        # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
-        private_mask = np.arange(len(self._flat_components_private), dtype=int)
+        # Build theta with n_c support
+        # theta is flat: [p0_v0, p0_v1, ..., p0_vn_c0, p1_v0, ..., p1_vn_c1, ...]
+        # _theta_slices[i] = (start, end) for unique parameter i
+        # _theta_mask[j] = which unique parameter index flat_parameter[j] maps to
 
-        # Shared parameters: components share parameter indices
-        shared_mask = []
-        n_private = len(self._flat_components_private)
+        self._unique_param_n_c = []  # n_c for each unique parameter
+        self._theta_slices = []  # (start, end) for each unique param in theta
+        theta_offset = 0
 
-        param_idx = n_private  # Start shared parameter indices after private ones
-        for components, attr, x0, lb, ub in shared_params:
-            # All components in this group map to the same parameter index
-            for _ in components:
-                shared_mask.append(param_idx)
-            param_idx += 1  # Move to next shared parameter
+        # Process private parameters (each is unique)
+        private_x0_flat = []
+        private_lb_flat = []
+        private_ub_flat = []
 
-        shared_mask = np.array(shared_mask) if shared_mask else np.array([], dtype=int)
-        self._theta_mask = (
-            np.concatenate((private_mask, shared_mask)).astype(int)
-            if len(private_mask) > 0 or len(shared_mask) > 0
-            else np.array([], dtype=int)
+        for i, (component, attr, x0, lb, ub) in enumerate(private_params):
+            param = rgetattr(component, attr)
+            n_c = param.n_c if hasattr(param, "n_c") else 1
+            self._unique_param_n_c.append(n_c)
+            self._theta_slices.append((theta_offset, theta_offset + n_c))
+            theta_offset += n_c
+
+            x0 = self._resolve_x0(component, attr, x0)
+
+            # Flatten x0, lb, ub for this parameter
+            if isinstance(x0, (list, np.ndarray, torch.Tensor)):
+                x0_vals = (
+                    np.array(x0).flatten()
+                    if not isinstance(x0, torch.Tensor)
+                    else x0.detach().cpu().numpy().flatten()
+                )
+            else:
+                x0_vals = np.full(n_c, x0)
+
+            lb_val = lb if lb is not None else -np.inf
+            ub_val = ub if ub is not None else np.inf
+            if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
+                lb_vals = (
+                    np.array(lb_val).flatten()
+                    if not isinstance(lb_val, torch.Tensor)
+                    else lb_val.detach().cpu().numpy().flatten()
+                )
+            else:
+                lb_vals = np.full(n_c, lb_val)
+            if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
+                ub_vals = (
+                    np.array(ub_val).flatten()
+                    if not isinstance(ub_val, torch.Tensor)
+                    else ub_val.detach().cpu().numpy().flatten()
+                )
+            else:
+                ub_vals = np.full(n_c, ub_val)
+
+            private_x0_flat.extend(x0_vals)
+            private_lb_flat.extend(lb_vals)
+            private_ub_flat.extend(ub_vals)
+
+        # Process shared parameters
+        shared_x0_flat = []
+        shared_lb_flat = []
+        shared_ub_flat = []
+        n_private_unique = len(private_params)
+
+        for shared_i, (components, attr, x0, lb, ub) in enumerate(shared_params):
+            # All members of a shared group MUST use the same normalization
+            # scaling: the objective denormalizes each member with its own
+            # parameter's scaling, so a mismatch would silently assign
+            # DIFFERENT physical values (and gradients) to the "shared"
+            # parameter for the same normalized theta.
+            scalings = {
+                getattr(rgetattr(c, attr), "scaling", "linear") for c in components
+            }
+            if len(scalings) > 1:
+                raise ValueError(
+                    f"Shared parameter group {[c.id for c in components]} attr "
+                    f"'{attr}' mixes normalization scalings {sorted(scalings)}; "
+                    "all members of a shared group must use the same "
+                    "tps.Parameter scaling."
+                )
+            # The first member defines the group's width; every other member
+            # either spans it (same n_c) or maps its elements onto it.
+            param = rgetattr(components[0], attr)
+            n_c = param.n_c if hasattr(param, "n_c") else 1
+            for other, idx in zip(components[1:], shared_member_index[shared_i][1:]):
+                other_param = rgetattr(other, attr)
+                other_n_c = other_param.n_c if hasattr(other_param, "n_c") else 1
+                if idx is None:
+                    if other_n_c != n_c:
+                        raise ValueError(
+                            f"Shared parameter '{attr}': {other.id} has n_c={other_n_c} "
+                            f"but the group ({components[0].id}) has n_c={n_c}; give the "
+                            "member a member_index mapping its elements onto the group's."
+                        )
+                else:
+                    if len(idx) != other_n_c:
+                        raise ValueError(
+                            f"Shared parameter '{attr}': member_index for {other.id} has "
+                            f"{len(idx)} entries but the parameter has n_c={other_n_c}."
+                        )
+                    if any(k < 0 or k >= n_c for k in idx):
+                        raise ValueError(
+                            f"Shared parameter '{attr}': member_index for {other.id} "
+                            f"{list(idx)} is outside the group's {n_c} elements."
+                        )
+            self._unique_param_n_c.append(n_c)
+            self._theta_slices.append((theta_offset, theta_offset + n_c))
+            theta_offset += n_c
+
+            if x0 is None:
+                # Shared groups share one theta; use the first member's current
+                # value and warn if others disagree.
+                x0 = self._resolve_x0(components[0], attr, None)
+                for other in components[1:]:
+                    other_val = self._parameter_value_as_array(rgetattr(other, attr))
+                    if not np.allclose(
+                        other_val, np.asarray(x0, dtype=float), equal_nan=True
+                    ):
+                        warnings.warn(
+                            f"Shared parameter '{attr}' has omitted x0 but current "
+                            f"values differ across components "
+                            f"({components[0].id}={np.asarray(x0)}, "
+                            f"{other.id}={other_val}); using {components[0].id}.",
+                            UserWarning,
+                            stacklevel=3,
+                        )
+                        break
+
+            # Flatten x0, lb, ub for this shared parameter
+            if isinstance(x0, (list, np.ndarray, torch.Tensor)):
+                x0_vals = (
+                    np.array(x0).flatten()
+                    if not isinstance(x0, torch.Tensor)
+                    else x0.detach().cpu().numpy().flatten()
+                )
+            else:
+                x0_vals = np.full(n_c, x0)
+
+            lb_val = lb if lb is not None else -np.inf
+            ub_val = ub if ub is not None else np.inf
+            if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
+                lb_vals = (
+                    np.array(lb_val).flatten()
+                    if not isinstance(lb_val, torch.Tensor)
+                    else lb_val.detach().cpu().numpy().flatten()
+                )
+            else:
+                lb_vals = np.full(n_c, lb_val)
+            if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
+                ub_vals = (
+                    np.array(ub_val).flatten()
+                    if not isinstance(ub_val, torch.Tensor)
+                    else ub_val.detach().cpu().numpy().flatten()
+                )
+            else:
+                ub_vals = np.full(n_c, ub_val)
+
+            shared_x0_flat.extend(x0_vals)
+            shared_lb_flat.extend(lb_vals)
+            shared_ub_flat.extend(ub_vals)
+
+        # Combine flattened values
+        self._x0 = (
+            np.array(private_x0_flat + shared_x0_flat)
+            if (private_x0_flat or shared_x0_flat)
+            else np.array([])
+        )
+        self._lb = (
+            np.array(private_lb_flat + shared_lb_flat)
+            if (private_lb_flat or shared_lb_flat)
+            else np.array([])
+        )
+        self._ub = (
+            np.array(private_ub_flat + shared_ub_flat)
+            if (private_ub_flat or shared_ub_flat)
+            else np.array([])
         )
 
-    def _jac_fd(self, x0: np.ndarray, output: str) -> np.ndarray:
+        # Create theta_mask: maps flat_parameters index -> unique parameter index
+        # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
+        private_mask = list(range(len(self._flat_components_private)))
+
+        # Shared parameters: components share unique parameter indices
+        shared_mask = []
+        unique_idx = n_private_unique
+        for components, attr, x0, lb, ub in shared_params:
+            for _ in components:
+                shared_mask.append(unique_idx)
+            unique_idx += 1
+
+        self._theta_mask = np.array(private_mask + shared_mask, dtype=int)
+
+    def _unique_theta_labels(self) -> List[str]:
+        """Human-readable labels aligned with unique-theta / ``_x0`` entries.
+
+        Shared groups are labeled once using the first member's component id.
+        Multi-branch (``n_c > 1``) parameters get a ``[k]`` suffix per slice.
         """
-        Compute the Jacobian matrix using finite differences.
+        labels: List[str] = []
+        # First flat index for each unique theta index
+        first_flat: Dict[int, int] = {}
+        for flat_i, uniq_i in enumerate(self._theta_mask):
+            first_flat.setdefault(int(uniq_i), flat_i)
+        for uniq_i in range(len(self._theta_slices)):
+            flat_i = first_flat[uniq_i]
+            comp = self._flat_components[flat_i]
+            attr = self._parameter_names[flat_i]
+            start, end = self._theta_slices[uniq_i]
+            n = end - start
+            if n == 1:
+                labels.append(f"{comp.id}.{attr}")
+            else:
+                for k in range(n):
+                    labels.append(f"{comp.id}.{attr}[{k}]")
+        return labels
 
-        This method implements numerical differentiation using finite difference schemes
-        to compute the Jacobian matrix for optimization algorithms that require gradient
-        information but cannot use automatic differentiation.
-
-        Parameters
-        ----------
-        x0 : np.ndarray
-            Parameter vector at which to compute the Jacobian.
-
-        Returns
-        -------
-        np.ndarray
-            Jacobian matrix with shape (n_residuals, n_parameters).
-
-        Notes
-        -----
-        This method uses a 2-point finite difference scheme by default, with automatic
-        adjustment for bound constraints. The step size is computed based on the
-        parameter values and machine precision.
+    def _theta_to_param_values(self, theta: np.ndarray) -> List[np.ndarray]:
         """
+        Convert flat theta array to list of parameter values.
 
-        def _prepare_bounds(bounds, x0):
-            """
-            Prepares new-style bounds from a two-tuple specifying the lower and upper
-            limits for values in x0. If a value is not bound then the lower/upper bound
-            will be expected to be -np.inf/np.inf.
+        Args:
+            theta: Flat array of all parameter values
 
-            Examples
-            --------
-            >>> _prepare_bounds([(0, 1, 2), (1, 2, np.inf)], [0.5, 1.5, 2.5])
-            (array([0., 1., 2.]), array([ 1.,  2., inf]))
-            """
-            lb, ub = (np.asarray(b, dtype=float) for b in bounds)
-            if lb.ndim == 0:
-                lb = np.resize(lb, x0.shape)
+        Returns:
+            List of arrays, one per flat_parameter, with values from theta
+            (shared parameters get the same values)
+        """
+        values = []
+        for i, param_idx in enumerate(self._theta_mask):
+            start, end = self._theta_slices[param_idx]
+            idx = self._theta_index[i]
+            values.append(theta[start:end] if idx is None else theta[start:end][idx])
+        return values
 
-            if ub.ndim == 0:
-                ub = np.resize(ub, x0.shape)
+    def _composer_theta_spec(self) -> Tuple[List[Tuple], List]:
+        """Indexed theta spec plus parameters for the functional model.
 
-            return lb, ub
+        Returns ``(theta_spec, unique_parameters)``:
 
-        def _adjust_scheme_to_bounds(x0, h, num_steps, scheme, lb, ub):
-            """Adjust final difference scheme to the presence of bounds.
+        - ``theta_spec``: one ``(component, attr, theta_selector)`` entry per
+          flat parameter. The selector is an integer for scalar parameters and
+          a slice for multi-branch parameters. Shared parameters route several
+          entries to the same selector.
+        - ``unique_parameters``: one representative ``tps.Parameter`` per theta
+          entry (the first flat occurrence), for bounds/scaling extraction
+          (all members of a shared group are configured with identical
+          bounds).
 
-            Parameters
-            ----------
-            x0 : ndarray, shape (n,)
-                Point at which we wish to estimate derivative.
-            h : ndarray, shape (n,)
-                Desired absolute finite difference steps.
-            num_steps : int
-                Number of `h` steps in one direction required to implement finite
-                difference scheme. For example, 2 means that we need to evaluate
-                f(x0 + 2 * h) or f(x0 - 2 * h)
-            scheme : {'1-sided', '2-sided'}
-                Whether steps in one or both directions are required. In other
-                words '1-sided' applies to forward and backward schemes, '2-sided'
-                applies to center schemes.
-            lb : ndarray, shape (n,)
-                Lower bounds on independent variables.
-            ub : ndarray, shape (n,)
-                Upper bounds on independent variables.
-
-            Returns
-            -------
-            h_adjusted : ndarray, shape (n,)
-                Adjusted absolute step sizes. Step size decreases only if a sign flip
-                or switching to one-sided scheme doesn't allow to take a full step.
-            use_one_sided : ndarray of bool, shape (n,)
-                Whether to switch to one-sided scheme. Informative only for
-                ``scheme='2-sided'``.
-            """
-            if scheme == "1-sided":
-                use_one_sided = np.ones_like(h, dtype=bool)
-            elif scheme == "2-sided":
-                h = np.abs(h)
-                use_one_sided = np.zeros_like(h, dtype=bool)
+        """
+        theta_spec = []
+        rep: Dict[int, object] = {}
+        for j, (comp, attr) in enumerate(
+            zip(self._flat_components, self._parameter_names)
+        ):
+            unique_idx = int(self._theta_mask[j])
+            start, end = self._theta_slices[unique_idx]
+            idx = self._theta_index[j]
+            if idx is not None:
+                # Element-mapped member: its elements are a gather from the
+                # group's slice.
+                selector = [int(start + k) for k in idx]
             else:
-                raise ValueError("`scheme` must be '1-sided' or '2-sided'.")
+                selector = int(start) if end - start == 1 else slice(start, end)
+            owner, owner_attr = self._functional_owner(comp, attr)
+            theta_spec.append((owner, owner_attr, selector))
+            rep.setdefault(unique_idx, self._flat_parameters[j])
+        unique_parameters = [rep[i] for i in range(len(self._theta_slices))]
+        assert sum(int(getattr(p, "n_c", 1)) for p in unique_parameters) == len(
+            self._x0_norm
+        )
+        return theta_spec, unique_parameters
 
-            if np.all((lb == -np.inf) & (ub == np.inf)):
-                return h, use_one_sided
+    def _functional_owner(self, comp, attr) -> Tuple[object, str]:
+        """Remap a theta entry on a nested sub-object onto its owning model
+        component with a prefixed attribute path.
 
-            h_total = h * num_steps
-            h_adjusted = h.copy()
+        Users may put theta directly on an owned sub-object -- e.g. the
+        ``OccupancySystem``'s internal ``supply_damper`` (shared with a model
+        damper). The functional model routes parameters by *model component*, so such
+        entries must become ``(owner, "supply_damper.a")``.  Components that
+        are themselves in the model pass through unchanged (including
+        composites addressed with dotted attrs like ``(office,
+        "thermal.C_air")``).
+        """
+        model = self.simulator.model
+        sim_model = getattr(model, "_simulation_model", None) or model
+        components = model.components
 
-            lower_dist = x0 - lb
-            upper_dist = ub - x0
+        def _fused_owner(base, base_attr):
+            # A fused-cluster member is in ``components`` but does not
+            # execute; its theta is routed through the owning
+            # FusedStateSpaceSystem under the member's module key (see
+            # FusedStateSpaceSystem._unit_params).
+            fusion_map = getattr(sim_model, "_fusion_member_to_fused", None) or {}
+            fused = fusion_map.get(getattr(base, "id", None))
+            if fused is not None:
+                return fused, f"{fused._member_keys[base.id]}.{base_attr}"
+            return base, base_attr
 
-            if scheme == "1-sided":
-                x = x0 + h_total
-                violated = (x < lb) | (x > ub)
-                fitting = np.abs(h_total) <= np.maximum(lower_dist, upper_dist)
-                h_adjusted[violated & fitting] *= -1
+        cid = getattr(comp, "id", None)
+        if cid is not None and components.get(cid) is comp:
+            return _fused_owner(comp, attr)
+        for owner in components.values():
+            # nn.Module owners keep sub-module attributes in ``_modules``
+            # (e.g. OccupancySystem.supply_damper), not ``__dict__``.
+            attrs = dict(vars(owner))
+            attrs.update(getattr(owner, "_modules", None) or {})
+            for name, val in attrs.items():
+                if val is comp:
+                    return _fused_owner(owner, f"{name}.{attr}")
+        return comp, attr
 
-                forward = (upper_dist >= lower_dist) & ~fitting
-                h_adjusted[forward] = upper_dist[forward] / num_steps
-                backward = (upper_dist < lower_dist) & ~fitting
-                h_adjusted[backward] = -lower_dist[backward] / num_steps
-            elif scheme == "2-sided":
-                central = (lower_dist >= h_total) & (upper_dist >= h_total)
+    def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
+        """
+        Convert list of parameter values to flat theta array.
 
-                forward = (upper_dist >= lower_dist) & ~central
-                h_adjusted[forward] = np.minimum(
-                    h[forward], 0.5 * upper_dist[forward] / num_steps
-                )
-                use_one_sided[forward] = True
+        Only uses the first occurrence of each unique parameter (for shared params).
 
-                backward = (upper_dist < lower_dist) & ~central
-                h_adjusted[backward] = -np.minimum(
-                    h[backward], 0.5 * lower_dist[backward] / num_steps
-                )
-                use_one_sided[backward] = True
+        Args:
+            values: List of parameter value arrays
 
-                min_dist = np.minimum(upper_dist, lower_dist) / num_steps
-                adjusted_central = ~central & (np.abs(h_adjusted) <= min_dist)
-                h_adjusted[adjusted_central] = min_dist[adjusted_central]
-                use_one_sided[adjusted_central] = False
-
-            return h_adjusted, use_one_sided
-
-        def _dense_difference(fun, x0, f0, h, use_one_sided, method):
-            """Compute finite differences for dense Jacobian computation."""
-            m = f0.size
-            n = x0.size
-            J_transposed = np.empty((n, m))
-            x1 = x0.copy()
-            x2 = x0.copy()
-            xc = x0.astype(complex, copy=True)
-
-            x1_ = np.empty((n, n))
-            x2_ = np.empty((n, n))
-
-            for i in range(h.size):
-                if method == "2-point":
-                    x1[i] += h[i]
-                elif method == "3-point" and use_one_sided[i]:
-                    x1[i] += h[i]
-                    x2[i] += 2 * h[i]
-                elif method == "3-point" and not use_one_sided[i]:
-                    x1[i] -= h[i]
-                    x2[i] += h[i]
-                else:
-                    raise RuntimeError("Never be here.")
-
-                x1_[i, :] = x1
-                x2_[i, :] = x2
-                x1[i] = x2[i] = xc[i] = x0[i]
-
-            if method == "2-point":
-                args = [(x, output) for x in x1_]
-                f = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                df = f - f0
-                dx = np.diag(x1_) - x0
-            elif method == "3-point":
-                args = [(x, output) for x in x1_]
-                f1 = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                args = [(x, output) for x in x2_]
-                f2 = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                df = np.empty_like(f1)
-                df[use_one_sided, :] = (
-                    -3.0 * f0[use_one_sided]
-                    + 4 * f1[use_one_sided, :]
-                    - f2[use_one_sided, :]
-                )
-                df[~use_one_sided] = f2[~use_one_sided, :] - f1[~use_one_sided, :]
-                dx = np.diag(x2_) - x0
-                dx[~use_one_sided] = (
-                    np.diag(x2_)[~use_one_sided] - np.diag(x1_)[~use_one_sided]
-                )
-
-            J_transposed = df / dx.reshape((dx.shape[0], 1))
-
-            if m == 1:
-                J_transposed = np.ravel(J_transposed)
-
-            return J_transposed.T
-
-        def _compute_absolute_step(rel_step, x0, f0, method):
-            """
-            Computes an absolute step from a relative step for finite difference
-            calculation.
-
-            Parameters
-            ----------
-            rel_step: None or array-like
-                Relative step for the finite difference calculation
-            x0 : np.ndarray
-                Parameter vector
-            f0 : np.ndarray or scalar
-            method : {'2-point', '3-point', 'cs'}
-
-            Returns
-            -------
-            h : float
-                The absolute step size
-
-            Notes
-            -----
-            `h` will always be np.float64. However, if `x0` or `f0` are
-            smaller floating point dtypes (e.g. np.float32), then the absolute
-            step size will be calculated from the smallest floating point size.
-            """
-            # this is used instead of np.sign(x0) because we need
-            # sign_x0 to be 1 when x0 == 0.
-            sign_x0 = (x0 >= 0).astype(float) * 2 - 1
-
-            rstep = _eps_for_method(x0.dtype, f0.dtype, method)
-
-            if rel_step is None:
-                abs_step = rstep * sign_x0 * np.maximum(1.0, np.abs(x0))
-            else:
-                # User has requested specific relative steps.
-                # Don't multiply by max(1, abs(x0) because if x0 < 1 then their
-                # requested step is not used.
-                abs_step = rel_step * sign_x0 * np.abs(x0)
-
-                # however we don't want an abs_step of 0, which can happen if
-                # rel_step is 0, or x0 is 0. Instead, substitute a realistic step
-                dx = (x0 + abs_step) - x0
-                abs_step = np.where(
-                    dx == 0, rstep * sign_x0 * np.maximum(1.0, np.abs(x0)), abs_step
-                )
-
-            return abs_step
-
-        @functools.lru_cache
-        def _eps_for_method(x0_dtype, f0_dtype, method):
-            """
-            Calculates relative EPS step to use for a given data type
-            and numdiff step method.
-
-            Progressively smaller steps are used for larger floating point types.
-
-            Parameters
-            ----------
-            f0_dtype: np.dtype
-                dtype of function evaluation
-
-            x0_dtype: np.dtype
-                dtype of parameter vector
-
-            method: {'2-point', '3-point', 'cs'}
-
-            Returns
-            -------
-            EPS: float
-                relative step size. May be np.float16, np.float32, np.float64
-
-            Notes
-            -----
-            The default relative step will be np.float64. However, if x0 or f0 are
-            smaller floating point types (np.float16, np.float32), then the smallest
-            floating point type is chosen.
-            """
-            # the default EPS value
-            EPS = np.finfo(np.float64).eps
-
-            x0_is_fp = False
-            if np.issubdtype(x0_dtype, np.inexact):
-                # if you're a floating point type then over-ride the default EPS
-                EPS = np.finfo(x0_dtype).eps
-                x0_itemsize = np.dtype(x0_dtype).itemsize
-                x0_is_fp = True
-
-            if np.issubdtype(f0_dtype, np.inexact):
-                f0_itemsize = np.dtype(f0_dtype).itemsize
-                # choose the smallest itemsize between x0 and f0
-                if x0_is_fp and f0_itemsize < x0_itemsize:
-                    EPS = np.finfo(f0_dtype).eps
-
-            if method in ["2-point", "cs"]:
-                return EPS**0.5
-            elif method in ["3-point"]:
-                return EPS ** (1 / 3)
-            else:
-                raise RuntimeError(
-                    "Unknown step method, should be one of "
-                    "{'2-point', '3-point', 'cs'}"
-                )
-
-        method = "2-point"
-        rel_step = None
-        f0 = None
-
-        if method not in ["2-point", "3-point", "cs"]:
-            raise ValueError("Unknown method '%s'. " % method)
-
-        xp = array_namespace(x0)
-        _x = _atleast_nd(x0, ndim=1, xp=xp)
-        _dtype = xp.float64
-        if xp.isdtype(_x.dtype, "real floating"):
-            _dtype = _x.dtype
-
-        # promotes to floating
-        x0 = xp.astype(_x, _dtype)
-
-        if x0.ndim > 1:
-            raise ValueError("`x0` must have at most 1 dimension.")
-
-        lb, ub = self.bounds.lb, self.bounds.ub
-        bounds = (lb, ub)
-        lb, ub = _prepare_bounds(bounds, x0)
-
-        if lb.shape != x0.shape or ub.shape != x0.shape:
-            raise ValueError("Inconsistent shapes between bounds and `x0`.")
-
-        if f0 is None:
-            f0 = self._obj_fd(x0, output)
-        else:
-            f0 = np.atleast_1d(f0)
-            if f0.ndim > 1:
-                raise ValueError("`f0` passed has more than 1 dimension.")
-
-        if np.any((x0 < lb) | (x0 > ub)):
-            raise ValueError("`x0` violates bound constraints.")
-
-        # by default we use rel_step
-        h = _compute_absolute_step(rel_step, x0, f0, method)
-
-        if method == "2-point":
-            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "1-sided", lb, ub)
-        elif method == "3-point":
-            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "2-sided", lb, ub)
-        elif method == "cs":
-            use_one_sided = False
-
-        jac = _dense_difference(self._obj_fd, x0, f0, h, use_one_sided, method)
-
-        return jac
+        Returns:
+            Flat theta array
+        """
+        theta = np.zeros(sum(self._unique_param_n_c))
+        seen_unique = set()
+        for i, (value, param_idx) in enumerate(zip(values, self._theta_mask)):
+            if param_idx not in seen_unique:
+                start, end = self._theta_slices[param_idx]
+                theta[start:end] = value
+                seen_unique.add(param_idx)
+        return theta
 
     def __getstate__(self):
         """Prepare object for pickling by removing non-serializable attributes."""
 
         self_dict = self.__dict__.copy()
-        if hasattr(self, "fun_pool"):
-            del self_dict["fun_pool"]
-        if hasattr(self, "jac_pool"):
-            del self_dict["jac_pool"]
-
         if hasattr(self, "obj"):
             del self_dict["obj"]
             del self_dict["_theta_obj"]
@@ -1347,57 +2173,6 @@ class Estimator:
             del self_dict["hes"]
             del self_dict["_theta_hes"]
         return self_dict
-
-    def _obj_fd(self, theta: np.ndarray, output: str) -> np.ndarray:
-        """
-        Objective function wrapper for finite difference methods.
-
-        This method handles exceptions during objective function evaluation
-        and returns a large penalty value if the simulation fails.
-
-        Parameters
-        ----------
-        theta : np.ndarray
-            Parameter vector.
-
-        Returns
-        -------
-        np.ndarray
-            Objective function value or penalty value if evaluation fails.
-        """
-        try:
-            theta_tensor = torch.tensor(theta, dtype=torch.float64)
-            res = self._obj(theta_tensor, output).detach().numpy()
-        except FMICallException:
-            res = self.res_fail
-        except Exception as e:
-            # Handle any other exceptions, including TensorWrapper issues
-            print(f"Warning: Objective function evaluation failed: {e}")
-            res = self.res_fail
-        return res
-
-    def _obj_fd_separate_process(self, theta: np.ndarray, output: str) -> np.ndarray:
-        """
-        Evaluate objective function in a separate process.
-
-        Parameters
-        ----------
-        theta : np.ndarray
-            Parameter vector.
-
-        Returns
-        -------
-        np.ndarray
-            Objective function value.
-        """
-        # res = np.array(list(self.fun_pool.imap(self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize))[0])
-        res = list(
-            self.fun_pool.starmap(
-                self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize
-            )
-        )[0]
-
-        return res
 
     def _set_bounds(self, normalize: bool = True) -> None:
         """
@@ -1417,12 +2192,14 @@ class Estimator:
         - Parameters must be subclasses of tps.Parameter.
         - Bounds are set on the parameter objects for constraint enforcement.
         """
+        # Get per-parameter bounds from flat theta arrays
+        lb_values = self._theta_to_param_values(self._lb)
+        ub_values = self._theta_to_param_values(self._ub)
+        x0_values = self._theta_to_param_values(self._x0)
+
         # Enable gradients for parameters to be estimated
-        for component, attr, lb, ub in zip(
-            self._flat_components,
-            self._parameter_names,
-            self._lb[self._theta_mask],
-            self._ub[self._theta_mask],
+        for i, (component, attr) in enumerate(
+            zip(self._flat_components, self._parameter_names)
         ):
             assert isinstance(
                 component, nn.Module
@@ -1436,37 +2213,55 @@ class Estimator:
             if normalize == False:
                 lb = 0  # Do nothing
                 ub = 1  # Do nothing
+            else:
+                lb = lb_values[i]
+                ub = ub_values[i]
 
             param.min_value = lb
             param.max_value = ub
 
-        self._lb_norm = np.array(
-            [
-                param.normalize(lb)
-                for param, lb in zip(self._flat_parameters, self._lb[self._theta_mask])
-            ]
-        )
-        self._ub_norm = np.array(
-            [
-                param.normalize(ub)
-                for param, ub in zip(self._flat_parameters, self._ub[self._theta_mask])
-            ]
-        )
-        self._x0_norm = np.array(
-            [
-                param.normalize(x0)
-                for param, x0 in zip(self._flat_parameters, self._x0[self._theta_mask])
-            ]
-        )
+        # Normalize each parameter's values
+        lb_norm_list = []
+        ub_norm_list = []
+        x0_norm_list = []
 
-    def _scipy_solver(
-        self, method: tuple, n_cores: Optional[int] = None, **options
-    ) -> EstimationResult:
+        seen_unique = set()
+        for i, (param, param_idx) in enumerate(
+            zip(self._flat_parameters, self._theta_mask)
+        ):
+            if param_idx not in seen_unique:
+                # Normalize the values for this unique parameter
+                lb_norm = param.normalize(
+                    torch.tensor(
+                        lb_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
+                )
+                ub_norm = param.normalize(
+                    torch.tensor(
+                        ub_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
+                )
+                x0_norm = param.normalize(
+                    torch.tensor(
+                        x0_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
+                )
+
+                # Convert to numpy and flatten
+                lb_norm_list.extend(lb_norm.detach().cpu().numpy().flatten())
+                ub_norm_list.extend(ub_norm.detach().cpu().numpy().flatten())
+                x0_norm_list.extend(x0_norm.detach().cpu().numpy().flatten())
+                seen_unique.add(param_idx)
+
+        self._lb_norm = np.array(lb_norm_list)
+        self._ub_norm = np.array(ub_norm_list)
+        self._x0_norm = np.array(x0_norm_list)
+
+    def _solve(self, method: tuple, **options) -> EstimationResult:
         """
         Perform optimization using SciPy's optimization algorithms.
 
-        This method handles both automatic differentiation and finite difference
-        optimization using various SciPy optimizers.
+        The gradients come from automatic differentiation.
 
         Parameters
         ----------
@@ -1485,8 +2280,18 @@ class Estimator:
         ValueError
             If the optimization method is not supported.
         """
+        self._eval_count = 0
+        self._solver_start_time = time_module.time()
+        # Track best objective seen for this solver run so the per-sensor
+        # RMSE diagnostic only emits on strictly-improving evaluations.
+        self._best_obj_logged = float("inf")
+
+        LOGGER.task("Running %s solver: %s (%s mode)", method[0], method[1], method[2])
+        LOGGER.add_level()
+
         datestr = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = str("{}{}".format(datestr, f"_{str(method)}.pickle"))
+        method_str = "_".join(list(method))
+        filename = str("{}{}".format(datestr, f"_{method_str}.pickle"))
         self.result_savedir_pickle, isfile = self.simulator.model.get_dir(
             folder_list=["model_parameters", "estimation_results"], filename=filename
         )
@@ -1503,27 +2308,31 @@ class Estimator:
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
 
-        # Set initial parameters
-        self.simulator.model.set_parameters_from_array(
-            self._x0_norm,
+        assert len(self._flat_parameters) > 0, "No parameters to optimize"
+
+        LOGGER.config(
+            "Parameters to optimize: %d (theta size: %d)",
+            len(self._flat_parameters),
+            len(self._x0_norm),
+        )
+
+        # Initialize simulator
+        LOGGER.task("Initializing model")
+        self.simulator.model.initialize(
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
+        )
+
+        # Set initial parameters - convert flat theta to per-parameter values
+        x0_param_values = self._theta_to_param_values(self._x0_norm)
+        self.simulator.model._write_parameters(
+            x0_param_values,
             self._flat_components,
             self._parameter_names,
             normalized=True,
             overwrite=True,
             save_original=True,
-        )
-
-        assert len(self._flat_parameters) > 0, "No parameters to optimize"
-
-        # Initialize simulator
-        self.simulator.get_simulation_timesteps(
-            self._start_time[0], self._end_time[0], self._stepSize[0]
-        )
-        self.simulator.model.initialize(
-            start_time=self._start_time[0],
-            end_time=self._end_time[0],
-            step_size=self._stepSize[0],
-            simulator=self.simulator,
         )
 
         # Disable gradients for history to save memory
@@ -1541,64 +2350,347 @@ class Estimator:
 
         # Initialize caching variables for AD
         self._theta_obj = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
         self._theta_jac = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
         self._theta_hes = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
 
-        # Setup for FD method
-        if method[2] == "fd":
-            if method[1] in ["trf", "dogbox"]:
-                res_fail = np.zeros((self._n_timesteps, len(self._measurements)))
-                for j, measuring_device in enumerate(self._measurements):
-                    res_fail[:, j] = np.ones((self._n_timesteps)) * 100
-                self.res_fail = res_fail.flatten()
-            else:
-                # scalar output
-                self.res_fail = 100
+        # -- Initial Jacobian diagnostic --------------------------------------
+        # Compute J(x0) *once* before scipy starts so we can log per-parameter
+        # column norms.  A parameter with ||J[:, i]|| ≈ 0 is structurally
+        # unidentifiable from x0 -- its residual gradient is zero, so the
+        # solver will shuffle it around aimlessly (or freeze it) regardless
+        # of trust-region settings.  This call is cached via ``_theta_jac``,
+        # so when scipy queries J(x0) a moment later the cache hits and no
+        # work is wasted.
+        if method[1] in ["trf", "dogbox"] and method[2] == "ad":
+            self._log_initial_jacobian_diagnostic()
 
-            assert n_cores is not None, "n_cores must be provided when using FD method"
-
-            # Set up multiprocessing pools
-            self.fun_pool = multiprocessing.get_context("spawn").Pool(
-                1, maxtasksperchild=30
+        # -- Simulator-selected functional single-shooting objective -----------
+        # Functional execution belongs to Simulator: Estimator only supplies the
+        # parameter and residual contracts. The old estimate options ``fast``
+        # and ``fast_validate`` were removed to avoid two owners for execution
+        # policy.
+        self._functional_objective = None
+        removed_options = [
+            key
+            for key in (
+                "fast",
+                "fast_validate",
+                "capture",
+                "capture_derivatives",
+                "capture_hessian",
+                "gauss_newton",
+                "exact_hessian",
             )
-            self.jac_pool = multiprocessing.get_context("spawn").Pool(
-                n_cores, maxtasksperchild=10
+            if key in options
+        ]
+        if removed_options:
+            raise TypeError(
+                f"Removed estimator option(s): {', '.join(removed_options)}. "
+                "Use hessian='exact'|'gauss_newton'|'limited_memory' and select "
+                "functional execution/CUDA graph capture on Simulator."
             )
-            self.jac_chunksize = 1
-
-            # Make model pickable and ensure all tensors are properly handled
-            self.simulator.model.make_pickable()
+        functional_requested = self.simulator.execution_mode == "functional"
+        if (
+            functional_requested
+            and self._transcription in SHOOTING_TRANSCRIPTIONS
+            and method[2] == "ad"
+        ):
+            self._setup_functional_objective(validate_functional=False)
+        elif self._multiple_shooting is not None:
+            raise ValueError(
+                "the periods' initial states are variables of the functional objective: "
+                'Simulator(execution_mode="functional") and a method in AD mode'
+            )
+        self._extend_for_multiple_shooting()
 
         # Run optimization based on method
-        if method[1] in ["trf", "dogbox"]:
-            if method[2] == "ad":
-                result = least_squares(
-                    self._obj_ad,
-                    x0=self._x0_norm,
-                    args=("vector",),
-                    jac=self._jac_ad,
-                    bounds=self.bounds,
-                    method=method[1],
-                    **options,
-                )
+        LOGGER.task("Running optimization")
+        result = self._dispatch_solve(method, options)
+        return self._finalize_solve(result, method)
+
+    def _dispatch_solve(self, method, options):
+        """Route a prepared problem to exactly one backend owner.
+
+        A solver instance passed as ``method`` or a solver registered for
+        ``method`` (see :mod:`twin4build.solvers.registry`) is tried first,
+        so a plug-in can replace a built-in backend of the same name.
+        """
+        solver = getattr(self, "_solver_instance", None) or find_solver(method)
+        if solver is not None:
+            return solver.solve(self.estimation_problem(), dict(options))
+        if method[0] == "scipy":
+            return self._solve_scipy(method, options)
+        if method == ("casadi", "ipopt", "ad"):
+            return self._solve_ipopt(method, options)
+        if method[0] == "custom":
+            return self._solve_custom(method, options)
+        raise ValueError(f"Unsupported estimator backend: {method[0]!r}")
+
+    def _solve_ipopt(self, method, options):
+        """Solve either IPOPT transcription with IPOPT-owned options."""
+        if self._transcription == "collocation":
+            return solve_collocation(self, method, dict(options))
+        if "hessian" in options:
+            raise TypeError(
+                "hessian is a collocation option; IPOPT single_shooting "
+                "currently uses limited-memory curvature"
+            )
+        result = solve_ipopt(
+            x0=np.asarray(self._x0_norm, dtype=np.float64),
+            lb=np.asarray(self.bounds.lb, dtype=np.float64),
+            ub=np.asarray(self.bounds.ub, dtype=np.float64),
+            fun=lambda x: float(self._obj_ad(x, "scalar")),
+            jac=lambda x: self._jac_ad(x, "scalar"),
+            options=dict(options),
+        )
+        result.nfev = self._eval_count
+        return result
+
+    def estimation_problem(self) -> EstimationProblem:
+        """The prepared problem in normalized coordinates, as handed to a
+        plug-in solver (:mod:`twin4build.solvers.registry`).  Valid once
+        :meth:`_solve` has set the bounds and the functional objective."""
+        return EstimationProblem(
+            x0=np.asarray(self._x0_norm, dtype=np.float64),
+            lb=np.asarray(self.bounds.lb, dtype=np.float64),
+            ub=np.asarray(self.bounds.ub, dtype=np.float64),
+            objective=self._functional_objective,
+            device=self._device,
+            dtype=tps.float_dtype(),
+            transcription=self._transcription,
+            estimator=self,
+        )
+
+    def _solve_custom(self, method, options):
+        """Solve functional single-shooting multistart methods."""
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("Custom solvers support only single_shooting and multiple_shooting")
+        if self._functional_objective is None:
+            raise RuntimeError(
+                "Custom batched solvers require functional simulator execution "
+                "and a fully functional model."
+            )
+        options = dict(options)
+        if "hessian" in options:
+            raise TypeError("hessian is not a custom batched-solver option")
+        starts = self.estimation_problem().multistart(options)
+        return solve_batched_multistart(
+            self._functional_objective,
+            method[1],
+            starts,
+            self.bounds.lb,
+            self.bounds.ub,
+            options,
+        )
+
+    def _solve_scipy_captured_slsqp(self, method, options):
+        """Run SciPy SLSQP from one captured functional value/gradient bundle."""
+        evaluator = BatchedObjectiveEvaluator(self._functional_objective)
+        cache = {"key": None, "value": None, "gradient": None}
+        fallback = {"enabled": False, "reason": None}
+
+        def eager_bundle(x):
+            value = float(self._obj_ad(x, "scalar"))
+            gradient = np.asarray(self._jac_ad(x, "scalar"), dtype=np.float64)
+            return value, gradient
+
+        def bundle(x):
+            x_np = np.asarray(x, dtype=np.float64)
+            key = x_np.tobytes()
+            if cache["key"] == key:
+                return cache["value"], cache["gradient"]
+            if fallback["enabled"]:
+                value, gradient = eager_bundle(x_np)
             else:
-                # Clean up torch objects before setting up FD method
-                # self.cleanup_torch_objects() # Removed as per edit hint
-                result = least_squares(
-                    self._obj_fd_separate_process,
-                    x0=self._x0_norm,
-                    args=("vector",),
-                    jac=self._jac_fd,
-                    bounds=self.bounds,
-                    method=method[1],
-                    **options,
-                )
+                try:
+                    z = torch.as_tensor(
+                        x_np, dtype=tps.float_dtype(), device=self._device
+                    ).unsqueeze(0)
+                    values, gradients = evaluator.value_grad(z)
+                    value_tensor = values[0]
+                    gradient_tensor = gradients[0]
+                    if not torch.isfinite(value_tensor) or not torch.isfinite(
+                        gradient_tensor
+                    ).all():
+                        value = 1e10
+                        gradient = np.zeros_like(x_np)
+                    else:
+                        value = float(value_tensor.detach().cpu())
+                        gradient = np.asarray(
+                            gradient_tensor.detach().cpu().numpy(),
+                            dtype=np.float64,
+                        )
+                    self._theta_obj = z[0].detach().clone()
+                    self._theta_jac = z[0].detach().clone()
+                    self._loglike = value_tensor.detach().clone()
+                    self._jac = gradient_tensor.detach().clone()
+                    self._eval_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    if is_cuda_graph_capture_invalidated(exc):
+                        raise
+                    fallback["enabled"] = True
+                    fallback["reason"] = f"{type(exc).__name__}: {exc}"
+                    LOGGER.warning(
+                        "CUDA Graph SLSQP bundle failed (%s); falling back to eager.",
+                        fallback["reason"],
+                    )
+                    value, gradient = eager_bundle(x_np)
+            cache.update(key=key, value=value, gradient=gradient)
+            return value, gradient
+
+        result = minimize(
+            lambda x: bundle(x)[0],
+            self._x0_norm,
+            method=method[1],
+            jac=lambda x: bundle(x)[1],
+            bounds=self.bounds,
+            options=options,
+        )
+        result.derivative_stats = {
+            "scipy_value_gradient_bundle": evaluator.stats.get("value_grad", {}),
+            "cuda_graph_requested": True,
+            "cuda_graph_enabled": not fallback["enabled"],
+            "fallback_reason": fallback["reason"],
+        }
+        return result
+
+    def _solve_scipy(self, method, options):
+        """Own and validate SciPy-specific solver options."""
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("SciPy supports only the single_shooting and multiple_shooting transcriptions")
+        if "hessian" in options:
+            raise TypeError("hessian is an IPOPT collocation option")
+        if method[1] in ["trf", "dogbox"]:
+            result = least_squares(
+                self._obj_ad,
+                x0=self._x0_norm,
+                args=("vector",),
+                jac=self._jac_ad,
+                bounds=self.bounds,
+                method=method[1],
+                **options,
+            )
+        elif method[1] == "dual_annealing":
+            # Global optimization via generalized simulated annealing.
+            # High temperature explores broadly to find the right basin,
+            # then anneals and polishes with a local gradient-based minimizer.
+            bounds_list = list(zip(self.bounds.lb, self.bounds.ub))
+
+            # Separate dual_annealing kwargs from local minimizer options
+            da_keys = {
+                "maxiter",
+                "initial_temp",
+                "restart_temp_ratio",
+                "visit",
+                "accept",
+                "maxfun",
+                "seed",
+                "no_local_search",
+                "callback",
+            }
+            da_kwargs = {k: v for k, v in options.items() if k in da_keys}
+            local_opts = {k: v for k, v in options.items() if k not in da_keys}
+
+            # The local minimizer uses SLSQP with AD gradients by default.
+            # Users can override via local_search_method in options.
+            local_method = local_opts.pop("local_search_method", "SLSQP")
+            minimizer_kwargs = {
+                "method": local_method,
+                "jac": self._jac_ad,
+                "args": ("scalar",),
+                "bounds": self.bounds,
+                "options": local_opts if local_opts else None,
+            }
+
+            result = dual_annealing(
+                func=self._obj_ad,
+                bounds=bounds_list,
+                args=("scalar",),
+                x0=self._x0_norm,
+                minimizer_kwargs=minimizer_kwargs,
+                **da_kwargs,
+            )
+
+        elif method[1] == "basinhopping":
+            # Global optimization via random perturbation + local minimization.
+            # At each step: perturb current solution, run local optimizer,
+            # accept/reject via Metropolis criterion at temperature T.
+
+            # Separate basinhopping kwargs from local minimizer options
+            bh_keys = {
+                "niter",
+                "T",
+                "stepsize",
+                "seed",
+                "niter_success",
+                "target_accept_rate",
+                "stepwise_factor",
+                "callback",
+            }
+            bh_kwargs = {k: v for k, v in options.items() if k in bh_keys}
+            local_opts = {k: v for k, v in options.items() if k not in bh_keys}
+
+            local_method = local_opts.pop("local_search_method", "SLSQP")
+            minimizer_kwargs = {
+                "method": local_method,
+                "jac": self._jac_ad,
+                "args": ("scalar",),
+                "bounds": self.bounds,
+                "options": local_opts if local_opts else None,
+            }
+
+            # Bounded perturbation step function.
+            # The default scipy RandomDisplacement adds uniform noise in
+            # [-stepsize, +stepsize] but does NOT clip to bounds, so the
+            # local optimizer starts from infeasible points.  This wrapper
+            # clips the perturbed vector back to [lb, ub], preserving the
+            # "explore nearby basins" philosophy of basinhopping while
+            # keeping all starts feasible.
+            #
+            # Tuning stepsize:
+            #   - Parameters are normalized to [0, 1].
+            #   - stepsize=0.5  → conservative, stays close to current best
+            #   - stepsize=1.0  → moderate, can flip most schedule weights
+            #   - stepsize=2.0+ → aggressive, nearly a random restart but
+            #                     still biased toward the current best for
+            #                     parameters near the interior of [0, 1]
+            lb_arr = np.asarray(self.bounds.lb, dtype=np.float64)
+            ub_arr = np.asarray(self.bounds.ub, dtype=np.float64)
+            seed = bh_kwargs.pop("seed", None)
+            rng = np.random.default_rng(seed)
+            _stepsize = bh_kwargs.pop("stepsize", 0.5)
+
+            class _BoundedStep:
+                """Uniform perturbation clipped to parameter bounds."""
+
+                def __init__(self, stepsize, lb, ub, rng):
+                    self.stepsize = stepsize
+                    self.lb = lb
+                    self.ub = ub
+                    self.rng = rng
+
+                def __call__(self, x):
+                    x_new = x + self.rng.uniform(
+                        -self.stepsize, self.stepsize, size=x.shape
+                    )
+                    return np.clip(x_new, self.lb, self.ub)
+
+            take_step = _BoundedStep(_stepsize, lb_arr, ub_arr, rng)
+
+            result = basinhopping(
+                func=self._obj_ad,
+                x0=self._x0_norm,
+                minimizer_kwargs=minimizer_kwargs,
+                take_step=take_step,
+                **bh_kwargs,
+            )
+
         else:
             if method[1] in [
                 "newton-cg",
@@ -1619,17 +2711,14 @@ class Estimator:
                 self.bounds.lb = np.asarray(self.bounds.lb, dtype=np.float64)
                 self.bounds.ub = np.asarray(self.bounds.ub, dtype=np.float64)
 
-            if method[2] == "fd":
-                result = minimize(
-                    self._obj_fd_separate_process,
-                    self._x0_norm,
-                    args=("scalar",),
-                    method=method[1],
-                    jac=self._jac_fd,
-                    hess=hess,
-                    bounds=self.bounds,
-                    options=options,
-                )
+            if (
+                method[1] == "SLSQP"
+                and self._functional_objective is not None
+                and self.simulator.execution_backend == "cuda_graph"
+                and self._device.type == "cuda"
+                and self._regularization_lambda == 0
+            ):
+                result = self._solve_scipy_captured_slsqp(method, options)
             else:
                 result = minimize(
                     self._obj_ad,
@@ -1641,16 +2730,205 @@ class Estimator:
                     bounds=self.bounds,
                     options=options,
                 )
+        return result
 
-        if method[0] == "scipy":
-            self.simulator.model.restore_parameters(keep_values=False)
+    def _finalize_solve(self, result, method):
+        """Finalize any backend result using the shared result contract."""
+        elapsed = time_module.time() - self._solver_start_time
+        LOGGER.task("Finishing optimization")
+        LOGGER.result(
+            "Elapsed: %.1fs | function evaluations: %d", elapsed, self._eval_count
+        )
 
-        # Create and save result
+        opt_success = getattr(result, "success", None)
+        opt_message = getattr(result, "message", None)
+        opt_nit = getattr(result, "nit", None)
+        opt_fun = getattr(result, "fun", None)
+        if opt_success is not None:
+            if opt_success:
+                LOGGER.ok(
+                    "success=%s | iterations=%s | objective=%s",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+            else:
+                LOGGER.warning(
+                    "success=%s | iterations=%s | objective=%s.",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+        if opt_message:
+            LOGGER.result("Solver message: %s", opt_message)
+
+        if getattr(result, "x", None) is not None:
+            # Leave the model at the OPTIMUM, not at the last objective
+            # evaluation: the solver's final evaluation is a line-search probe
+            # (and for the transcription/collocation backends the returned x
+            # is a restored best iterate the model never saw), so without this
+            # a subsequent ``simulator.simulate()`` runs with junk parameters.
+            theta_opt = torch.tensor(
+                np.asarray(result.x, dtype=np.float64),
+                dtype=tps.float_dtype(),
+                device=self._device,
+            )
+            self.simulator.model._write_parameters(
+                self._theta_to_param_values(theta_opt),
+                self._flat_components,
+                self._parameter_names,
+                normalized=True,
+                overwrite=True,
+            )
+            self.simulator.model.restore_parameters(keep_values=True)
+
+        # Multiple shooting: the solver's vector carries the windows' initial
+        # states after theta; report them and cut the vector back to theta.
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        x_full = np.asarray(result.x, dtype=np.float64)
+        if n_init and x_full.shape[0] == objective.n_theta_ext:
+            # per executing component (the collocation's format)
+            result.estimated_initial_state = objective.initial_state(x_full)
+            # what the fit set anew at every window boundary instead of
+            # carrying it over: a one-sided jump in a slow state is physics
+            # the model lacks (see _log_continuity_jumps)
+            try:
+                result.continuity_jumps = objective.continuity_jumps(x_full)
+                result.continuity_tolerance = objective.continuity_tolerance()
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps not derived: %r", exc)
+            result.x = x_full[: objective.n_theta]
+            self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)[: objective.n_theta]
+            self._lb_norm = np.asarray(self._lb_norm, dtype=np.float64)[: objective.n_theta]
+            self._ub_norm = np.asarray(self._ub_norm, dtype=np.float64)[: objective.n_theta]
+            self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+
+        # Store the normalised solution for warm-starting (used by lambda scheduling)
+        self._last_x_norm = result.x.copy()
+        theta_norm_at_optimum = np.asarray(result.x, dtype=np.float64)
+
+        # Denormalize result using parameter's denormalize method
+        # result.x is flat array of all unique parameter values
+        result_x_list = []
+        seen_unique = set()
+        for i, (param, param_idx) in enumerate(
+            zip(self._flat_parameters, self._theta_mask)
+        ):
+            if param_idx not in seen_unique:
+                start, end = self._theta_slices[param_idx]
+                x_norm = torch.tensor(
+                    result.x[start:end], dtype=tps.float_dtype(), device=self._device
+                )
+                x_denorm = param.denormalize(x_norm)
+                result_x_list.extend(x_denorm.detach().cpu().numpy().flatten())
+                seen_unique.add(param_idx)
+        result_x = np.array(result_x_list)
+
+        # Transcription (collocation) also estimates the boundary states;
+        # carry the optimised initial state through so callers can seed a
+        # continuous prediction from it (see EstimationResult).
+        estimated_initial_state = getattr(result, "estimated_initial_state", None)
+        # The same states by the ids of the components the model was built
+        # from (a batched meta's instances, a fused block's members): the
+        # form that loads onto another batching of the model.
+        estimated_initial_state_instances = None
+        if estimated_initial_state:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                estimated_initial_state_instances = model._instance_state(estimated_initial_state) or None
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Initial states per component not derived: %r", exc)
+        continuity_jumps = getattr(result, "continuity_jumps", None)
+        continuity_tolerance = getattr(result, "continuity_tolerance", None)
+        continuity_jumps_instances = continuity_tolerance_instances = None
+        if continuity_jumps:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                continuity_jumps_instances = model._instance_state(continuity_jumps) or None
+                continuity_tolerance_instances = model._instance_state(continuity_tolerance) or None
+                self._log_continuity_jumps(continuity_jumps_instances, continuity_tolerance_instances)
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps per component not derived: %r", exc)
+        # The parameters by those ids too: the fitted values, the values the
+        # fit started from and the bounds, and per entry the components its
+        # component stood for.  A result loads onto another batching of the
+        # model through them (``load_estimation_result``).
+        parameter_instances = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            entries = list(zip(self._flat_components, self._parameter_names))
+            component_source_ids = [
+                list(model.get_source_component_ids(component)) for component, _ in entries
+            ]
+            parameter_instances = model.get_parameters(entries)
+            parameter_instances_x0 = {}
+            parameter_instance_bounds = {}
+            for (component, attr), x0_, lb_, ub_ in zip(
+                entries,
+                self._theta_to_param_values(np.asarray(self._x0, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._lb, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._ub, dtype=float)),
+            ):
+                for (cid, start), (_, low), (_, high) in zip(
+                    model._split_instances(component, x0_),
+                    model._split_instances(component, lb_),
+                    model._split_instances(component, ub_),
+                ):
+                    parameter_instances_x0[(cid, attr)] = start
+                    parameter_instance_bounds[(cid, attr)] = (low, high)
+        except Exception as exc:  # the result is saved either way
+            parameter_instances = None
+            LOGGER.warning("Parameters per component not derived: %r", exc)
+        # What the fit held fixed: every estimable parameter of the model
+        # that was not estimated (pinned to a value, fixed by the caller,
+        # left out of the selection), at the value the fit ran with.  It is
+        # part of the fit but not of theta, so a model the result is loaded
+        # into would otherwise keep whatever value its own setup gives it.
+        parameter_instances_fixed = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            estimated = {(id(component), attr) for component, attr in zip(self._flat_components, self._parameter_names)}
+            held = []
+            for component in model.components.values():
+                getter = getattr(component, "get_estimable_parameters", None)
+                if not callable(getter):
+                    continue
+                for entry in getter():
+                    owner, attr = entry[0], entry[1]
+                    if (id(owner), attr) not in estimated:
+                        held.append((owner, attr))
+            parameter_instances_fixed = {}
+            for owner, attr in held:
+                try:
+                    parameter_instances_fixed.update(model.get_parameters([(owner, attr)]))
+                except (TypeError, AttributeError):
+                    continue  # not a parameter object
+        except Exception as exc:  # the result is saved either way
+            parameter_instances_fixed = None
+            LOGGER.warning("Fixed parameters per component not derived: %r", exc)
+        collocation_audit = getattr(result, "collocation_audit", None)
+        collocation_timing = getattr(result, "collocation_timing", None)
+        multistart_audit = getattr(result, "multistart_audit", None)
+        derivative_stats = getattr(result, "derivative_stats", None)
+        iteration_history = getattr(result, "iteration_history", None)
+        aggregate_nfev = getattr(result, "aggregate_nfev", None)
+        aggregate_njev = getattr(result, "aggregate_njev", None)
+        curvature_block_sizes = getattr(result, "curvature_block_sizes", None)
+        solver_status = getattr(result, "status", None)
+
         result = EstimationResult(
-            result_x=result.x,
+            result_x=result_x,
             component_id=[com.id for com in self._flat_components],
             component_attr=[attr for attr in self._parameter_names],
             theta_mask=self._theta_mask,
+            theta_slices=self._theta_slices,
+            theta_index=[None if i is None else [int(k) for k in i] for i in self._theta_index],
+            unique_param_n_c=self._unique_param_n_c,
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
@@ -1662,12 +2940,359 @@ class Estimator:
             final_objective=getattr(result, "fun", None),
             success=getattr(result, "success", None),
             message=getattr(result, "message", None),
+            settings=_settings.snapshot(),
         )
+        if estimated_initial_state is not None:
+            result["estimated_initial_state"] = estimated_initial_state
+        if estimated_initial_state_instances is not None:
+            result["estimated_initial_state_instances"] = estimated_initial_state_instances
+        if continuity_jumps_instances is not None:
+            result["continuity_jumps_instances"] = continuity_jumps_instances
+        if continuity_tolerance_instances is not None:
+            result["continuity_tolerance_instances"] = continuity_tolerance_instances
+        if parameter_instances is not None:
+            result["parameter_instances"] = parameter_instances
+            result["parameter_instances_x0"] = parameter_instances_x0
+            result["parameter_instance_bounds"] = parameter_instance_bounds
+            result["component_source_ids"] = component_source_ids
+        if parameter_instances_fixed:
+            result["parameter_instances_fixed"] = parameter_instances_fixed
+        if collocation_audit is not None:
+            result["collocation_audit"] = collocation_audit
+        if collocation_timing is not None:
+            result["collocation_timing"] = collocation_timing
+        if multistart_audit is not None:
+            result["multistart_audit"] = multistart_audit
+        if derivative_stats is not None:
+            result["derivative_stats"] = derivative_stats
+        if iteration_history is not None:
+            result["iteration_history"] = iteration_history
+        if aggregate_nfev is not None:
+            result["aggregate_nfev"] = aggregate_nfev
+            result["aggregate_njev"] = aggregate_njev
+        if curvature_block_sizes is not None:
+            result["curvature_block_sizes"] = curvature_block_sizes
+        if solver_status is not None:
+            result["solver_status"] = solver_status
 
+        # The fit is saved before the identifiability report: the report is
+        # optional and can be slow (a residual Jacobian), and a fit must not
+        # be lost to it.  The report is added and the file re-written when
+        # it completes.
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+        LOGGER.ok("Results saved to %s", self.result_savedir_pickle)
+        identifiability = self._log_identifiability(theta_norm_at_optimum, method)
+        if identifiability is not None:
+            result["identifiability"] = identifiability
+            with open(self.result_savedir_pickle, "wb") as handle:
+                pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        LOGGER.remove_level()
+        LOGGER.ok(
+            "Running %s solver: %s (%s mode)",
+            method[0],
+            method[1],
+            method[2],
+            change_status=True,
+            ignore_no_match=True,
+        )
         return result
+
+    #: Object-mode AD Jacobian costs one tangent rollout per theta entry;
+    #: ``identifiability="auto"`` accepts that only for small problems.
+    _IDENTIFIABILITY_AUTO_MAX_THETA = 20
+    #: The functional Jacobian (forward-mode over the rollout) costs about
+    #: one tangent step per theta entry and time step; ``"auto"`` accepts
+    #: it up to this many tangent-steps (a 500-parameter, 864-step fit is
+    #: 4e5; a 12 832-parameter one is 1e7 and ran for hours, eagerly).
+    _IDENTIFIABILITY_AUTO_MAX_TANGENT_STEPS = 2_000_000
+
+    def _theta_entry_names(self) -> List[str]:
+        """One label per flat theta entry: ``<component>.<attr>`` with a
+        ``[k]`` suffix for multi-slot (``n_c > 1``) parameters."""
+        n_theta = int(self._theta_slices[-1][1]) if self._theta_slices else 0
+        names = [""] * n_theta
+        seen: set = set()
+        for component, attr, param_idx in zip(
+            self._flat_components, self._parameter_names, self._theta_mask
+        ):
+            if param_idx in seen:
+                continue
+            seen.add(param_idx)
+            start, end = self._theta_slices[param_idx]
+            label = f"{self._short_component_label(component.id)}.{attr}"
+            for k in range(start, end):
+                names[k] = label if end - start == 1 else f"{label}[{k - start}]"
+        return names
+
+    def _residual_and_jacobian_at(self, theta_norm: np.ndarray):
+        """Scaled residual vector and its Jacobian (normalized theta) at
+        ``theta_norm`` from the functional objective when built, else from
+        the object-mode AD objective."""
+        theta = torch.tensor(theta_norm, dtype=tps.float_dtype(), device=self._device)
+        functional = getattr(self, "_functional_objective", None)
+        if functional is not None:
+            residual, jac = functional.batched_residual_and_jacobian(theta.unsqueeze(0))
+            return residual[0].detach().cpu().numpy(), jac[0].detach().cpu().numpy()
+        residual = self._obj(theta, "vector").detach().cpu().numpy()
+        jac = self._jac_ad(theta, "vector")
+        jac = jac.detach().cpu().numpy() if hasattr(jac, "detach") else np.asarray(jac)
+        return residual, jac
+
+    @staticmethod
+    def _log_continuity_jumps(jumps, tolerance, n: int = 10) -> None:
+        """The states the fit re-set most at its window boundaries (see
+        :mod:`twin4build.estimator._continuity`)."""
+        from twin4build.estimator._continuity import continuity_summary
+
+        table = continuity_summary(jumps or {}, tolerance)
+        if table.empty:
+            return
+        LOGGER.info(
+            "Continuity jumps at the window boundaries: %d states; mean |jump| / tolerance median %.3g, "
+            "%d states re-set to one side at every boundary",
+            len(table),
+            float(table["mean |jump| / tolerance"].median()),
+            int(((table["one-sided"] >= 1.0) & (table["boundaries"] > 1)).sum()),
+        )
+        for row in table.head(n).itertuples(index=False):
+            LOGGER.info(
+                "  %s x%d: mean jump %+.4g, max |jump| %.4g, %.3g x tolerance, %.0f %% one-sided",
+                row[0], row[1], row[3], row[5], row[7], 100.0 * row[8],
+            )
+
+    def _log_identifiability(self, theta_norm: np.ndarray, method) -> Optional[dict]:
+        """Post-fit local identifiability analysis (see
+        :mod:`twin4build.estimator._identifiability`), logged and returned as
+        a dict for the result.  Runs for ``identifiability=True``, and for
+        ``"auto"`` when the residual Jacobian is affordable: the functional
+        single-shooting objective is built, or object-mode AD with at most
+        ``_IDENTIFIABILITY_AUTO_MAX_THETA`` entries.  Never raises: a failed
+        analysis is logged and skipped."""
+        mode = getattr(self, "_identifiability", "auto")
+        if mode is False:
+            return None
+        if getattr(self, "_transcription", "single_shooting") not in SHOOTING_TRANSCRIPTIONS:
+            return None
+        if self._multiple_shooting is not None:
+            # the windows' initial states are not part of the analysis
+            if mode is True:
+                LOGGER.warning("identifiability=True is not available with multiple shooting; skipped")
+            return None
+        has_ad = len(method) > 2 and method[2] == "ad"
+        functional = getattr(self, "_functional_objective", None) is not None
+        n_theta = int(theta_norm.size)
+        if not has_ad and not functional:
+            if mode is True:
+                LOGGER.warning(
+                    "identifiability=True needs an AD residual Jacobian (method[2] == 'ad'); skipped"
+                )
+            return None
+        if mode == "auto" and not functional and n_theta > self._IDENTIFIABILITY_AUTO_MAX_THETA:
+            LOGGER.iter(
+                "Identifiability analysis skipped (object-mode AD Jacobian over %d parameters); "
+                "pass identifiability=True to force it",
+                n_theta,
+            )
+            return None
+        n_steps = int(getattr(self, "_n_timesteps", 0) or 0)
+        if mode == "auto" and functional and n_theta * max(n_steps, 1) > self._IDENTIFIABILITY_AUTO_MAX_TANGENT_STEPS:
+            LOGGER.iter(
+                "Identifiability analysis skipped (functional Jacobian over %d parameters x %d steps); "
+                "pass identifiability=True to force it",
+                n_theta,
+                n_steps,
+            )
+            return None
+        from twin4build.estimator._identifiability import analyze
+
+        try:
+            LOGGER.task("Identifiability at the optimum")
+            LOGGER.add_level()
+            t0 = time_module.time()
+            residual, jac = self._residual_and_jacobian_at(theta_norm)
+            names = self._theta_entry_names()
+            lb_norm, ub_norm = np.asarray(self._lb_norm, dtype=np.float64), np.asarray(self._ub_norm, dtype=np.float64)
+            report = analyze(jac, residual, names, theta_norm, lb_norm, ub_norm)
+            LOGGER.iter(
+                "n_theta=%d | n_residuals=%d | condition number %.3g | elapsed=%.1fs",
+                jac.shape[1],
+                jac.shape[0],
+                report.condition_number,
+                time_module.time() - t0,
+            )
+            lines = report.lines()
+            if report.clean:
+                LOGGER.ok("every parameter is pinned by the data (no dead, flat or traded-off parameter)")
+            for line in lines:
+                is_warning = (
+                    line.startswith("trade-off")
+                    or line.startswith("flat direction")
+                    or "not identifiable" in line
+                    or "not pinned" in line
+                )
+                if is_warning:
+                    LOGGER.warning(line)
+                else:
+                    LOGGER.iter(line)
+            LOGGER.remove_level()
+            return {
+                "names": report.names,
+                "rel_col_norm": report.rel_col_norm,
+                "dead": report.dead,
+                "weak": report.weak,
+                "at_lower": report.at_lower,
+                "at_upper": report.at_upper,
+                "singular_values": report.singular_values,
+                "flat_directions": report.flat_directions,
+                "tradeoffs": report.tradeoffs,
+                "std_err": report.std_err,
+                "unpinned": report.unpinned,
+                "condition_number": report.condition_number,
+                "lines": lines,
+            }
+        except Exception as exc:  # pragma: no cover -- diagnostic must never break the run
+            LOGGER.warning("Identifiability analysis failed: %s", exc)
+            try:
+                LOGGER.remove_level()
+            except Exception:
+                pass
+            return None
+
+    def _extend_for_multiple_shooting(self) -> None:
+        """Append the functional objective's initial-state variables to the
+        normalised start, bounds and caches the solvers read (``_x0_norm``,
+        ``_lb_norm``, ``_ub_norm``, ``bounds``); the results are cut back to
+        theta in :meth:`_finalize_solve`."""
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        self._n_theta_base = int(len(self._x0_norm))
+        if not n_init:
+            return
+        if self._multiple_shooting is not None and objective is None:
+            LOGGER.warning("multiple shooting needs the functional objective; the initial states stay fixed")
+            return
+        x0 = objective.init_x0_norm.detach().cpu().numpy().astype(np.float64)
+        self._x0_norm = np.concatenate([np.asarray(self._x0_norm, dtype=np.float64), x0])
+        self._lb_norm = np.concatenate([np.asarray(self._lb_norm, dtype=np.float64), np.zeros(n_init)])
+        self._ub_norm = np.concatenate([np.asarray(self._ub_norm, dtype=np.float64), np.ones(n_init)])
+        self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+        for name in ("_theta_obj", "_theta_jac", "_theta_hes"):
+            self.__dict__[name] = torch.nan * torch.ones(
+                len(self._x0_norm), dtype=tps.float_dtype(), device=self._device
+            )
+        LOGGER.config(
+            "multiple shooting: %d initial-state variables appended to %d parameters",
+            n_init, self._n_theta_base,
+        )
+
+    def _setup_functional_objective(self, validate_functional: bool = False) -> None:
+        """Build the functional single-shooting objective.
+
+        On success sets ``self._functional_objective`` (consumed by
+        :meth:`_obj`); on any
+        incompatibility leaves it ``None`` and the exact object objective
+        is used.  Construction itself performs the structural checks (every
+        cone component composable, no shared theta, every measurement
+        producible by the functional model). Numerical equivalence with the
+        object objective holds by construction -- each compatible
+        component's ``do_step`` delegates to the same ``forward`` the composer
+        threads -- and is regression-checked by
+        ``tests/estimator/test_functional_single_shooting.py``.
+
+        With ``validate=True`` (internal debugging use) the
+        objective value AND gradient are additionally cross-checked against
+        the object objective at ``x0`` and a perturbed theta before the
+        functional path is enabled -- a runtime debugging aid costing about
+        three object evaluations.
+        """
+        t0 = time_module.time()
+        try:
+            functional = FunctionalEstimationObjective(self)
+        except Exception as exc:  # noqa: BLE001
+            if getattr(self, "_multiple_shooting", None) is not None:
+                # the periods' initial states are variables of the functional
+                # objective only: the object objective cannot carry them
+                raise RuntimeError(
+                    "the functional objective that carries the periods' initial states could not be built"
+                ) from exc
+            LOGGER.warning(
+                "Fast single-shooting unavailable (%s) -- using the "
+                "object objective.",
+                exc,
+            )
+            return
+        if not validate_functional:
+            LOGGER.ok(
+                "Fast single-shooting objective enabled (setup %.1fs).",
+                time_module.time() - t0,
+            )
+            self._functional_objective = functional
+            return
+        try:
+            rng = np.random.default_rng(0)
+            lbn = np.asarray(self._lb_norm, dtype=np.float64)
+            ubn = np.asarray(self._ub_norm, dtype=np.float64)
+            x0 = np.asarray(self._x0_norm, dtype=np.float64)
+            x1 = np.clip(x0 + 0.05 * (rng.random(x0.shape) - 0.5), lbn, ubn)
+            worst_val = 0.0
+            for xi in (x0, x1):
+                zt = torch.tensor(xi, dtype=tps.float_dtype(), device=self._device)
+                self._mse_scaled = None
+                self._obj(zt, "scalar")
+                rmse_slow = float(self._last_rmse)
+                functional.loglike(zt, "scalar")
+                rmse_fast = float(self._last_rmse)
+                worst_val = max(
+                    worst_val,
+                    abs(rmse_fast - rmse_slow) / max(1e-12, abs(rmse_slow)),
+                )
+            # Gradient agreement at x0 (this is what steers the solver).
+            self._mse_scaled = None
+            z = torch.tensor(
+                x0, dtype=tps.float_dtype(), device=self._device, requires_grad=True
+            )
+            (g_slow,) = torch.autograd.grad(self._obj(z, "scalar"), z)
+            self._mse_scaled = None
+            z = torch.tensor(
+                x0, dtype=tps.float_dtype(), device=self._device, requires_grad=True
+            )
+            (g_fast,) = torch.autograd.grad(functional.loglike(z, "scalar"), z)
+            g_slow, g_fast = g_slow.cpu().numpy(), g_fast.cpu().numpy()
+            gscale = max(1e-12, float(np.abs(g_slow).max()))
+            worst_grad = float(np.abs(g_fast - g_slow).max()) / gscale
+            self._mse_scaled = None
+            # fp32 accumulates roundoff over the rollout; loosen the parity
+            # thresholds accordingly (they only gate the fast-path opt-in).
+            if tps.float_dtype() == torch.float64:
+                tol_val, tol_grad = 1e-4, 1e-3
+            else:
+                tol_val, tol_grad = 1e-2, 5e-2
+            if worst_val > tol_val or worst_grad > tol_grad:
+                LOGGER.warning(
+                    "Fast single-shooting objective DISAGREES with the "
+                    "object objective (rel value err %.2e, rel grad err "
+                    "%.2e) -- using the object objective.",
+                    worst_val,
+                    worst_grad,
+                )
+                return
+            LOGGER.ok(
+                "Fast single-shooting objective enabled (validated: rel value "
+                "err %.2e, rel grad err %.2e; setup %.1fs).",
+                worst_val,
+                worst_grad,
+                time_module.time() - t0,
+            )
+            self._functional_objective = functional
+        except Exception as exc:  # noqa: BLE001
+            self._mse_scaled = None
+            LOGGER.warning(
+                "Fast single-shooting validation failed (%s) -- using the "
+                "object objective.",
+                exc,
+            )
 
     def _obj(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1693,84 +3318,361 @@ class Estimator:
         ValueError
             If output format is invalid.
         """
-        theta = theta[self._theta_mask]
-        self.simulator.model.set_parameters_from_array(
-            theta,
+        # Functional one-step rollout (see _single_shooting.py), built in
+        # _solve when Simulator selects functional execution. Both paths end in
+        # _loglike_from_residuals, so value/diagnostics contracts are shared
+        # by construction.
+        if (
+            getattr(self, "_functional_objective", None) is not None
+            and output == "scalar"
+        ):
+            return self._functional_objective.loglike(theta, output)
+
+        # Convert flat theta to per-parameter values
+        param_values = self._theta_to_param_values(theta)
+        self.simulator.model._write_parameters(
+            param_values,
             self._flat_components,
             self._parameter_names,
             normalized=True,
             overwrite=True,
         )
 
-        n_time_prev = 0
+        #
+
         simulation_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            com.id: torch.zeros(
+                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
+            )
             for com, sd in self._measurements
         }
         actual_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            com.id: torch.zeros(
+                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
+            )
             for com, sd in self._measurements
         }
 
-        # Run simulations for all time periods
-        for startTime_, endTime_, stepSize_ in zip(
-            self._start_time, self._end_time, self._stepSize
+        # Run parallelized simulation for all time periods
+        self.simulator.simulate(
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
+            show_progress_bar=False,
+            execution_mode="object",
+        )
+
+        # Extract and concatenate measurements from all periods
+        n_time_prev = 0
+        for batch_idx, (startTime_, endTime_, stepSize_) in enumerate(
+            zip(self._start_time, self._end_time, self._stepSize)
         ):
-            self.simulator.simulate(
-                step_size=stepSize_,
-                start_time=startTime_,
-                end_time=endTime_,
-                show_progress_bar=False,
+            second_time_steps, date_time_steps, max_timesteps, _ = (
+                core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
             )
-            n_time = len(self.simulator.dateTimeSteps) - self._n_init_steps
+            n_time = max_timesteps - self._n_warmup
 
-            # Extract and normalize measurements
+            # Extract measurements for this period
             for measuring_device, sd in self._measurements:
-                y_model = measuring_device.input["measuredValue"].history[
-                    self._n_init_steps :
-                ]
-                y_actual = torch.tensor(
-                    self.actual_readings[measuring_device.id], dtype=torch.float64
-                )[self._n_init_steps :]
-                # y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
-                # y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
-                y_model_norm = y_model
-                y_actual_norm = y_actual
+                # Get simulation results for this period
+                # History uses time-first layout (n_t, n_s, n_c), extract first component
+                y_model_period = measuring_device.input["measuredValue"].history(
+                    i_t=slice(self._n_warmup, max_timesteps), i_s=batch_idx, i_c=0
+                )
 
+                # Filter out NaN values (padding) for shorter periods
+                # valid_mask = ~torch.isnan(y_model_period)
+                # y_model_valid = y_model_period[valid_mask]
+
+                y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
+                y_actual_period = y_actual_period.to_numpy()
+                y_actual_period = y_actual_period[self._n_warmup :]
+                y_actual_period = torch.tensor(
+                    y_actual_period, dtype=tps.float_dtype(), device=self._device
+                )
+
+                # Store in concatenated arrays
+                end_idx = n_time_prev + len(y_model_period)
                 simulation_readings[measuring_device.id][
-                    n_time_prev : n_time_prev + n_time
-                ] = y_model_norm
+                    n_time_prev:end_idx
+                ] = y_model_period
                 actual_readings[measuring_device.id][
-                    n_time_prev : n_time_prev + n_time
-                ] = y_actual_norm
+                    n_time_prev:end_idx
+                ] = y_actual_period
 
             n_time_prev += n_time
 
-        # Compute residuals
-        res = torch.zeros((self._n_timesteps, len(self._measurements)))
+        # Raw residuals over the FULL padded horizon: rows past the filled
+        # range stay zero (the historical normalization contract -- see
+        # _loglike_from_residuals).
+        res_raw = torch.zeros(
+            (self._n_timesteps, len(self._measurements)),
+            dtype=tps.float_dtype(),
+            device=self._device,
+        )
         for j, (measuring_device, sd) in enumerate(self._measurements):
-            simulation_readings_ = simulation_readings[measuring_device.id]
-            actual_readings_ = actual_readings[measuring_device.id]
-            res[:, j] = (actual_readings_ - simulation_readings_) / sd
+            res_raw[:, j] = (
+                actual_readings[measuring_device.id]
+                - simulation_readings[measuring_device.id]
+            )
 
-        # Return appropriate output format.
-        # We scale the objective function to 100 initially for numerical stability.
+        return self._loglike_from_residuals(res_raw, output)
+
+    def _loglike_from_residuals(
+        self, res_raw: torch.Tensor, output: str
+    ) -> torch.Tensor:
+        """THE data-fit objective from raw residuals (single source of truth).
+
+        Both objective implementations end here: the object :meth:`_obj`
+        and the functional path
+        (:meth:`twin4build.estimator._single_shooting.FunctionalEstimationObjective.loglike`).
+        Everything downstream of the residuals -- sd weighting, MSE
+        normalization, the rescale-to-100 trick, regularization, and the
+        ``_last_*`` diagnostics -- therefore cannot diverge between the two.
+
+        ``res_raw`` is ``(N, n_meas)`` raw residuals ``actual - model``.  ``N``
+        may be the full padded horizon (object path: unfilled rows are
+        zero) or only the scored rows (functional path); either way the mean is
+        taken over ``_n_timesteps * n_meas`` -- identical values, matching the
+        historical contract the rescaled objective was tuned on.
+
+        Pure tensor math on the differentiable path (torch.func-safe); the
+        diagnostic side effects detach first.
+        """
+        n_meas = res_raw.shape[1]
+        denom = float(self._n_timesteps) * n_meas
+        sd = torch.tensor(
+            [float(sd_) for _, sd_ in self._measurements],
+            dtype=tps.float_dtype(),
+            device=self._device,
+        )
+        res = res_raw / sd
+
+        # Diagnostics (identical for both output modes): raw MSE / RMSE in
+        # measurement units, per-sensor RMSE.
+        raw_sq = res_raw.detach() ** 2
+        raw_mse = (torch.sum(raw_sq) / denom).item()
+        self._last_mse = raw_mse
+        self._last_rmse = raw_mse**0.5
+        self._last_rmse_per_sensor = {
+            md.id: (torch.sum(raw_sq[:, j]).item() / self._n_timesteps) ** 0.5
+            for j, (md, _sd) in enumerate(self._measurements)
+        }
+
+        # We scale the objective to 100 on the first evaluation of a phase for
+        # numerical stability (_mse_scaled is reset per phase).
         if output == "scalar":
-            mse = torch.mean(res.flatten() ** 2)
+            mse = torch.sum(res**2) / denom
             if self._mse_scaled is None:
                 self._mse_scaled = mse.detach().item() / 100
             self._loglike = mse / self._mse_scaled
+
+            # Add binarization penalty if regularization is enabled
+            if self._regularization_lambda > 0:
+                penalty = self._compute_regularization_penalty()
+                self._last_penalty = penalty.detach().item()
+                self._loglike = self._loglike + self._regularization_lambda * penalty
+            else:
+                self._last_penalty = 0.0
         elif output == "vector":
             res_flat = res.flatten()
             if self._mse_scaled is None:
                 self._mse_scaled = (
-                    torch.mean(res_flat**2).detach().item() / 100
+                    torch.sum(res.detach() ** 2).item() / denom / 100
                 ) ** 0.5  # We take squareroot because of the scipy least squares method which expects a residual vector which will later be squared
             self._loglike = res_flat / self._mse_scaled
+            # Note: Regularization not supported for vector output (least squares methods)
+            self._last_penalty = 0.0
         else:
             raise ValueError(f"Invalid output: {output}")
 
         return self._loglike
+
+    def _compute_regularization_penalty(self) -> torch.Tensor:
+        """
+        Compute the binarization penalty P(x) = x(1-x) for all regularization components.
+
+        The penalty encourages selection weights toward discrete values (0 or 1).
+        Components must implement a `compute_binarization_penalty()` method.
+
+        Returns
+        -------
+        torch.Tensor
+            Total binarization penalty summed across all regularization components.
+        """
+        penalty = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+
+        # If no specific components provided, auto-detect from parameter components
+        if self._regularization_components is None:
+            components_to_check = set()
+            for comp in self._flat_components:
+                if hasattr(comp, "compute_binarization_penalty"):
+                    components_to_check.add(comp)
+        else:
+            components_to_check = self._regularization_components
+
+        # Sum penalties from all components
+        for comp in components_to_check:
+            if hasattr(comp, "compute_binarization_penalty"):
+                penalty = penalty + comp.compute_binarization_penalty()
+
+        return penalty
+
+    @staticmethod
+    def _short_component_label(component_id: str) -> str:
+        """Compress a (possibly composite) component id into a short log tag.
+
+        Composite ``ModeledNode`` ids have the shape
+        ``[memA][memB]..._<16-hex-fingerprint>`` where the bracketed members
+        are per-member *tail slices* of semantic short names plus boilerplate;
+        they're designed to guarantee uniqueness under Windows MAX_PATH, not
+        to be read.  Per-eval theta dumps repeat this prefix on every
+        parameter which makes the output unreadable.
+
+        This collapses to ``[firstMember]_<8hex>`` when the id ends in an
+        underscore + >=8 hex chars (the fingerprint tail), otherwise returns
+        the id unchanged.  The first bracketed segment plus 8-char fingerprint
+        is already globally unique in practice for any reasonable run.
+        """
+        m = _re.match(r"^(\[[^\]]+\]).*_([0-9a-f]{8})[0-9a-f]*$", component_id)
+        if m:
+            return f"{m.group(1)}_{m.group(2)}"
+        return component_id
+
+    def _log_initial_jacobian_diagnostic(self) -> None:
+        """Compute and log the residual Jacobian column norms at ``x0``.
+
+        For each estimated parameter, prints ``||J[:, i]||_2`` (absolute and
+        relative to the max column norm).  Parameters whose relative norm is
+        below 1e-6 are flagged: they do not measurably affect any residual
+        at the initial point, so the solver has essentially no information
+        about them until *other* parameters move to bring them into play.
+
+        This is a one-shot call at the start of estimation; the Jacobian is
+        cached in :attr:`_jac` / :attr:`_theta_jac` so scipy's own initial
+        Jacobian evaluation at ``x0`` hits the cache.  If the AD pass
+        fails for any reason the diagnostic is skipped -- we don't want a
+        diagnostic hook to crash the solver run.
+        """
+        try:
+            LOGGER.task("Initial Jacobian diagnostic (at x0)")
+            LOGGER.add_level()
+            t0 = time_module.time()
+            jac = self._jac_ad(self._x0_norm, "vector")  # shape (n_res, n_theta)
+            elapsed = time_module.time() - t0
+            jac = np.asarray(jac)
+            col_norms = np.linalg.norm(jac, axis=0)
+            max_norm = float(np.max(col_norms)) if col_norms.size else 0.0
+            if max_norm <= 0.0:
+                LOGGER.iter(
+                    "Jacobian is identically zero at x0 -- solver cannot make progress "
+                    "(check that measurements are actually affected by the parameters)"
+                )
+                LOGGER.remove_level()
+                return
+            n_dead = int(np.sum(col_norms / max_norm < 1e-6))
+            LOGGER.iter(
+                "n_theta=%d | n_residuals=%d | max ||J[:,i]||=%.4g | "
+                "zero-gradient params=%d | elapsed=%.1fs",
+                jac.shape[1],
+                jac.shape[0],
+                max_norm,
+                n_dead,
+                elapsed,
+            )
+            # Per-parameter breakdown, grouped by component, matching the
+            # format of the theta-dump so the user can correlate with
+            # iteration logs by eye.
+            seen_unique: set = set()
+            comp_order: List[str] = []
+            comp_parts: Dict[str, List[str]] = {}
+            for component, attr, param, param_idx in zip(
+                self._flat_components,
+                self._parameter_names,
+                self._flat_parameters,
+                self._theta_mask,
+            ):
+                if param_idx in seen_unique:
+                    continue
+                seen_unique.add(param_idx)
+                start, end = self._theta_slices[param_idx]
+                col_slice = col_norms[start:end]
+                col_norm = float(np.max(col_slice)) if col_slice.size else 0.0
+                rel = col_norm / max_norm if max_norm > 0 else 0.0
+                tag = " DEAD" if rel < 1e-6 else (" weak" if rel < 1e-3 else "")
+                part = f"{attr}=|J|={col_norm:.3g} (rel={rel:.2g}){tag}"
+                cid = component.id
+                if cid not in comp_parts:
+                    comp_parts[cid] = []
+                    comp_order.append(cid)
+                comp_parts[cid].append(part)
+            for cid in comp_order:
+                label = self._short_component_label(cid)
+                LOGGER.iter("%s: %s", label, "  ".join(comp_parts[cid]))
+            LOGGER.remove_level()
+        except (
+            Exception
+        ) as exc:  # pragma: no cover -- diagnostic must never break the run
+            LOGGER.warning("Initial Jacobian diagnostic failed: %s", exc)
+            try:
+                LOGGER.remove_level()
+            except Exception:
+                pass
+
+    def _format_theta_dump(self, theta: np.ndarray) -> List[str]:
+        """Format a flat *normalized* theta vector as a human-readable dump.
+
+        For each unique parameter, denormalizes ``theta[start:end]`` using the
+        corresponding :class:`tps.Parameter` so the logged values are in the
+        user's native units (not the [0, 1] normalized solver coordinates).
+
+        Returns a *list of lines*, one per component, of the form::
+
+            [VRM103]_1427052e: kp=0.5 Ti=900 output_min=1e-10 gate_0.threshold=19 gate_0.band=4
+
+        Multi-valued (``n_c > 1``) parameters are emitted as bracketed lists.
+        The caller is responsible for emitting each line to the log so the
+        logger's prefix/status columns align on each row.
+        """
+        theta_np = np.asarray(theta, dtype=np.float64).flatten()
+
+        seen_unique: set = set()
+        comp_order: List[str] = []
+        comp_parts: Dict[str, List[str]] = {}
+        for component, attr, param, param_idx in zip(
+            self._flat_components,
+            self._parameter_names,
+            self._flat_parameters,
+            self._theta_mask,
+        ):
+            if param_idx in seen_unique:
+                continue
+            seen_unique.add(int(param_idx))
+            start, end = self._theta_slices[int(param_idx)]
+            x_norm = torch.tensor(
+                theta_np[start:end], dtype=tps.float_dtype(), device=self._device
+            )
+            try:
+                x_user = param.denormalize(x_norm).detach().cpu().numpy().flatten()
+            except Exception:
+                x_user = x_norm.detach().cpu().numpy().flatten()
+            if x_user.size == 1:
+                rendered = f"{attr}={x_user[0]:.4g}"
+            else:
+                vals = ", ".join(f"{v:.4g}" for v in x_user)
+                rendered = f"{attr}=[{vals}]"
+
+            cid = component.id
+            if cid not in comp_parts:
+                comp_parts[cid] = []
+                comp_order.append(cid)
+            comp_parts[cid].append(rendered)
+
+        lines: List[str] = []
+        for cid in comp_order:
+            label = self._short_component_label(cid)
+            lines.append(f"{label}: {' '.join(comp_parts[cid])}")
+        return lines
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
         """
@@ -1791,13 +3693,152 @@ class Estimator:
         torch.Tensor
             Objective value as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
         if torch.equal(theta, self._theta_obj):
-            return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._loglike.detach().cpu().numpy(), dtype=np.float64)
         else:
             self._theta_obj = theta
-            self._loglike = self._obj(theta, output)
-            return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)
+            self._eval_count += 1
+            # -- Numerical-failure recovery ---------------------------------------
+            # The torch graph inside ``self._obj`` runs the full
+            # simulation; if any sub-system produces a NaN (damper at
+            # nominalAirFlowRate ~ 0, log-scaled valve hitting its
+            # bound, heat-recovery effectiveness saturating, etc.) the
+            # simulator raises ``ValueError("Input ... is NaN")``
+            # downstream when the bad value propagates into the next
+            # component.  Crashing the whole estimator on that wastes
+            # everything the solver has learned so far: return a large
+            # penalty instead and dump the offending theta in user
+            # units so the *next* run can see exactly which parameter
+            # combination is unstable instead of guessing.
+            try:
+                self._loglike = self._obj(theta, output)
+                obj_val = self._loglike.detach().cpu().numpy()
+                eval_failed = False
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning(
+                    "eval=%d objective failed (%s: %s) -- returning penalty",
+                    self._eval_count,
+                    type(exc).__name__,
+                    exc,
+                )
+                try:
+                    dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
+                    LOGGER.warning(
+                        "theta[%d] at failure  (%d components, denormalized)",
+                        self._eval_count,
+                        len(dump_lines),
+                    )
+                    LOGGER.add_level()
+                    for line in dump_lines:
+                        LOGGER.warning("%s", line)
+                    LOGGER.remove_level()
+                except Exception as dump_exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "could not dump failing theta: %s",
+                        dump_exc,
+                    )
+                penalty = 1e10
+                if output == "scalar":
+                    obj_val = np.array(penalty, dtype=np.float64)
+                else:
+                    obj_val = np.full(
+                        self._n_timesteps * len(self._measurements),
+                        penalty,
+                        dtype=np.float64,
+                    )
+                # Keep the cache consistent with what we hand back to
+                # the solver so the next ``torch.equal`` short-circuit
+                # returns the same penalty until the solver moves
+                # ``theta``.
+                self._loglike = torch.tensor(
+                    obj_val, dtype=tps.float_dtype(), device=self._device
+                )
+                self._last_rmse = float("nan")
+                self._last_rmse_per_sensor = {}
+                self._last_penalty = 0.0
+                eval_failed = True
+            elapsed = time_module.time() - self._solver_start_time
+            obj_f = float(np.sum(obj_val))
+            if output == "scalar":
+                rmse_f = (
+                    float(self._last_rmse)
+                    if hasattr(self, "_last_rmse")
+                    else float("nan")
+                )
+                if hasattr(self, "_last_penalty") and self._last_penalty > 0:
+                    LOGGER.iter(
+                        "eval=%d | obj=%.6f | rmse=%.4f | penalty=%.4f | elapsed=%.1fs",
+                        self._eval_count,
+                        obj_f,
+                        rmse_f,
+                        float(self._last_penalty),
+                        elapsed,
+                    )
+                else:
+                    LOGGER.iter(
+                        "eval=%d | obj=%.6f | rmse=%.4f | elapsed=%.1fs",
+                        self._eval_count,
+                        obj_f,
+                        rmse_f,
+                        elapsed,
+                    )
+            else:
+                # Vector mode (least_squares): report the scalar LS objective
+                # 0.5 * ||r||^2 alongside the raw RMSE so progress is
+                # directly comparable to the scalar-mode log line.
+                ls_obj = 0.5 * float(np.dot(obj_val, obj_val))
+                rmse_f = (
+                    float(self._last_rmse)
+                    if hasattr(self, "_last_rmse")
+                    else float("nan")
+                )
+                LOGGER.iter(
+                    "eval=%d | obj=%.6f | rmse=%.4f | elapsed=%.1fs",
+                    self._eval_count,
+                    ls_obj,
+                    rmse_f,
+                    elapsed,
+                )
+            if getattr(self, "_log_parameters", False):
+                dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
+                LOGGER.iter(
+                    "theta[%d]  (%d components)", self._eval_count, len(dump_lines)
+                )
+                LOGGER.add_level()
+                for line in dump_lines:
+                    LOGGER.iter("%s", line)
+                LOGGER.remove_level()
+
+            # Per-sensor RMSE: lets us see which zones are driving the
+            # aggregate ``rmse`` field above.  Emitted on every *new best*
+            # iteration regardless of the ``log_parameters`` flag -- it's
+            # the only honest physical-units view when
+            # ``measurements="auto"`` pools sensors of different units
+            # (temperatures, damper / valve positions, flows...) into the
+            # single pooled ``rmse`` number.  Trust-region solvers
+            # evaluate many rejected trial steps, so gating on new-best
+            # keeps the log focused on real progress instead of 34x-ing
+            # the volume on every probe.  Sorted worst-first so the eye
+            # lands on problem sensors immediately.
+            per_sensor = getattr(self, "_last_rmse_per_sensor", None)
+            best = getattr(self, "_best_obj_logged", float("inf"))
+            if per_sensor and obj_f < best:
+                self._best_obj_logged = obj_f
+                sorted_items = sorted(
+                    per_sensor.items(), key=lambda kv: kv[1], reverse=True
+                )
+                LOGGER.iter(
+                    "rmse_per_sensor[%d]  (%d sensors, worst first, new best)",
+                    self._eval_count,
+                    len(sorted_items),
+                )
+                LOGGER.add_level()
+                for sid, v in sorted_items:
+                    LOGGER.iter("%s: %.4f", sid, v)
+                LOGGER.remove_level()
+            return np.asarray(obj_val, dtype=np.float64)
 
     def __jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1815,10 +3856,32 @@ class Estimator:
 
         Notes
         -----
-        Uses torch.func.jacfwd for forward-mode automatic differentiation.
+        Chooses the AD mode based on output dimensionality:
+
+        - ``output == "scalar"``:   reverse-mode (``jacrev``) is optimal --
+          one backward pass through the simulation regardless of ``dim(theta)``.
+        - ``output == "vector"``:   forward-mode (``jacfwd``) is optimal --
+          cost scales with ``dim(theta)`` (tens) instead of ``dim(residuals)``
+          (thousands to tens of thousands).  Using ``jacrev`` here would
+          require one backward pass *per residual* and keep a large autograd
+          graph alive, which is orders of magnitude slower and far more
+          memory-hungry for tall-skinny residual Jacobians (as in the
+          least_squares / trf / dogbox solvers).
         """
-        self._jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
-        assert not torch.any(torch.isnan(self._jac)), "JAC contains NaNs"
+        # Save and restore state that _obj overwrites during the AD call's
+        # internal forward pass, so the cached values in _obj_ad stay valid.
+        # Use getattr so this is safe when called before _obj_ad has ever
+        # been invoked (e.g. from the pre-solver Jacobian diagnostic).
+        saved_loglike = getattr(self, "_loglike", None)
+        if output == "vector":
+            self._jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
+        else:
+            self._jac = torch.func.jacrev(self._obj, argnums=0)(theta, output)
+        if saved_loglike is not None:
+            self._loglike = saved_loglike
+
+        if torch.any(torch.isnan(self._jac)):
+            raise ValueError("JAC contains NaNs")
         return self._jac
 
     def _jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
@@ -1837,14 +3900,83 @@ class Estimator:
         torch.Tensor
             Jacobian matrix as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_jac):
-            return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._jac.detach().cpu().numpy(), dtype=np.float64)
+        elif (
+            getattr(self, "_functional_objective", None) is not None
+            and output == "scalar"
+        ):
+            # Functional path: plain reverse-mode autograd through the functional
+            # rollout.  jacrev would work too but activates functorch, which
+            # forces the state-space components onto the unrolled
+            # scaling-and-squaring matrix exponential (no vmap/functorch rule
+            # for torch.matrix_exp) -- about 2x slower end to end.
+            self._theta_jac = theta
+            try:
+                z = theta.detach().clone().requires_grad_(True)
+                (g,) = torch.autograd.grad(
+                    self._functional_objective.loglike(z, output), z
+                )
+                if not torch.isfinite(g).all():
+                    # A partially-diverged rollout can produce a finite loss
+                    # with nan gradient entries; hand the solver zeros so it
+                    # backtracks instead of stepping on nan.
+                    LOGGER.warning(
+                        "fast jacobian non-finite -- returning zero gradient"
+                    )
+                    g = torch.zeros_like(g)
+                self._jac = g.detach()
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning(
+                    "fast jacobian eval failed (%s: %s) -- returning zero " "gradient",
+                    type(exc).__name__,
+                    exc,
+                )
+                self._jac = torch.zeros(
+                    theta.numel(), dtype=tps.float_dtype(), device=self._device
+                )
+            jac_np = np.asarray(self._jac.cpu().numpy(), dtype=np.float64)
+            LOGGER.debug("grad_norm=%.4f", float(np.linalg.norm(jac_np.ravel())))
+            return jac_np
         else:
             self._theta_jac = theta
-            self._jac = self.__jac_ad(theta, output)
-            return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
+            # Mirror the simulation-failure recovery added to ``_obj_ad``.
+            # The scipy SLSQP / TRF / L-BFGS-B drivers always call the
+            # Jacobian at the same theta where the objective was just
+            # evaluated, so a NaN-producing iterate that ``_obj_ad``
+            # converted to a penalty value will crash here on the
+            # subsequent ``jacrev(self._obj)`` call.  Returning a
+            # zero / NaN Jacobian without the matching obj penalty
+            # confuses the solver, so we substitute a zero gradient: the
+            # QP step inside SLSQP then degenerates to "no descent
+            # direction", scipy's line search backtracks, and the next
+            # accepted iterate steps away from this bad region.
+            try:
+                self._jac = self.__jac_ad(theta, output)
+                jac_np = np.asarray(self._jac.detach().cpu().numpy(), dtype=np.float64)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning(
+                    "jacobian eval failed (%s: %s) -- returning zero gradient",
+                    type(exc).__name__,
+                    exc,
+                )
+                if output == "scalar":
+                    jac_np = np.zeros(theta.numel(), dtype=np.float64)
+                else:
+                    jac_np = np.zeros(
+                        (self._n_timesteps * len(self._measurements), theta.numel()),
+                        dtype=np.float64,
+                    )
+                self._jac = torch.tensor(
+                    jac_np, dtype=tps.float_dtype(), device=self._device
+                )
+            LOGGER.debug(
+                "grad_norm=%.4f",
+                float(np.linalg.norm(jac_np.ravel())),
+            )
+            return jac_np
 
     def __hes_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1885,17 +4017,208 @@ class Estimator:
         torch.Tensor
             Hessian matrix as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_hes):
-            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
         else:
             self._theta_hes = theta
             self._hes = self.__hes_ad(theta, output)
-            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
 
 
-class EstimationResult(dict):
+
+#: The transcriptions that roll the model out per period (the functional
+#: objective); ``multiple_shooting`` adds the periods' initial states and the
+#: continuity defects between them.
+SHOOTING_TRANSCRIPTIONS = ("single_shooting", "multiple_shooting")
+
+#: ``Estimator.estimate`` option -> key of the objective's multiple-shooting
+#: config (``FunctionalEstimationObjective._setup_multiple_shooting``).
+_CONTINUITY_KEYS = {
+    "continuity_sd_rel": "sd_rel",
+    "continuity_energy_tol": "energy_tol",
+    "continuity_gaps": "gaps",
+}
+INITIAL_STATE_OPTIONS = frozenset(_CONTINUITY_KEYS)
+
+
+def _initial_state_config(transcription, options, start_time, end_time):
+    """Take the multiple-shooting options out of ``options`` (in place) and
+    return the objective's config: ``None`` (every period starts from the
+    model's state) or the periods' initial states with the continuity
+    defects (``multiple_shooting``)."""
+    given = {name: options.pop(name) for name in list(options) if name in INITIAL_STATE_OPTIONS}
+    if transcription == "multiple_shooting":
+        if not given.get("continuity_gaps", False):
+            _check_contiguous_periods(start_time, end_time)
+        config = {_CONTINUITY_KEYS[name]: value for name, value in given.items()}
+        ties = _period_ties(start_time, end_time)
+        if not all(ties):
+            config["ties"] = ties
+        return config
+    if given:
+        raise ValueError(
+            f"{sorted(given)} tie the periods together: options of the multiple_shooting transcription, "
+            "method=(library, optimizer, mode, 'multiple_shooting')"
+        )
+    return None
+
+
+def _period_ties(start_time, end_time) -> list:
+    """Whether each period starts where the one before ends (``P - 1`` flags)."""
+    starts = list(start_time) if isinstance(start_time, (list, tuple)) else [start_time]
+    ends = list(end_time) if isinstance(end_time, (list, tuple)) else [end_time]
+    return [ends[p] == starts[p + 1] for p in range(len(starts) - 1)]
+
+
+def _check_contiguous_periods(start_time, end_time) -> None:
+    """Multiple shooting ties each period's start to the end of the one
+    before: the periods must follow one another without gap or overlap."""
+    starts = list(start_time) if isinstance(start_time, (list, tuple)) else [start_time]
+    ends = list(end_time) if isinstance(end_time, (list, tuple)) else [end_time]
+    for p in range(len(starts) - 1):
+        if ends[p] != starts[p + 1]:
+            raise ValueError(
+                f"multiple_shooting ties period {p + 2}'s start to period {p + 1}'s end, but period {p + 1} ends "
+                f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods, or "
+                "continuity_gaps=True to leave the tie out across a gap"
+            )
+
+
+def _same_value(a, b) -> bool:
+    """Two starts or bounds of parameter entries are the same: both ``None``, or equal numbers."""
+    if a is None or b is None:
+        return a is None and b is None
+    return np.array_equal(np.asarray(a, dtype=float), np.asarray(b, dtype=float))
+
+
+def _join_world_copies(entries: list, model) -> list:
+    """The validated parameter entries with every world copy in its original's entry (``Worlds.shared``).
+
+    :func:`~twin4build.model.partition.split_worlds` evaluates a component once per world that needs it: the copies
+    of a free parameter it lists (``model.worlds.shared``) are one parameter, so the fit gives them one value.  A copy
+    joins its original's entry with its start and bounds: an original listed as private becomes, with its copies,
+    one shared entry (the other components of a private entry stay private); an original in a shared group brings
+    its copies into that group.  A copy that is not listed joins; one listed with the original's start and bounds
+    (``parameters="auto"`` lists every copy so) joins.  Raises ``ValueError``, naming the components, for a copy
+    listed with another start or bounds, a copy listed without its original, a copy in a shared group without its
+    original, a member listed twice, and an original or a copy that is an instance of a batched component (one
+    parameter's values would have to be mapped onto fewer: give the unbatched model).
+    """
+    worlds = getattr(model, "worlds", None)
+    if worlds is None or not worlds.shared:
+        return entries
+    entries = [[list(components), attr, x0, lb, ub, kind, list(member_index)]
+               for components, attr, x0, lb, ub, kind, member_index in entries]
+    source = getattr(model, "_batch_source_model", None)
+    batched = getattr(source, "_component_to_meta", None) or {}
+
+    def where(cid, attr):
+        found = [(i, k) for i, entry in enumerate(entries) if entry[1] == attr
+                 for k, comp in enumerate(entry[0]) if comp is not None and comp.id == cid]
+        if len(found) > 1:
+            raise ValueError(f"{cid}.{attr} is listed {len(found)} times in parameters: list it once")
+        if not found and cid in batched:
+            meta, _ = batched[cid]
+            if meta.id != cid and any(entry[1] == attr and any(c is meta for c in entry[0]) for entry in entries):
+                raise ValueError(
+                    f"{cid}.{attr} has copies in other worlds (split_worlds), but it is an instance of the batched "
+                    f"{meta.id}: one value for an original and its copies would map the batched parameter's values "
+                    "onto fewer. Estimate the unbatched model, where its copies join it."
+                )
+        return found[0] if found else None
+
+    n_joined = 0
+    for (cid, attr), members in worlds.shared.items():
+        copies = [copy_id for copy_id, _ in members[1:]]
+        at = where(cid, attr)
+        listed = {copy_id: where(copy_id, attr) for copy_id in copies}
+        if at is None:
+            named = [copy_id for copy_id, spot in listed.items() if spot is not None]
+            if named:
+                raise ValueError(
+                    f"{', '.join(f'{c}.{attr}' for c in named)} copies {cid}.{attr} into other worlds "
+                    f"(split_worlds), but {cid}.{attr} is not in parameters: list {cid}.{attr} instead (its copies "
+                    "join it)."
+                )
+            continue  # not estimated
+        i, k = at
+        entry = entries[i]
+        original = entry[0][k]
+        joining = []
+        for copy_id, spot in listed.items():
+            if spot is None:
+                copy = model.components.get(copy_id)
+                if copy is None:
+                    raise ValueError(
+                        f"{copy_id}.{attr} copies {cid}.{attr} into another world (split_worlds), but it is an "
+                        "instance of a batched component: one value for an original and its copies would map the "
+                        "batched parameter's values onto fewer. Estimate the unbatched model, where its copies join it."
+                    )
+                joining.append(copy)
+                continue
+            j, m = spot
+            other = entries[j]
+            if j == i and entry[5] == "shared":
+                continue  # already in its original's group
+            if other[5] == "shared":
+                raise ValueError(
+                    f"{copy_id}.{attr} is in a shared group without {cid}.{attr}, which it copies into another "
+                    f"world (split_worlds): put it in {cid}.{attr}'s group, or leave it out (it joins its original)."
+                )
+            if j != i and not all(_same_value(a, b) for a, b in zip(other[2:5], entry[2:5])):
+                raise ValueError(
+                    f"{copy_id}.{attr} copies {cid}.{attr} into another world (split_worlds): one parameter, fitted "
+                    f"as one, but {copy_id}.{attr} is listed with x0={other[2]!r}, bounds ({other[3]!r}, "
+                    f"{other[4]!r}) and {cid}.{attr} with x0={entry[2]!r}, bounds ({entry[3]!r}, {entry[4]!r}): give "
+                    f"them the same start and bounds, or leave {copy_id}.{attr} out (it joins its original)."
+                )
+            joining.append(other[0][m])
+            other[0][m] = None  # leaves its entry for its original's
+        if not joining:
+            continue
+        n_joined += len(joining)
+        if entry[5] == "shared":
+            entry[0].extend(joining)
+            entry[6].extend([entry[6][k]] * len(joining))
+        else:
+            entry[0][k] = None
+            entries.append([[original, *joining], attr, entry[2], entry[3], entry[4], "shared",
+                            [None] * (1 + len(joining))])
+    out = []
+    for components, attr, x0, lb, ub, kind, member_index in entries:
+        kept = [(c, mi) for c, mi in zip(components, member_index) if c is not None]
+        if kept:
+            out.append(([c for c, _ in kept], attr, x0, lb, ub, kind, [mi for _, mi in kept]))
+    if n_joined:
+        LOGGER.config("worlds: %d copies of parameters join their originals' entries (split_worlds)", n_joined)
+    return out
+
+
+def _port_logging(model) -> list:
+    """The ``log_history`` flag of every port ``set_save_simulation_result``
+    sets, as ``(component, "input" | "output", port name, flag)``; none
+    without a model (``estimate`` then raises on its arguments as before)."""
+    flags = []
+    components = getattr(model, "components", None) or {}
+    for component in components.values():
+        for side in ("input", "output"):
+            for name, port in getattr(component, side).items():
+                if isinstance(port, (tps.Scalar, tps.Vector)):
+                    flags.append((component, side, name, port.log_history))
+    return flags
+
+
+def _restore_port_logging(flags) -> None:
+    """Set every port of :func:`_port_logging`'s list back to its flag."""
+    for component, side, name, flag in flags:
+        port = getattr(component, side).get(name)
+        if isinstance(port, (tps.Scalar, tps.Vector)):
+            port.log_history = flag
+
+
+class EstimationResult(ResultDict):
     """
     A dictionary-like object containing parameter estimation results.
 
@@ -1906,7 +4229,10 @@ class EstimationResult(dict):
         result_x: Optimized parameter values.
         component_id: List of component IDs.
         component_attr: List of attribute names.
-        theta_mask: Parameter mask.
+        theta_mask: Parameter mask mapping flat theta entries to unique parameters.
+        theta_slices: Per-parameter ``(start, stop)`` slices into the flat theta
+            vector (multi-branch parameters occupy more than one slot).
+        unique_param_n_c: Number of branches (``n_c``) per unique parameter.
         start_time: Training start times.
         end_time: Training end times.
         step_size: Training step sizes.
@@ -1918,30 +4244,56 @@ class EstimationResult(dict):
         final_objective: Final objective function value achieved.
         success: Whether the optimization was successful.
         message: Optimization result message.
+        settings: The library's settings the fit ran with,
+            :func:`twin4build.settings.snapshot` (``{name: {"value": ...,
+            "source": ...}}``); :meth:`Estimator.estimate` fills it, and the
+            saved result carries it.
 
-    Examples
-    --------
-    >>> result = EstimationResult(
-    ...     result_x=np.array([0.8, 0.9]),
-    ...     component_id=["comp1", "comp2"],
-    ...     component_attr=["efficiency", "efficiency"],
-    ...     theta_mask=np.array([0, 1]),
-    ...     start_time=[datetime.datetime(2024, 1, 1)],
-    ...     end_time=[datetime.datetime(2024, 1, 2)],
-    ...     step_size=[3600],
-    ...     x0=np.array([0.7, 0.8]),
-    ...     lb=np.array([0.5, 0.6]),
-    ...     ub=np.array([1.0, 1.0]),
-    ...     iterations=15,
-    ...     nfev=45,
-    ...     final_objective=0.00123,
-    ...     success=True,
-    ...     message="Optimization terminated successfully"
-    ... )
-    >>> print(result["result_x"])
-    [0.8 0.9]
-    >>> print(result["iterations"])
-    15
+    Notes:
+        Depending on the estimation configuration, additional keys may be
+        present on the result dict: ``estimated_initial_state`` (per-component
+        initial states) and ``collocation_audit`` (collocation
+        solution-quality audit), or ``multistart_audit``,
+        ``derivative_stats``, and ``iteration_history`` for custom batched
+        shooting.
+
+        A saved fit also carries its parameters by the ids of the components
+        the model was built from, ``{(component id, attr): values}`` in
+        physical units with one key per instance of a batched component:
+        ``parameter_instances`` (the fitted values),
+        ``parameter_instances_x0`` (the values the fit started from) and
+        ``parameter_instance_bounds`` (``(lower, upper)``); and
+        ``component_source_ids``, per entry of ``component_id`` the ids of
+        the components that component stood for.  Through them a result
+        loads onto another batching of the model.
+
+        Results saved to disk can be reloaded with
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
+
+    Examples:
+        >>> result = EstimationResult(
+        ...     result_x=np.array([0.8, 0.9]),
+        ...     component_id=["comp1", "comp2"],
+        ...     component_attr=["efficiency", "efficiency"],
+        ...     theta_mask=np.array([0, 1]),
+        ...     theta_slices=[(0, 1), (1, 2)],
+        ...     unique_param_n_c=[1, 1],
+        ...     start_time=[datetime.datetime(2024, 1, 1)],
+        ...     end_time=[datetime.datetime(2024, 1, 2)],
+        ...     step_size=[3600],
+        ...     x0=np.array([0.7, 0.8]),
+        ...     lb=np.array([0.5, 0.6]),
+        ...     ub=np.array([1.0, 1.0]),
+        ...     iterations=15,
+        ...     nfev=45,
+        ...     final_objective=0.00123,
+        ...     success=True,
+        ...     message="Optimization terminated successfully"
+        ... )
+        >>> print(result["result_x"])
+        [0.8 0.9]
+        >>> print(result["iterations"])
+        15
     """
 
     def __init__(
@@ -1950,6 +4302,8 @@ class EstimationResult(dict):
         component_id: Optional[List[str]] = None,
         component_attr: Optional[List[str]] = None,
         theta_mask: Optional[np.ndarray] = None,
+        theta_slices: Optional[List[tuple]] = None,
+        unique_param_n_c: Optional[List[int]] = None,
         start_time: Optional[List[datetime.datetime]] = None,
         end_time: Optional[List[datetime.datetime]] = None,
         step_size: Optional[List[int]] = None,
@@ -1961,6 +4315,8 @@ class EstimationResult(dict):
         final_objective: Optional[float] = None,
         success: Optional[bool] = None,
         message: Optional[str] = None,
+        settings: Optional[Dict[str, Dict[str, Any]]] = None,
+        **metadata: Any,
     ):
         """
         Initialize the EstimationResult object.
@@ -1969,7 +4325,9 @@ class EstimationResult(dict):
             result_x: Optimized parameter values.
             component_id: List of component IDs.
             component_attr: List of attribute names.
-            theta_mask: Parameter mask.
+            theta_mask: Parameter mask mapping flat theta entries to unique parameters.
+            theta_slices: Per-parameter ``(start, stop)`` slices into the flat theta vector.
+            unique_param_n_c: Number of branches (``n_c``) per unique parameter.
             start_time: Training start times.
             end_time: Training end times.
             step_size: Training step sizes.
@@ -1981,12 +4339,16 @@ class EstimationResult(dict):
             final_objective: Final objective function value achieved.
             success: Whether the optimization was successful.
             message: Optimization result message.
+            settings: The settings the fit ran with
+                (:func:`twin4build.settings.snapshot`).
         """
         super().__init__(
             result_x=result_x,
             component_id=component_id,
             component_attr=component_attr,
             theta_mask=theta_mask,
+            theta_slices=theta_slices,
+            unique_param_n_c=unique_param_n_c,
             start_time=start_time,
             end_time=end_time,
             step_size=step_size,
@@ -1998,12 +4360,8 @@ class EstimationResult(dict):
             final_objective=final_objective,
             success=success,
             message=message,
+            settings=settings,
+            **metadata,
         )
 
-    def __copy__(self):
-        """Create a shallow copy of the EstimationResult."""
-        return EstimationResult(**self)
-
-    def copy(self):
-        """Create a shallow copy of the EstimationResult."""
-        return self.__copy__()
+    __copy__ = ResultDict.copy

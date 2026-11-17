@@ -1,147 +1,66 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional
-
 # Third party imports
-import numpy as np
+import torch
 
 # Local application imports
 import twin4build.core as core
+from twin4build.systems.saref4syst.declarations import REQUIRED, Input, Output, Parameter, Setting
+
+
+def _increasing(X) -> tuple:
+    """The x of the points as a tuple of floats; they must increase."""
+    points = tuple(float(v) for v in torch.as_tensor(X, dtype=torch.float64).reshape(-1).tolist())
+    if len(points) < 2:
+        raise ValueError(f"PiecewiseLinearSystem: X needs at least two points, got {list(points)}")
+    if any(b <= a for a, b in zip(points, points[1:])):
+        raise ValueError(f"PiecewiseLinearSystem: X must increase, got {list(points)}")
+    return points
 
 
 class PiecewiseLinearSystem(core.System):
-    """A system implementing piecewise linear interpolation functionality.
+    """``y(x)`` through the points ``(X, Y)``: linear between two points,
+    constant beyond the first and the last.
 
-    This class provides core functionality for systems that need to perform piecewise
-    linear interpolation between data points. It supports both direct point-to-point
-    interpolation and fitting of piecewise linear functions to data.
+    ``X`` is a setting: the points' positions are fixed.  ``Y`` is a
+    parameter of one value per point, so it can be estimated or optimized
+    (the supply temperatures of an outdoor temperature compensation curve).
+    Its range is the run's: ``tb.Variable(curve.Y, lb=12.0, ub=24.0)``.
 
-    Args:
-        X: X coordinates
-        Y: Y coordinates
-        **kwargs: Additional keyword arguments
+    Example::
 
-    Note:
-        When X and Y are provided during initialization, the system automatically
-        calculates the piecewise linear coefficients.
+        curve = tb.PiecewiseLinearSystem(X=[-12, 5, 20], Y=[60, 50, 20], id="curve")
     """
 
-    def __init__(
-        self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None, **kwargs
-    ) -> None:
-        """Initialize the piecewise linear system.
+    REMOVED_ATTRIBUTES = {
+        "Y_bounds": "give the range with the run's variable: tb.Variable(curve.Y, lb=..., ub=...)",
+    }
 
-        Args:
-            X: X coordinates. Defaults to None.
-            Y: Y coordinates. Defaults to None.
-            **kwargs: Additional keyword arguments passed to parent class.
-        """
-        super().__init__(**kwargs)
+    X = Setting(REQUIRED, convert=_increasing, doc="The x of the points, increasing")
+    x = Input(doc="The value to look up")
+    y = Output(doc="y(x)")
+    Y = Parameter(REQUIRED, size=X, doc="The y of the points, one per x")
 
-        # Store attributes as private variables
-        self._X = X
-        self._Y = Y
-        self._XY = None
-        self._a_vec = None
-        self._b_vec = None
+    @staticmethod
+    def interpolate(x: torch.Tensor, X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+        """``y(x)`` through the points ``(X, Y)``, ``X`` increasing; constant
+        beyond the first and the last point.  ``Y`` is one row of points
+        ``(n,)``, or one row per copy ``(m, n)`` for an ``x`` of ``m`` rows
+        or a multiple of them (every simulation of a copy reads its row).
+        Differentiable in ``Y`` and in ``x``."""
+        x = torch.as_tensor(x)
+        shape = x.shape
+        x = x.reshape(-1)
+        X = torch.as_tensor(X).to(dtype=x.dtype, device=x.device)
+        Y = torch.as_tensor(Y).to(dtype=x.dtype, device=x.device).reshape(-1, X.numel())
+        if Y.shape[0] != x.shape[0]:
+            Y = Y.repeat(x.shape[0] // Y.shape[0], 1)
+        slope = (Y[:, 1:] - Y[:, :-1]) / (X[1:] - X[:-1])
+        intercept = Y[:, :-1] - slope * X[:-1]
+        segment = torch.clamp(torch.searchsorted(X.contiguous(), x.contiguous()) - 1, 0, X.numel() - 2).unsqueeze(-1)
+        y = torch.gather(slope, 1, segment).squeeze(-1) * x + torch.gather(intercept, 1, segment).squeeze(-1)
+        y = torch.where(x <= X[0], Y[:, 0], torch.where(x >= X[-1], Y[:, -1], y))
+        return y.reshape(shape)
 
-        if X is not None and Y is not None:
-            self._XY = np.array([X, Y]).transpose()
-            self.get_a_b_vectors()
-        self._config = {"parameters": []}
-
-    @property
-    def config(self) -> Dict[str, List[str]]:
-        """Get the configuration parameters.
-
-        Returns:
-            Dict[str, List[str]]: Dictionary containing configuration parameter names.
-        """
-        return self._config
-
-    @property
-    def X(self) -> Optional[np.ndarray]:
-        """
-        Get the X coordinates of the interpolation points.
-        """
-        return self._X
-
-    @X.setter
-    def X(self, value: Optional[np.ndarray]) -> None:
-        """
-        Set the X coordinates of the interpolation points.
-        """
-        self._X = value
-
-    @property
-    def Y(self) -> Optional[np.ndarray]:
-        """
-        Get the Y coordinates of the interpolation points.
-        """
-        return self._Y
-
-    @Y.setter
-    def Y(self, value: Optional[np.ndarray]) -> None:
-        """
-        Set the Y coordinates of the interpolation points.
-        """
-        self._Y = value
-
-    def _get_a_b_vectors(self) -> None:
-        """Calculate slope and intercept vectors for all linear segments.
-
-        For each segment between consecutive points, calculates:
-        - Slope (a): (y2-y1)/(x2-x1)
-        - Intercept (b): y1 - a*x1
-        """
-        self._a_vec = (self.XY[1:, 1] - self.XY[0:-1, 1]) / (
-            self.XY[1:, 0] - self.XY[0:-1, 0]
-        )
-        self._b_vec = self.XY[0:-1, 1] - self.a_vec * self.XY[0:-1, 0]
-
-    def _get_Y(self, X: float) -> float:
-        """Get interpolated Y value for given X.
-
-        Performs piecewise linear interpolation:
-        - If X is below range, returns first Y value
-        - If X is above range, returns last Y value
-        - Otherwise finds appropriate segment and calculates Y = ax + b
-
-        Args:
-            X (float): X value to interpolate at.
-
-        Returns:
-            float: Interpolated Y value.
-        """
-        if X <= self.XY[0, 0]:
-            Y = self.XY[0, 1]
-        elif X >= self.XY[-1, 0]:
-            Y = self.XY[-1, 1]
-        else:
-            cond = X < self.XY[:, 0]
-            idx = np.where(cond)[0][0] - 1
-            a = self.a_vec[idx]
-            b = self.b_vec[idx]
-            Y = a * X + b
-        return Y
-
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        """Perform a single interpolation step using new implementation.
-
-        Args:
-            secondTime (Optional[float], optional): Current simulation time in seconds.
-                Defaults to None.
-            dateTime (Optional[datetime.datetime], optional): Current simulation datetime.
-                Defaults to None.
-            step_size (Optional[float], optional): Time step size in seconds.
-                Defaults to None.
-        """
-        X = list(self.input.values())[0]
-        key = list(self.output.keys())[0]
-        self.output[key].set(self._get_Y(X), stepIndex)
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: the curve at the input, each copy on its own points."""
+        u = inputs["x"]
+        return x, {"y": self.interpolate(u, torch.as_tensor(self.X, dtype=u.dtype, device=u.device), p["Y"])}

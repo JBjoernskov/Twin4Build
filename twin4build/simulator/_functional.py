@@ -1,0 +1,2379 @@
+"""Functional-map simulation: component ``forward``s fused into one pure step.
+
+The object-graph engine (:meth:`Simulator.simulate`) steps every component's
+``do_step`` through the ports -- flexible, but each step pays Python dispatch
+(Gauss-Seidel traversal, ``tps`` port bookkeeping, history logging) and each
+run pays ``model.initialize``.  Since every composable component's ``do_step``
+is a thin port-I/O wrapper that DELEGATES its math to a pure ``forward``
+method (single source of truth -- see the developer reference's
+``do_step``/``forward`` contract), the same model can also be simulated as a
+plain sequential torch rollout of one functional function:
+
+    y_{t+1}, meas_t = F_aug(y_t, theta, EXOGENOUS[t])
+
+This module provides that machinery, consumed through the
+:class:`~twin4build.simulator.simulator.Simulator` facade
+(``build_functional_model`` / ``record_exogenous_inputs`` /
+``rollout_functional``) by
+
+* the Estimator's single-shooting objective
+  (:mod:`twin4build.estimator._single_shooting`),
+* the Estimator's collocation transcription
+  (:mod:`twin4build.estimator._collocation`, which consumes ``F`` under
+  ``vmap(jacrev(...))`` for the sparse NLP Jacobian), and
+* the Optimizer's control objective
+  (:mod:`twin4build.optimizer._single_shooting`).
+
+**How the functional assembly works.** :class:`FunctionalModel` analyzes the model
+graph once and threads the ``forward`` methods in execution order.  For each
+input port of a functional component it uses one of
+
+* a **fresh** value -- the output of an upstream component functional earlier in
+  the same step (pass-through sensors followed to their source), so parameter
+  and state couplings are exact;
+* a **feedback** value -- a cut cycle edge (the producer executes *later* in
+  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.toRoomPower``).
+  These are one-step *lag variables*: :meth:`FunctionalModel.F_aug` appends
+  them to the state, reproducing ``do_step``'s one-step-delayed feedback
+  semantics exactly;
+* an **exogenous** constant -- truly exogenous drivers (weather, schedules,
+  data-driven occupancy), frozen from one reference ``do_step`` rollout
+  (:func:`record_exogenous_inputs`).  Exogenous signals are independent of
+  the unknowns by definition, so capturing once is valid for every parameter
+  or control iterate (callers that *do* optimize an exogenous trajectory --
+  the Optimizer -- override the corresponding exogenous slots per step).
+
+The functional map is pure and functorch-traceable: sequential rollouts
+differentiate with plain autograd, and collocation maps ``vmap(jacrev(F))``
+over segments.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from types import FunctionType, SimpleNamespace
+from typing import Dict, List, Optional, Set, Tuple
+
+import numpy as np
+
+import torch
+import torch.utils.checkpoint
+from torch.utils import _pytree as pytree
+
+import twin4build.systems.utils.discrete_statespace_system as _dss
+import torch.nn as nn
+
+from twin4build import settings as _settings
+import twin4build.systems as systems
+import twin4build.utils.types as tps
+from twin4build.utils.rgetattr import rgetattr
+
+#: A route's order before ``prepare_routes`` decides it (a route is ``(out_v,
+#: s_ic, r_ic, target_n_c, output_is_vector, order, detached)``; ``detached``:
+#: ``False``, ``True`` or one flag per pair, the connection read without its
+#: gradient, ``ConnectionPoint.detached_of``).
+_ORDER_UNSET = "order-unset"
+
+
+#: The step kinds: which of (state, theta, exogenous row) carry a leading batch
+#: dimension.  What is hoisted out of the step (:meth:`FunctionalModel.derived_values`)
+#: follows theta: shared where theta is one vector, one per row where theta is.
+STEP_KINDS = {
+    "scalar": (False, False, False),  # one trajectory
+    "windows": (True, False, True),  # one parameter vector over windows of their own state and inputs
+    "batched": (True, True, False),  # parameter starts sharing one input row
+    "rows": (True, True, True),  # rows of their own state, parameters and inputs
+}
+
+
+def _own_code(fn, name):
+    """``fn`` under ``name`` with a code object of its own.
+
+    Dynamo keeps a function's compiled variants per code object and refuses to
+    compile once there are more than a few (``recompile_limit``, 8; a hard
+    failure with ``fullgraph=True``).  The step of every model is one function
+    body, so on one code object the steps of different models, and one
+    model's kinds, would count against each other, and a process that
+    compiles the steps of several models would fail at the ninth.  A copy of
+    the code object gives each compiled step a cache, and a limit, of its own.
+    """
+    return FunctionType(fn.__code__.replace(co_name=name), fn.__globals__, name, fn.__defaults__, fn.__closure__)
+
+
+def _row_dim(leaf):
+    """The ``vmap`` dimension of a per-row constant: a floating tensor carries
+    the rows; an index tensor or a flag is the structure's, shared."""
+    return 0 if isinstance(leaf, torch.Tensor) and leaf.is_floating_point() else None
+
+
+def _contiguous(index) -> Optional[Tuple[int, int]]:
+    """``(start, stop)`` of an index that is one entry or a contiguous slice
+    with explicit, non-negative ends; ``None`` for any other index (a list, a
+    tensor, a stepped or open slice)."""
+    if isinstance(index, bool):
+        return None
+    if isinstance(index, int):
+        return (index, index + 1) if index >= 0 else None
+    if isinstance(index, slice):
+        start = 0 if index.start is None else index.start
+        if index.step in (None, 1) and isinstance(start, int) and isinstance(index.stop, int) and 0 <= start < index.stop:
+            return (start, index.stop)
+    return None
+
+
+def _theta_pieces(theta_by_comp):
+    """How ONE split of theta gives the parameters their entries: ``(sizes,
+    end, {component id: {attr: piece}})``.  Every index that is one entry or a
+    contiguous slice, and overlaps no other, is a piece (a shared parameter's
+    readers share theirs); the gaps between them are pieces nobody reads, and
+    what theta holds beyond ``end`` is one more.  An index of another kind is
+    read from theta directly."""
+    ranges = {
+        (cid, attr): _contiguous(index) for cid, attrs in theta_by_comp.items() for attr, index in attrs.items()
+    }
+    keep, end = [], 0
+    for a, b in sorted({r for r in ranges.values() if r is not None}):
+        if a < end:  # overlaps the one before: neither is a piece
+            if keep and keep[-1][1] > a:
+                keep.pop()
+        else:
+            keep.append((a, b))
+        end = max(end, b)
+    sizes, number, at = [], {}, 0
+    for a, b in keep:
+        if a > at:
+            sizes.append(a - at)
+        number[(a, b)] = len(sizes)
+        sizes.append(b - a)
+        at = b
+    piece_of: Dict[str, Dict[str, int]] = {}
+    for (cid, attr), r in ranges.items():
+        if r in number:
+            piece_of.setdefault(cid, {})[attr] = number[r]
+    return sizes, at, piece_of
+
+
+def _route_cut(route):
+    """A route's ``detached``: ``False``, ``True`` or one flag per pair."""
+    return route[6] if len(route) > 6 else False
+
+
+def _content_signature(value):
+    """Return an exact, device-independent signature for tensor-like data."""
+    if isinstance(value, torch.Tensor):
+        tensor = value.detach().contiguous()
+        raw = tensor.view(torch.uint8).cpu().numpy().tobytes()
+        return (
+            tuple(tensor.shape),
+            str(tensor.dtype),
+            hashlib.sha256(raw).digest(),
+        )
+    if isinstance(value, np.ndarray):
+        array = np.ascontiguousarray(value)
+        return (
+            tuple(array.shape),
+            str(array.dtype),
+            hashlib.sha256(array.tobytes()).digest(),
+        )
+    return None
+
+
+def recording_data_signature(model):
+    """Fingerprint initialized values that can affect an exogenous recording.
+
+    This intentionally covers populated/leaf port histories, component
+    parameters and direct tensor-like data publishers (including ``.values``
+    wrappers used by time-series systems). It lets repeated solves reuse a
+    recording while invalidating on changed periods, source data, parameters,
+    or initialized state.
+    """
+    sim_model = getattr(model, "_simulation_model", None) or model
+    components = dict(model.components)
+    components.update(getattr(sim_model, "_fused_components", None) or {})
+    signature = []
+    content_by_identity = {}
+
+    def append_value(component_id, name, value):
+        identity = id(value)
+        if identity in content_by_identity:
+            content = content_by_identity[identity]
+        else:
+            content = _content_signature(value)
+            content_by_identity[identity] = content
+        if content is None:
+            return
+        signature.append((component_id, name, content))
+
+    for component_id, component in sorted(components.items()):
+        for direction, ports in (("input", component.input), ("output", component.output)):
+            for port_name, port in sorted(ports.items()):
+                if port._history is not None and (
+                    port._history_is_populated or port.is_leaf
+                ):
+                    append_value(
+                        component_id,
+                        f"{direction}:{port_name}:history",
+                        port._history,
+                    )
+        for name, value in sorted(vars(component).items()):
+            wrapped_values = getattr(value, "values", None)
+            if not name.startswith("_"):
+                append_value(component_id, f"attribute:{name}", value)
+            if name.endswith("_ts") or not name.startswith("_"):
+                append_value(
+                    component_id,
+                    f"attribute:{name}.values",
+                    wrapped_values,
+                )
+    return tuple(signature)
+
+
+def recording_parameter_signature(model):
+    """Fingerprint parameters that can affect initial state or warm values."""
+    order = getattr(model, "_flat_execution_order", None)
+    if order is None:
+        order = model.flat_execution_order
+    signature = []
+    for component in order:
+        for name in getattr(component, "PARAM_NAMES", ()):
+            value = rgetattr(component, name)
+            signature.append(
+                (component.id, name, None if value is None else _content_signature(value.get()))
+            )
+    return tuple(signature)
+
+
+def _clone_recording(recording):
+    """Clone a cached recording so callers cannot mutate the cache entry."""
+    def clone_list(values):
+        if values is None:
+            return None
+        return [value.detach().clone() for value in values]
+
+    return SimpleNamespace(
+        state0=clone_list(recording.state0),
+        Y0=clone_list(recording.Y0),
+        exogenous_tape=clone_list(recording.exogenous_tape),
+        feedback_tape=clone_list(recording.feedback_tape),
+        measurement_tape=clone_list(recording.measurement_tape),
+        n_timesteps=list(recording.n_timesteps),
+    )
+
+
+def _has_real_forward(comp) -> bool:
+    """True iff ``comp``'s class overrides ``forward`` (not the ``nn.Module`` base
+    stub, which every ``nn.Module`` inherits).  Components without their own
+    ``forward`` (schedules, weather, occupancy, ...) are treated as
+    exogenous/pass-through by the functional_model.  A sensor's ``forward``
+    is the identity of its input, which the functional model follows
+    instead of tracing it (:meth:`FunctionalModel._follow`)."""
+    if isinstance(comp, systems.SensorSystem):
+        return False
+    f = getattr(type(comp), "forward", None)
+    return f is not None and f is not nn.Module.forward
+
+
+def _is_series_output(comp, port) -> bool:
+    """An output a System's ``series`` fills at the run start (the
+    occupancy's measurements): known before the run, so it is data, never
+    produced by the System's ``forward``."""
+    return port in getattr(comp, "__dict__", {}).get("_series_outputs", ())
+
+
+def _replays_data(comp) -> bool:
+    """A component that, in its current configuration, only replays recorded
+    data (a controller in playback mode outputs its historised command): its
+    outputs are exogenous like a data sensor's, so it stays out of the
+    traced cone and its inputs are never assembled per step."""
+    replays = getattr(comp, "replays_data", None)
+    return bool(replays()) if callable(replays) else False
+
+
+def _is_passthrough_sensor(comp) -> bool:
+    """A SensorSystem whose ``measuredValue`` is driven by another component
+    (not by its own data source) just forwards that value."""
+    if not isinstance(comp, systems.SensorSystem):
+        return False
+    for cp in comp.connects_at:
+        if cp.input_port == "measuredValue" and cp.connects_system_through:
+            return True
+    return False
+
+
+def _single_source(comp, port) -> Optional[Tuple[object, str]]:
+    """The ``(producer, output_port)`` feeding ``comp.input[port]`` (first
+    connection), or ``None`` if the port is unconnected (exogenous / data)."""
+    for cp in comp.connects_at:
+        if cp.input_port == port:
+            conns = cp.connects_system_through
+            if conns:
+                conn = conns[0]
+                return conn.connects_system, conn.output_port
+    return None
+
+
+def collect_stateful(model) -> List:
+    """Stateful components in execution order (composites only, not their subs).
+
+    A composite like ``BuildingSpaceSystem`` owns state (thermal|mass) and
+    its submodels are not separate nodes in the execution order, so iterating
+    ``_flat_execution_order`` and taking ``System.is_stateful()`` (which walks the
+    owned ``tps.State``) yields each state exactly once.
+    """
+    order = getattr(model, "_flat_execution_order", None)
+    if order is None:
+        # Model wrapper: delegate to the simulation model's execution order.
+        # This must NOT fall back to ``components`` -- fused state-space
+        # clusters execute (and own their joint state) through a
+        # FusedStateSpaceSystem that only appears in the execution order.
+        order = getattr(model, "flat_execution_order", None)
+    if order is None:
+        order = list(model.components.values())
+    return [c for c in order if c.is_stateful() and not _replays_data(c)]
+
+
+class StateLayout:
+    """Flat <-> per-component packing of the stateful-component states.
+
+    Enumerates the model's stateful components (those owning a ``tps.State``, in
+    execution order) and lays their states out contiguously into a single vector
+    of width ``D = sum_c (n_c * state_size_c)``.
+    """
+
+    def __init__(self, components: List):
+        self.components = components
+        self.slices: List[Tuple[int, int]] = []  # (start, stop) into flat vector
+        self.shapes: List[Tuple[int, int]] = []  # (n_c, state_size) per component
+        offset = 0
+        for comp in components:
+            state = comp.get_state()  # (n_s, n_c, state_size)
+            n_c, ss = state.shape[1], state.shape[2]
+            width = n_c * ss
+            self.slices.append((offset, offset + width))
+            self.shapes.append((n_c, ss))
+            offset += width
+        self.width = offset  # D
+
+    def gather(self, n_s_index: int = 0) -> torch.Tensor:
+        """Flatten current component states at sim-batch index into ``(D,)``."""
+        parts = []
+        for comp, (n_c, ss) in zip(self.components, self.shapes):
+            s = comp.get_state()[n_s_index]  # (n_c, state_size)
+            parts.append(s.reshape(-1))
+        return torch.cat(parts) if parts else torch.zeros(0, dtype=tps.float_dtype())
+
+    def scatter(self, seg_states: torch.Tensor) -> None:
+        """Write per-segment states into every component via ``set_state``.
+
+        ``seg_states`` has shape ``(K, D)`` (one flat state per segment); it is
+        unpacked and each component's ``set_state`` receives ``(K, n_c,
+        state_size)`` -- i.e. K segments live on the simulator's n_s axis.
+        """
+        K = seg_states.shape[0]
+        for comp, (start, stop), (n_c, ss) in zip(
+            self.components, self.slices, self.shapes
+        ):
+            block = seg_states[:, start:stop].reshape(K, n_c, ss)
+            comp.set_state(block)
+
+    def end_states(self, K: int) -> torch.Tensor:
+        """Collect each segment's *final* state into ``(K, D)`` after a sim."""
+        parts = []
+        for comp, (n_c, ss) in zip(self.components, self.shapes):
+            s = comp.get_state()  # (K, n_c, state_size)
+            parts.append(s.reshape(K, -1))
+        return (
+            torch.cat(parts, dim=1)
+            if parts
+            else torch.zeros((K, 0), dtype=tps.float_dtype())
+        )
+
+
+class FunctionalModel:
+    """Builds and evaluates the pure one-step map ``F`` for a model.
+
+    Parameters
+    ----------
+    model : SimulationModel
+        The (initialized) simulation model.
+    stateful : list
+        Stateful components in execution order (each owns ``tps.State``).
+    theta_spec : list of (component, attr) or (component, attr, theta_index)
+        Estimated parameters.  ``attr`` is the component-relative path (e.g.
+        ``"thermal.C_air"``, ``"kp"``).  Two-element entries take their theta
+        index from their list position (one-to-one theta).  Three-element
+        entries carry it explicitly, so several entries may point at the SAME
+        theta slot -- that is how *shared* parameters (one decision variable
+        driving the same attribute on several components) are functional.
+    step_size : float
+        Segment step size in seconds.
+    measurements : list, optional
+        Measuring devices whose modelled ``measuredValue`` the map must return
+        (the Estimator's data-fit signals).
+    outputs : list of (component, out_port), optional
+        Arbitrary component outputs the map must additionally return (the
+        Optimizer's objective/constraint signals).  Their producers seed the
+        influence cone, so a purely *downstream* component (e.g. a cost
+        sensor multiplying heater power by an electricity price) is functional
+        even though no state depends on it.  Outputs whose producer cannot be
+        functional are returned as ``("external", comp_id, port)`` specs and
+        evaluate to zero inside ``F`` -- the caller decides whether it can
+        supply them (e.g. a decision-variable trajectory) or must reject.
+    """
+
+    def __init__(
+        self,
+        model,
+        stateful,
+        theta_spec,
+        step_size,
+        measurements=None,
+        outputs=None,
+    ):
+        self.model = model
+        self.step_size = float(step_size)
+        # Accept either the SimulationModel (``_flat_execution_order``) or the
+        # Model wrapper (``flat_execution_order`` property).
+        order = getattr(model, "_flat_execution_order", None)
+        if order is None:
+            order = model.flat_execution_order
+        order = list(order)
+        self.pos = {c.id: i for i, c in enumerate(order)}
+        self.order = order
+        self.forward_ids = {c.id for c in order if _has_real_forward(c) and not _replays_data(c)}
+        # Fused-cluster members are not executing nodes; their produced
+        # signals resolve to the fused block's namespaced outputs (_follow)
+        # and their theta associations to the fused block's id.
+        sim_model = getattr(model, "_simulation_model", None) or model
+        self._fusion_alias = dict(
+            getattr(sim_model, "_fusion_member_to_fused", None) or {}
+        )
+
+        # Stateful components and their flat state layout (widths, offsets).
+        self.stateful = list(stateful)
+        self.state_shapes = [
+            (int(c.get_state().shape[1]), int(c.get_state().shape[2]))
+            for c in self.stateful
+        ]
+        self.state_widths = [n_c * state_size for n_c, state_size in self.state_shapes]
+        self.state_offsets = np.cumsum([0] + self.state_widths).tolist()
+        self.D = int(self.state_offsets[-1])
+        self.state_index = {c.id: i for i, c in enumerate(self.stateful)}
+
+        # theta routing: per component id -> {attr: theta_index}.  Entries are
+        # (comp, attr) -- index = position -- or (comp, attr, theta_index);
+        # shared parameters route several (comp, attr) pairs to one index.
+        self.theta_spec = theta_spec
+        self.theta_by_comp: Dict[str, Dict[str, object]] = {}
+        for i, spec in enumerate(theta_spec):
+            comp, attr = spec[0], spec[1]
+            idx = spec[2] if len(spec) > 2 else i
+            self.theta_by_comp.setdefault(comp.id, {})[attr] = idx
+        self._theta_split = _theta_pieces(self.theta_by_comp)
+
+        # Which components must be evaluated by F: the stateful ones (plus any
+        # requested-output producers) plus every forward-component
+        # reverse-reachable from them over fresh edges.
+        seed_extra = {comp.id for comp, _ in (outputs or []) if _has_real_forward(comp)}
+        # A measured producer is a requested output too: an algebraic chain
+        # that ends in a measurement (a terminal's damper read by its flow
+        # sensor, a unit read by its temperature and power sensors) must be
+        # computed by F, or its parameters would be frozen out of the fit.
+        for device in measurements or []:
+            if isinstance(device, systems.SensorSystem):
+                src = _single_source(device, "measuredValue")
+                if src is not None and _has_real_forward(src[0]):
+                    seed_extra.add(src[0].id)
+        self.cone = self._influence_cone(seed_extra)
+        self._default_params = {
+            comp.id: {
+                **{
+                    name: rgetattr(comp, name).get()
+                    for name in getattr(comp, "PARAM_NAMES", ())
+                    if rgetattr(comp, name) is not None  # an absent (optional) parameter
+                },
+                **(comp.value_setting_params() if hasattr(comp, "value_setting_params") else {}),
+            }
+            for comp in self.cone
+        }
+
+        # Static input wiring for every cone component: port -> source spec.
+        # A port's source is one of:
+        #   ("fresh",    producer_id, out_port) -- produced earlier in F this step;
+        #   ("feedback", fb_index)              -- a *cut feedback edge*: the source
+        #        is a cone forward-component that executes LATER (the cycle-broken
+        #        edge).  Its value is a decision variable, NOT frozen, because it
+        #        is a function of the states/params (e.g. office.heatGain <-
+        #        space_heater.toRoomPower).  A defect ties it to the producer's output.
+        #   ("exogenous", cap_index)             -- truly exogenous (weather,
+        #        schedules): frozen from a reference sim (correct -- independent of
+        #        the unknowns).
+        self.cone_ids = {c.id for c in self.cone}
+        self._exogenous_keys: List[Tuple[str, str]] = []  # exogenous (comp_id, port)
+        self._exogenous_index: Dict[Tuple[str, str], slice] = {}
+        self._exogenous_widths: List[int] = []
+        self._n_exogenous = 0
+        self._feedback_keys: List[Tuple[str, str]] = (
+            []
+        )  # cut-feedback (consumer_id, port)
+        self._fb_index: Dict[Tuple[str, str], slice] = {}
+        self._feedback_widths: List[int] = []
+        self._feedback_masks: List[torch.Tensor] = []
+        self._n_feedback = 0
+        self._fb_producer: List[List[tuple]] = []
+        self.wiring: Dict[str, List[Tuple[str, tuple]]] = {}
+        for c in self.cone:
+            self.wiring[c.id] = self._resolve_inputs(c)
+
+        # Measurement sources: for each measurement sensor, where does its value
+        # come from?  ("fresh", producer_id, out_port) if produced by a cone
+        # component (F computes it), else ("exogenous", cap_index) sampled from a
+        # reference sim.  Lets F return the modelled measured outputs for the
+        # data-fit objective.
+        self._theta_param_cache = None  # (theta_ref, {comp_id: params dict})
+        self._theta_derived_cache = None  # (theta_ref, {comp_id: derived values})
+
+        self.meas_sources: List[tuple] = []
+        self.meas_slices: List[slice] = []
+        meas_offset = 0
+        for md in measurements or []:
+            src = self._trace_source(md, "measuredValue")
+            if src is not None and src[0].id in {x.id for x in self.cone} and not _is_series_output(src[0], src[1]):
+                width = self._route_width(src[2], src[0], src[1])
+                self.meas_sources.append(("fresh", src[0].id, src[1], src[2]))
+            else:
+                key = (md.id, "measuredValue")
+                if key not in self._exogenous_index:
+                    self._register_exogenous(key, self._component_n_c(md))
+                self.meas_sources.append(("exogenous", self._exogenous_index[key]))
+                width = (
+                    self._exogenous_index[key].stop - self._exogenous_index[key].start
+                )
+            self.meas_slices.append(slice(meas_offset, meas_offset + width))
+            meas_offset += width
+
+        # Requested outputs are appended to the same measurement vector: fresh
+        # when the producer is functional, ("external", ...) otherwise (F returns
+        # zero there; the caller supplies or rejects).  ``_follow`` translates
+        # fused-cluster members to the executing FusedStateSpaceSystem, which
+        # publishes their outputs under namespaced port names -- without it,
+        # every output on a fused zone would be wrongly classified external.
+        for comp, out_port in outputs or []:
+            resolved = self._follow(comp, out_port)
+            if (
+                resolved is not None
+                and resolved[0].id in self.cone_ids
+                and not _is_series_output(resolved[0], resolved[1])
+            ):
+                width = self._route_width(resolved[2], resolved[0], resolved[1])
+                self.meas_sources.append(
+                    ("fresh", resolved[0].id, resolved[1], resolved[2])
+                )
+            else:
+                width = self._output_width(comp, out_port)
+                self.meas_sources.append(("external", comp.id, out_port, width))
+            self.meas_slices.append(slice(meas_offset, meas_offset + width))
+            meas_offset += width
+        self.n_meas = meas_offset
+
+        # Gradients must not be silently lost: every theta path through the
+        # real system has to be threaded through F, never frozen into a
+        # exogenous constant.
+        self._validate_theta_influence()
+
+    # -- static graph analysis ----------------------------------------------
+    def _validate_theta_influence(self):
+        """Refuse to compose when theta gradients would silently be lost.
+
+        The functional map freezes every input without a functional producer into
+        a exogenous constant.  That is exact -- in value AND gradient -- only
+        when the frozen signal is truly exogenous (weather, schedules).  Two
+        structural violations make the frozen value theta-dependent, so the
+        functional objective would MATCH the object graph in value at the
+        reference theta while its gradient silently loses the paths through
+        the frozen signal (observed historically: an ``OccupancySystem`` --
+        before it grew its pure ``forward`` -- with estimated
+        ``V``/``G_occ``/``m_inf`` feeding ``numberOfPeople``):
+
+        1. a theta component outside the influence cone (not functional at
+           all -- e.g. no functorch-safe ``forward``, or only reachable
+           through a non-composable component);
+        2. a exogenous input whose upstream object-graph ancestry contains a
+           theta component (theta leaks into the "constant" through a
+           non-composable intermediary).
+
+        Raises ``RuntimeError``; callers treat that as "fall back to the
+        object-graph engine".
+        """
+        missing = sorted(cid for cid in self.theta_by_comp if cid not in self.cone_ids)
+        if missing:
+            raise RuntimeError(
+                "theta components not composable (their gradient paths would "
+                f"be frozen into exogenous constants): {missing}"
+            )
+
+        by_id = {c.id: c for c in self.order}
+        for key in self._exogenous_keys:
+            comp = by_id.get(key[0])
+            if comp is None:
+                continue
+            if len(key) == 3:
+                starts = [
+                    (src[0], src[1])
+                    for slot, sources in self._vector_slot_sources(comp, key[1])
+                    if slot == key[2]
+                    for src in sources
+                ]
+            else:
+                src = _single_source(comp, key[1])
+                starts = [src] if src is not None else []
+            # A data leaf output (a sensor's ``measuredData``, a pure data
+            # sensor's ``measuredValue``) is the recorded series: it has no
+            # upstream, whatever else its component is wired to.
+            starts = [
+                (p, port)
+                for p, port in starts
+                if not getattr(p.output.get(port), "is_leaf", False)
+            ]
+            hit = self._upstream_theta_component([p for p, _ in starts])
+            if hit is not None:
+                raise RuntimeError(
+                    f"exogenous input {key} depends on theta component "
+                    f"'{hit}' (freezing it would drop its gradient)"
+                )
+
+    def _upstream_theta_component(self, start_comps):
+        """Walk the object graph upstream (over ALL edges, composable or not)
+        from ``start_comps``; return the id of the first theta component
+        reached, or ``None``."""
+        stack = list(start_comps)
+        visited = set()
+        while stack:
+            c = stack.pop()
+            if c is None or c.id in visited:
+                continue
+            visited.add(c.id)
+            if _replays_data(c):
+                # Recorded data: its outputs do not depend on its inputs, so
+                # nothing upstream of it reaches the constant.
+                continue
+            if c.id in self.theta_by_comp:
+                return c.id
+            # A fused-cluster member carries its theta under the fused id.
+            fused = self._fusion_alias.get(c.id)
+            if fused is not None and fused.id in self.theta_by_comp:
+                return c.id
+            for port in list(c.input.keys()):
+                if isinstance(c.input[port], tps.Vector):
+                    for _, sources in self._vector_slot_sources(c, port):
+                        stack.extend(src[0] for src in sources)
+                else:
+                    src = _single_source(c, port)
+                    if src is not None:
+                        stack.append(src[0])
+        return None
+
+    def _influence_cone(self, seed_extra=()) -> List:
+        """Forward-components reverse-reachable (over fresh edges, following
+        pass-through sensors) from the stateful components -- plus any extra
+        seed ids (requested-output producers) -- in execution order."""
+        keep = set(c.id for c in self.stateful) | set(seed_extra)
+        changed = True
+        while changed:
+            changed = False
+            for c in self.order:
+                if c.id not in keep or c.id not in self.forward_ids:
+                    continue
+                for port in list(c.input.keys()):
+                    if isinstance(c.input[port], tps.Vector):
+                        srcs = [
+                            (src[0], src[1])
+                            for _, sources in self._vector_slot_sources(c, port)
+                            for src in sources
+                        ]
+                    else:
+                        srcs = [
+                            (src[0], src[1]) for src in self._trace_sources(c, port)
+                        ]
+                    for prod, _ in srcs:
+                        # Producers that execute *later* than their consumer
+                        # are included too: their edge is the cut of a cycle,
+                        # so the consumer reads the previous step's value
+                        # (do_step's Gauss-Seidel lag) and the source
+                        # classification threads it as a feedback lag
+                        # variable.  Leaving such a producer out would freeze
+                        # a theta-dependent signal into a captured constant
+                        # (e.g. a stateless AHU that executes after the zones
+                        # it feeds, driven by controllers that read them).
+                        if prod.id in self.forward_ids and prod.id not in keep:
+                            keep.add(prod.id)
+                            changed = True
+        return [c for c in self.order if c.id in keep and c.id in self.forward_ids]
+
+    @staticmethod
+    def _component_n_c(comp) -> int:
+        return int(getattr(comp, "n_c", None) or getattr(comp, "_n_c_batched", 1) or 1)
+
+    def _output_width(self, comp, port) -> int:
+        value = comp.output[port].get()
+        if value is not None:
+            return int(value[0].numel())
+        n_c = self._component_n_c(comp)
+        n_v = int(getattr(comp.output[port], "n_v", 1) or 1)
+        return n_c * n_v
+
+    def _connection_sources(self, comp, port):
+        """Immediate sources with exact compiled ``i_c`` routing metadata."""
+        sources = []
+        target_n_c = self._component_n_c(comp)
+        for cp in comp.connects_at:
+            if cp.input_port != port:
+                continue
+            for conn in cp.connects_system_through:
+                producer = conn.connects_system
+                route = (
+                    cp.output_port_index.get(conn, slice(None)),
+                    cp.output_component_index.get(conn, slice(None)),
+                    cp.input_component_index.get(conn, slice(None)),
+                    target_n_c,
+                    isinstance(producer.output[conn.output_port], tps.Vector),
+                    _ORDER_UNSET,
+                    cp.detached_of(conn),
+                )
+                sources.append((producer, conn.output_port, (route,)))
+        return sources
+
+    def _trace_sources(self, comp, port):
+        result = []
+        for producer, out_port, immediate_routes in self._connection_sources(
+            comp, port
+        ):
+            followed = self._follow(producer, out_port)
+            if followed is not None:
+                result.append(
+                    (followed[0], followed[1], followed[2] + immediate_routes)
+                )
+        return result
+
+    def _trace_source(self, comp, port):
+        """First resolved source, retained for scalar/pass-through callers."""
+        sources = self._trace_sources(comp, port)
+        return sources[0] if sources else None
+
+    def _follow(self, producer, out_port):
+        """Follow pass-through sensors from a ``(producer, out_port)`` pair,
+        and translate fused-cluster members to their executing
+        ``FusedStateSpaceSystem`` (which publishes the member's outputs under
+        namespaced port names)."""
+        if _is_passthrough_sensor(producer) and out_port == "measuredValue":
+            return self._trace_source(producer, "measuredValue")
+        if isinstance(producer, systems.SensorSystem) and out_port == "measuredValue":
+            # nothing wired: the sensor reads its recorded series
+            return producer, "measuredData", ()
+        # A pass-through sensor's ``measuredData`` (its historised series)
+        # is the sensor's own leaf output, not the modelled value.
+        fused = self._fusion_alias.get(producer.id)
+        if fused is not None:
+            return fused, f"{producer.id}.{out_port}", ()
+        return producer, out_port, ()
+
+    def _vector_slot_sources(self, comp, port):
+        """Per vector slot, all sources with compiled branch routing."""
+        slots = {}
+        for cp in comp.connects_at:
+            if cp.input_port != port:
+                continue
+            for conn in cp.connects_system_through:
+                in_idx = cp.input_port_index.get(conn, 0)
+                out_idx = cp.output_port_index.get(conn, slice(None))
+                s_ic = cp.output_component_index.get(conn, slice(None))
+                r_ic = cp.input_component_index.get(conn, slice(None))
+                cut = cp.detached_of(conn)
+                if isinstance(in_idx, torch.Tensor) and in_idx.numel() > 1:
+                    # One connection, several slot pairs (a zone fed by
+                    # several branches of one AHU, or a batched meta whose
+                    # instances each own slots): each input slot has its
+                    # own output slot and, when batched, its own instance
+                    # on both sides.
+                    n_pairs = int(in_idx.numel())
+
+                    def _per_pair(value):
+                        if isinstance(value, torch.Tensor) and value.numel() == n_pairs:
+                            return value.reshape(-1).tolist()
+                        return [value] * n_pairs
+
+                    cuts = [bool(v) for v in cut.tolist()] if isinstance(cut, torch.Tensor) else [cut] * n_pairs
+                    pairs = list(zip(
+                        in_idx.reshape(-1).tolist(), _per_pair(out_idx), _per_pair(s_ic), _per_pair(r_ic), cuts
+                    ))
+                else:
+                    idx = int(in_idx.item()) if hasattr(in_idx, "item") else int(in_idx)
+                    pairs = [(idx, out_idx, s_ic, r_ic, cut)]
+                immediate = self._connection_sources(comp, port)
+                for src in immediate:
+                    if src[0] is conn.connects_system and src[1] == conn.output_port:
+                        followed = self._follow(src[0], src[1])
+                        if followed is not None:
+                            # The pairs of one connection landing on one
+                            # input slot (a batched receiver's instances
+                            # reading the same branch slot, or a batched
+                            # sender's instances feeding one slot) are one
+                            # route with tensor indices: one gather and one
+                            # scatter per slot instead of one per pair.
+                            by_slot = {}
+                            for idx, o, s_i, r_i, d in pairs:
+                                by_slot.setdefault(idx, []).append((o, s_i, r_i, d))
+                            for idx, group in by_slot.items():
+                                if len(group) == 1:
+                                    o, s_i, r_i, d = group[0]
+                                else:
+                                    o, s_i, r_i = (
+                                        self._index_tensor([g[k] for g in group]) for k in range(3)
+                                    )
+                                    flags = [bool(g[3]) for g in group]
+                                    d = all(flags) if all(flags) or not any(flags) else torch.tensor(flags)
+                                route = (o, s_i, r_i) + tuple(src[2][0][3:5]) + (_ORDER_UNSET, d)
+                                slots.setdefault(idx, []).append(
+                                    (
+                                        followed[0],
+                                        followed[1],
+                                        followed[2] + (route,),
+                                    )
+                                )
+                        break
+        return sorted(slots.items())
+
+    @staticmethod
+    def _index_tensor(values):
+        """The pairs' indices as one tensor; a slice (an unbatched side) stays
+        a slice when every pair agrees on it, and ``None`` (a scalar side)
+        stays ``None``."""
+        if all(v is None for v in values):
+            return None
+        if all(isinstance(v, slice) for v in values):
+            return values[0]
+        return torch.tensor([int(v) if not isinstance(v, slice) else 0 for v in values], dtype=torch.long)
+
+    def _register_exogenous(self, key, width):
+        start = self._n_exogenous
+        self._exogenous_index[key] = slice(start, start + width)
+        self._exogenous_keys.append(key)
+        self._exogenous_widths.append(width)
+        self._n_exogenous += width
+
+    def _register_feedback(self, key, width, sources, mask=None):
+        start = self._n_feedback
+        self._fb_index[key] = slice(start, start + width)
+        self._feedback_keys.append(key)
+        self._feedback_widths.append(width)
+        if mask is None:
+            mask = torch.ones(width, dtype=tps.float_dtype())
+        self._feedback_masks.append(mask.reshape(-1))
+        self._fb_producer.append(sources)
+        self._n_feedback += width
+
+    def _classify_sources(self, comp, key, sources):
+        """Classify all connections populating one consumer scalar/vector slot."""
+        width = self._component_n_c(comp)
+        categories = []
+        for src in sources:
+            # a series output (filled at the run start) is data, whoever owns it
+            in_cone = (
+                src[0].id in self.forward_ids
+                and src[0].id in self.cone_ids
+                and not _is_series_output(src[0], src[1])
+            )
+            if in_cone and self.pos[src[0].id] < self.pos[comp.id]:
+                categories.append("fresh")
+            elif in_cone:
+                categories.append("feedback")
+            else:
+                categories.append("exogenous")
+        category_set = set(categories)
+        if not sources or category_set == {"exogenous"}:
+            if key not in self._exogenous_index:
+                self._register_exogenous(key, width)
+            return ("exogenous", self._exogenous_index[key])
+        if category_set == {"fresh"}:
+            return ("fresh", sources)
+        if category_set == {"feedback"}:
+            # Source is a cone forward-component that executes LATER: this is
+            # the cycle-broken (feedback) edge.  Its value is a function of the
+            # states/params, so it becomes a decision variable tied to the
+            # producer's output by a defect -- NOT a frozen constant.
+            if key not in self._fb_index:
+                self._register_feedback(key, width, sources)
+            return ("feedback", self._fb_index[key])
+        if "exogenous" in category_set:
+            raise RuntimeError(
+                f"mixed fresh/exogenous routing for {key} is not composable"
+            )
+        parts = []
+        for i, (category, src) in enumerate(zip(categories, sources)):
+            if category == "fresh":
+                parts.append(("fresh", [src]))
+            else:
+                part_key = key + (f"branch-part-{i}",)
+                source_n_c = self._component_n_c(src[0])
+                marker = torch.ones(source_n_c, dtype=tps.float_dtype())
+                mask = self._apply_routes(marker, src[2])
+                self._register_feedback(part_key, width, [src], mask=mask)
+                parts.append(("feedback", self._fb_index[part_key]))
+        return ("mixed", parts)
+
+    def _resolve_inputs(self, comp):
+        """Per-input-port source spec for one cone component.
+
+        Scalar ports resolve to a single fresh/feedback/exogenous spec.  Vector
+        ports (e.g. ``MaxSystem.inputs``) resolve **per slot** to a ``("vector",
+        [slot_spec, ...])`` spec, so a producer inside the cone (e.g. the CO2
+        controller feeding the damper max) is threaded fresh instead of frozen.
+        Unconnected vector ports (n_v=0, e.g. ``wallHeatGain``) are
+        skipped.
+        """
+        specs = []
+        defaults = comp.input_defaults() if hasattr(comp, "input_defaults") else {}
+        for port in comp.input.keys():
+            if port in defaults:  # unwired, it reads another input
+                sources = self._trace_sources(comp, defaults[port])
+                specs.append((port, self._classify_sources(comp, (comp.id, defaults[port]), sources)))
+                continue
+            if isinstance(comp.input[port], tps.Vector):
+                populated = dict(self._vector_slot_sources(comp, port))
+                n_v = int(getattr(comp.input[port], "n_v", 0) or 0)
+                if n_v == 0:
+                    continue
+                slot_specs = [
+                    self._classify_sources(
+                        comp, (comp.id, port, slot), populated.get(slot, [])
+                    )
+                    for slot in range(n_v)
+                ]
+                specs.append((port, ("vector", slot_specs)))
+                continue
+            sources = self._trace_sources(comp, port)
+            specs.append(
+                (
+                    port,
+                    self._classify_sources(comp, (comp.id, port), sources),
+                )
+            )
+        return specs
+
+    # -- the pure one-step map ----------------------------------------------
+    # (Exogenous-input sampling lives in :func:`record_exogenous_inputs` --
+    # the single continuous-rollout source of truth; a per-segment capture
+    # would evaluate stateful/data-indexed signals like the OccupancySystem's
+    # ``previousIndoorCo2Measured`` at the wrong step.)
+    @staticmethod
+    def _as_index(index, device):
+        """An index tensor on ``device``.  :meth:`prepare_routes` moves the
+        routes' tensors there once, so this is a no-op on the rollout path;
+        a host-to-device copy per step would be a sync the CUDA-graph
+        capture cannot record."""
+        if isinstance(index, slice):
+            return index
+        if isinstance(index, torch.Tensor):
+            return index.reshape(-1).to(device)
+        return torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1)
+
+    @staticmethod
+    def _target_order_of(target_i_c, target_n_c, device):
+        """How a route's pairs land on the target instances: ``None`` when
+        they are exactly ``0..n_c-1`` in order, the inverse permutation when
+        they cover every instance once in some other order, ``False`` when
+        they do not (a scatter is needed)."""
+        if isinstance(target_i_c, slice):
+            return None
+        index = torch.as_tensor(target_i_c, dtype=torch.long).reshape(-1).cpu()
+        if index.numel() != target_n_c or index.numel() != int(torch.unique(index).numel()):
+            return False
+        if bool(torch.equal(index, torch.arange(target_n_c))):
+            return None
+        return torch.argsort(index).to(device)
+
+    def prepare_routes(self, device) -> None:
+        """Resolve every route for ``device`` once: index tensors moved there,
+        the target order decided, the exogenous key table built.  Called at
+        the start of a rollout, outside the traced/captured step, so the
+        step does no caching and no host-to-device copies."""
+        device = torch.device(device)
+        if getattr(self, "_routes_device", None) == device:
+            return
+        # A component's value settings (a controller's direction of action)
+        # are built on the CPU: on the step's device like everything else the
+        # step reads, so no step copies them there.
+        for params in self._default_params.values():
+            for name, value in params.items():
+                if isinstance(value, torch.Tensor) and value.device != device:
+                    params[name] = value.to(device)
+
+        def idx(value):
+            return value.reshape(-1).to(device) if isinstance(value, torch.Tensor) else value
+
+        def instance(value):
+            """A component index as a device tensor: an int would be turned
+            into one at every step (a host tensor copied to the device, which
+            a CUDA-graph capture cannot record and torch.compile lifts as a
+            fresh constant)."""
+            if isinstance(value, int):
+                return torch.tensor([value], dtype=torch.long, device=device)
+            return idx(value)
+
+        def route(r):
+            out_v, s_ic, r_ic, n_c, is_vector = r[:5]
+            cut = _route_cut(r)
+            if isinstance(cut, torch.Tensor):
+                cut = cut.to(device)
+            return (idx(out_v), instance(s_ic), instance(r_ic), n_c, is_vector,
+                    self._target_order_of(r_ic, n_c, device), cut)
+
+        def sources(srcs):
+            return [(p, port, tuple(route(r) for r in routes)) for p, port, routes in srcs]
+
+        def spec(sp):
+            if sp[0] == "fresh":
+                return ("fresh", sources(sp[1]))
+            if sp[0] in ("vector", "mixed"):
+                return (sp[0], [spec(x) for x in sp[1]])
+            return sp
+
+        by_id = {c.id: c for c in self.cone}
+        self.wiring = {
+            cid: [(port, self._group_vector_spec(by_id[cid], port, spec(sp), device)) for port, sp in ports]
+            for cid, ports in self.wiring.items()
+        }
+        self.meas_sources = [
+            ("fresh", m[1], m[2], tuple(route(r) for r in m[3])) if m[0] == "fresh" else m
+            for m in self.meas_sources
+        ]
+        self._meas_groups = self._group_measurements(device)
+        self._fb_producer = [sources(srcs) for srcs in self._fb_producer]
+        self._exo_key_of = {(sl.start, sl.stop): key for key, sl in self._exogenous_index.items()}
+        self._routes_device = device
+
+    def _group_vector_spec(self, comp, port, sp, device):
+        """A ``("vector", slot_specs)`` spec regrouped as
+        ``("vector_grouped", n_c, n_v, groups, exo, leftovers)``:
+
+        * ``groups``: per (producer id, output port), the pairs of every slot
+          it feeds as aligned tensors ``(s_ic, out_v, r_ic, in_v)`` -- one
+          gather and one accumulating scatter per producer instead of one
+          gather, one zeros and one scatter per slot;
+        * ``exo``: the exogenous slots as one ``(n_c, n_slots)`` index into
+          the tape plus their slot indices -- one gather for all of them;
+        * ``leftovers``: ``(slot, spec)`` for slots that stay per slot
+          (feedback, mixed, multi-hop routes), scattered into the port.
+        """
+        if sp[0] != "vector":
+            return sp
+        n_c = self._component_n_c(comp)
+        n_v = len(sp[1])
+        rows = torch.arange(n_c, dtype=torch.long, device=device)
+        groups, exo_rows, exo_slots, leftovers = {}, [], [], []
+        for slot, slot_spec in enumerate(sp[1]):
+            kind = slot_spec[0]
+            if kind == "exogenous" and isinstance(slot_spec[1], slice):
+                sl = slot_spec[1]
+                if sl.stop - sl.start == n_c:
+                    exo_rows.append(torch.arange(sl.start, sl.stop))
+                    exo_slots.append(slot)
+                    continue
+            if kind == "fresh":
+                simple = True
+                for producer, out_port, routes in slot_spec[1]:
+                    if len(routes) != 1:
+                        simple = False
+                        break
+                    out_v, s_ic, r_ic = routes[0][:3]
+                    if not (isinstance(s_ic, torch.Tensor) and isinstance(r_ic, torch.Tensor)):
+                        simple = False
+                        break
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor) and out_v.numel() != n_pairs:
+                        simple = False
+                        break
+                    if s_ic.numel() != n_pairs:
+                        simple = False
+                        break
+                if not simple:
+                    leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+                    continue
+                for producer, out_port, routes in slot_spec[1]:
+                    out_v, s_ic, r_ic, _, is_vector = routes[0][:5]
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor):
+                        out_t = out_v.reshape(-1)
+                    elif isinstance(out_v, int):
+                        out_t = torch.full((n_pairs,), int(out_v), dtype=torch.long, device=device)
+                    elif isinstance(out_v, slice):  # the whole vector output, one pair per element
+                        out_t = torch.arange(n_pairs, device=device)
+                    else:  # a scalar output: no slot (unused when not is_vector)
+                        out_t = torch.zeros(n_pairs, dtype=torch.long, device=device)
+                    g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": [], "cut": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(out_t)
+                    g["r_ic"].append(r_ic.reshape(-1))
+                    g["in_v"].append(torch.full((n_pairs,), slot, dtype=torch.long, device=device))
+                    cut = _route_cut(routes[0])
+                    g["cut"].append(
+                        cut.reshape(-1).to(device) if isinstance(cut, torch.Tensor)
+                        else torch.full((n_pairs,), bool(cut), dtype=torch.bool, device=device)
+                    )
+                continue
+            leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+        def _cut(flags):
+            """``None`` (every pair with its gradient), ``True`` (none) or the pairs' mask."""
+            mask = torch.cat(flags)
+            if not bool(mask.any()):
+                return None
+            return True if bool(mask.all()) else mask
+
+        group_list = [
+            (g["producer"].id, g["port"], g["is_vector"],
+             torch.cat(g["s_ic"]), torch.cat(g["out_v"]), torch.cat(g["r_ic"]), torch.cat(g["in_v"]),
+             _cut(g["cut"]))
+            for g in groups.values()
+        ]
+        exo = None
+        if exo_rows:
+            n_slots = len(exo_slots)
+            slots = torch.tensor(exo_slots, dtype=torch.long, device=device)
+            exo = (
+                torch.stack(exo_rows, dim=1).to(device),  # (n_c, n_slots) into the tape
+                rows[:, None].expand(n_c, n_slots).contiguous(),
+                slots[None, :].expand(n_c, n_slots).contiguous(),
+            )
+        return ("vector_grouped", n_c, n_v, group_list, exo, leftovers)
+
+    def _group_measurements(self, device):
+        """The "fresh" measurements with a single-hop route, grouped per
+        (producer, port) into one paired gather; the rest stay as they are.
+        Returns ``(groups, perm)`` where ``perm`` restores the measurement
+        order, or ``None`` when nothing groups."""
+        order, groups, singles, externals = [], {}, [], []
+        offset = 0
+        for i, m in enumerate(self.meas_sources):
+            if m[0] == "external":
+                # Not producible by the functional map: the step returns
+                # zeros there and the caller fills them in.  All of them
+                # are one zeros tensor per step, not one kernel each (a
+                # public simulation requests every output of every
+                # component, thousands of them outside the cone).
+                externals.append(i)
+                continue
+            if m[0] == "fresh" and len(m[3]) == 1 and _route_cut(m[3][0]) is False:
+                out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
+                if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
+                    g = groups.setdefault((m[1], m[2]), {"cid": m[1], "port": m[2], "is_vector": is_vector, "s_ic": [], "out_v": [], "meas": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(
+                        out_v.reshape(-1) if isinstance(out_v, torch.Tensor)
+                        else torch.tensor([int(out_v) if isinstance(out_v, int) else 0], dtype=torch.long, device=device)
+                    )
+                    g["meas"].append(i)
+                    continue
+            singles.append(i)
+        if not groups and not externals:
+            return None
+        blocks, positions = [], []
+        if externals:
+            width = sum(self.meas_slices[i].stop - self.meas_slices[i].start for i in externals)
+            blocks.append(("external_all", width))
+            positions.extend(externals)
+        by_id = {c.id: c for c in self.cone}
+        for g in groups.values():
+            s_ic, out_v = torch.cat(g["s_ic"]), torch.cat(g["out_v"])
+            # The whole port, in row-major order (a public simulation asks
+            # for every output of every component): the port's tensor is
+            # the answer, no gather.  That is one view instead of one
+            # kernel per port and step.
+            whole = False
+            comp = by_id.get(g["cid"])
+            if comp is not None:
+                n_c = int(self._component_n_c(comp))
+                n_v = int(self._output_width(comp, g["port"])) if g["is_vector"] else 1
+                if s_ic.numel() == n_c * n_v:
+                    want_s = torch.arange(n_c, device=s_ic.device).repeat_interleave(n_v)
+                    want_v = torch.arange(n_v, device=out_v.device).repeat(n_c)
+                    whole = bool(torch.equal(s_ic.reshape(-1), want_s)) and (
+                        not g["is_vector"] or bool(torch.equal(out_v.reshape(-1), want_v))
+                    )
+            blocks.append(("group", g["cid"], g["port"], g["is_vector"], s_ic, out_v, whole))
+            positions.extend(g["meas"])
+        for i in singles:
+            blocks.append(("single", i))
+            positions.append(i)
+        # Every grouped measurement is one value wide; singles and externals keep their width.
+        widths = [self.meas_slices[i].stop - self.meas_slices[i].start for i in positions]
+        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles and i not in externals)
+        perm = torch.empty(sum(widths), dtype=torch.long)
+        pos = 0
+        for i, w in zip(positions, widths):
+            sl = self.meas_slices[i]
+            perm[sl.start:sl.stop] = torch.arange(pos, pos + w)
+            pos += w
+        return blocks, perm.to(device)
+
+    def _apply_routes(self, value, routes, zero_detached=False):
+        """Apply object-graph output/input branch mappings without mutation.
+        A detached route passes its values without their gradient
+        (``zero_detached``: as zeros, the structure walk's tags of no owner)."""
+        result = value
+        for r in routes:
+            out_v, source_i_c, target_i_c, target_n_c, output_is_vector = r[:5]
+            cut = _route_cut(r)
+            paired = (
+                output_is_vector
+                and isinstance(out_v, torch.Tensor)
+                and isinstance(source_i_c, torch.Tensor)
+                and out_v.numel() == source_i_c.numel()
+            )
+            if paired and result.ndim == 1:
+                # A single-instance sender publishes its vector without an
+                # instance axis: the pairs pick slots only.
+                selected = result[self._as_index(out_v, result.device)]
+            elif paired:
+                # A batched receiver reading one slot per instance: pair k
+                # takes slot out_v[k] of sender instance source_i_c[k].
+                selected = result[
+                    self._as_index(source_i_c, result.device),
+                    self._as_index(out_v, result.device),
+                ]
+            else:
+                if output_is_vector:
+                    result = result[..., out_v]
+                if result.ndim == 0:
+                    result = result.reshape(1)
+                source_i_c = self._as_index(source_i_c, result.device)
+                selected = result[source_i_c]
+            if cut is True:
+                selected = torch.zeros_like(selected) if zero_detached else selected.detach()
+            elif cut is not False:
+                # per pair (a batched meta): the pairs are the first axis
+                mask = cut.to(selected.device).reshape((-1,) + (1,) * (selected.dim() - 1))
+                selected = torch.where(mask, torch.zeros_like(selected) if zero_detached else selected.detach(), selected)
+            if isinstance(target_i_c, slice):
+                if selected.shape[0] == target_n_c:
+                    result = selected
+                elif selected.shape[0] == 1:
+                    result = selected.expand((target_n_c,) + selected.shape[1:])
+                else:
+                    result = selected
+            else:
+                order = r[5] if len(r) > 5 and not isinstance(r[5], str) else None
+                if len(r) <= 5 or isinstance(r[5], str):
+                    order = self._target_order_of(target_i_c, target_n_c, result.device)
+                if order is None:
+                    # The pairs cover every target instance exactly once, in
+                    # order: the selection already is the target.
+                    result = selected
+                elif isinstance(order, torch.Tensor):
+                    # ... in some other order: one gather.  The order was
+                    # prepared for the rollout's device; a walk over the
+                    # routes with CPU tags (``index_coupling``) reads it too.
+                    result = selected[order.to(selected.device)]
+                else:
+                    target_i_c = self._as_index(target_i_c, result.device)
+                    shape = (target_n_c,) + selected.shape[1:]
+                    base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
+                    result = torch.index_copy(base, 0, target_i_c, selected)
+        return result
+
+    def _route_width(self, routes, producer, out_port):
+        value = producer.output[out_port].get()
+        if value is None:
+            return self._output_width(producer, out_port)
+        return int(self._apply_routes(value[0], routes).numel())
+
+    def _merge_sources(self, sources, produced):
+        values = [
+            self._apply_routes(produced[src[0].id][src[1]], src[2]) for src in sources
+        ]
+        if not values:
+            raise RuntimeError("cannot merge an empty source list")
+        result = values[0]
+        for value in values[1:]:
+            result = result + value
+        return result
+
+    def _theta_reader(self, theta):
+        """``read(component id, attr)``: theta's entries for a parameter, for
+        one step or one derivation.
+
+        The parameters are pieces of ONE ``torch.split`` of theta
+        (:func:`_theta_pieces`), as the states and the exogenous row are of
+        theirs.  Its backward is one concatenation of the pieces' cotangents.
+        Indexed one by one (``theta[index]`` per parameter), every read's
+        backward is a theta-sized vector of zeros with that read's entries
+        filled in, and the step's adjoint sums one such vector per parameter:
+        with 1,800 parameters among 225,000 entries (occupancy profiles), 4e8
+        element operations per step, most of a fit's time."""
+        sizes, end, piece_of = self._theta_split
+        pieces = None
+
+        def read(cid, attr):
+            nonlocal pieces
+            k = piece_of.get(cid, {}).get(attr)
+            if k is None:
+                return theta[self.theta_by_comp[cid][attr]]
+            if pieces is None:
+                tail = theta.shape[-1] - end
+                pieces = torch.split(theta, sizes + [tail] if tail else sizes, dim=-1)
+            return pieces[k]
+
+        return read
+
+    def _params_for(self, comp, theta, use_cache=True, read=None):
+        """Physical-parameter dict for ``comp``: estimated entries from ``theta``
+        (a 1-D tensor in theta_spec order, through ``read``:
+        :meth:`_theta_reader`), the rest from the component's defaults
+        (``getattr(comp, name).get()``).
+
+        Cached per ``theta`` object: a sequential rollout calls ``F`` hundreds
+        of times with the SAME theta tensor, and rebuilding the dict each step
+        re-slices theta and re-denormalizes every default parameter -- pure
+        overhead in both the forward pass and the autograd graph.  Identity
+        keying (``is``) makes a stale hit impossible: holding the theta
+        reference in the cache also pins its id.  Downstream, stable parameter
+        -tensor identities let the components' ``_build_matrices`` cache the
+        (theta-only, step-independent) state-space matrices the same way.
+        """
+        cache = None
+        if use_cache:
+            cache = self._theta_param_cache
+            if cache is None or cache[0] is not theta:
+                cache = (theta, {})
+                self._theta_param_cache = cache
+            hit = cache[1].get(comp.id)
+            if hit is not None:
+                return hit
+        p = {}
+        est = self.theta_by_comp.get(comp.id, {})
+        if read is None and est:
+            read = self._theta_reader(theta)
+        # For composites the attrs are prefixed (thermal.C_air); pass them
+        # through and let the composite's forward route/resolve.  For leaf
+        # components fill PARAM_NAMES.
+        if hasattr(comp, "PARAM_NAMES"):
+            for name in comp.PARAM_NAMES:
+                if name in est:
+                    p[name] = read(comp.id, name).reshape(-1)
+                elif name in self._default_params[comp.id]:
+                    p[name] = self._default_params[comp.id][name]
+            for name, value in self._default_params[comp.id].items():
+                p.setdefault(name, value)  # the value settings
+        # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
+        for attr, idx in est.items():
+            if "." in attr:
+                p[attr] = read(comp.id, attr).reshape(-1)
+        if cache is not None:
+            cache[1][comp.id] = p
+        return p
+
+    def derived_values(self, theta):
+        """What every component that defines ``derive(p, step_size)`` derives
+        from its parameters, once per rollout (``{component id: derived
+        values}``): the rollouts pass this into the step and :meth:`F` merges
+        each component's entry into its params, so the derived values are one
+        tensor for the whole rollout instead of one per step on the autograd
+        tape.
+
+        ``theta (n_theta,)`` gives the values of one parameter vector; a batch
+        ``(B, n_theta)`` gives them per row: every floating tensor gains the
+        leading row dimension, while index tensors and flags, which the
+        model's structure decides, stay shared (:func:`_row_dim`).  Every
+        tensor is on theta's device (a component's value settings are built
+        on the CPU): a captured step cannot copy across devices."""
+        if theta.dim() == 2:
+            return self._derived_values_rows(theta)
+        out = {}
+        read = self._theta_reader(theta)
+        for c in self.cone:
+            if getattr(type(c), "derive", None) is None:
+                continue
+            out[c.id] = c.derive(self._params_for(c, theta, use_cache=False, read=read), self.step_size)
+        return pytree.tree_map(
+            lambda v: v.to(theta.device) if isinstance(v, torch.Tensor) and v.device != theta.device else v, out
+        )
+
+    def _derived_values_rows(self, Theta):
+        """:meth:`derived_values` of every row of ``Theta``, in one ``vmap``."""
+        found = {}
+
+        def leaves_of(theta):
+            leaves, found["spec"] = pytree.tree_flatten(self.derived_values(theta))
+            found["leaves"] = leaves
+            found["tensors"] = [i for i, leaf in enumerate(leaves) if isinstance(leaf, torch.Tensor)]
+            return tuple(leaves[i] for i in found["tensors"])
+
+        rows = torch.func.vmap(leaves_of)(Theta)
+        leaves = list(found["leaves"])  # what is no tensor is the same for every row
+        for i, value in zip(found["tensors"], rows):
+            leaves[i] = value if value.is_floating_point() else value[0]
+        return pytree.tree_unflatten(leaves, found["spec"])
+
+    def _with_derived(self, c, params, theta, constants, use_cache):
+        """``params`` plus what ``c`` derives from them: the rollout's entry,
+        else derived here (once per theta while the cache is on)."""
+        if getattr(type(c), "derive", None) is None:
+            return params
+        derived = constants.get(c.id) if constants else None
+        if derived is None:
+            cache = None
+            if use_cache:
+                cache = self._theta_derived_cache
+                if cache is None or cache[0] is not theta:
+                    cache = (theta, {})
+                    self._theta_derived_cache = cache
+                derived = cache[1].get(c.id)
+            if derived is None:
+                derived = c.derive(params, self.step_size)
+                if cache is not None:
+                    cache[1][c.id] = derived
+        return {**params, **derived}
+
+    def F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None, constants=None):
+        """One pure step for a single segment (see :meth:`_F`).
+
+        ``transform_mode`` tells the discretisation of the state-space
+        components to use the matmul-only matrix exponential (the step is
+        traced, captured or transformed); the flag is set for the step only.
+        """
+        previous = _dss.TRACEABLE
+        _dss.TRACEABLE = bool(transform_mode)
+        try:
+            return self._F(states_flat, theta, exogenous, feedback, transform_mode, constants)
+        finally:
+            _dss.TRACEABLE = previous
+
+    def _F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None, constants=None):
+        """One pure step for a single segment.
+
+        Args:
+            states_flat: ``(D,)`` concatenated stateful-component states.
+            theta: ``(n_theta,)`` physical estimated parameters (theta_spec order).
+            exogenous: ``(n_exogenous,)`` exogenous input values for this segment.
+            feedback: ``(n_feedback,)`` cut-feedback input values (decision
+                variables) for this segment; ``None`` -> zeros (n_feedback==0).
+
+        Returns:
+            ``(x_next_flat (D,), meas (n_meas,), fb_out (n_feedback,))`` -- the
+            next state, the modelled measured outputs, and the producer outputs
+            that the feedback variables must match (for the feedback defects).
+        """
+        if feedback is None:
+            feedback = torch.zeros(
+                self._n_feedback,
+                dtype=states_flat.dtype,
+                device=states_flat.device,
+            )
+        # Unpack per-component states: one split, then a view per component.
+        states = {}
+        if self.stateful:
+            pieces = torch.split(states_flat, self.state_widths)
+            for i, c in enumerate(self.stateful):
+                n_c, state_size = self.state_shapes[i]
+                states[c.id] = pieces[i].reshape(n_c, state_size)
+
+        # The parameters likewise: one split of theta (:meth:`_theta_reader`).
+        read_theta = self._theta_reader(theta)
+
+        produced: Dict[str, Dict[str, torch.Tensor]] = {}
+        x_next_parts = [None] * len(self.stateful)
+        # Exogenous slots: one split into the registered widths (the keys'
+        # slices are contiguous in registration order), one dict lookup per
+        # port instead of one slice op each.
+        exo_key_of = getattr(self, "_exo_key_of", None)
+        exo_pieces = (
+            dict(zip(self._exogenous_keys, torch.split(exogenous, self._exogenous_widths)))
+            if exo_key_of is not None and self._exogenous_widths
+            else None
+        )
+        for c in self.cone:
+
+            def _input_value(spec):
+                if spec[0] == "fresh":
+                    return self._merge_sources(spec[1], produced)
+                if spec[0] == "feedback":
+                    return feedback[spec[1]]
+                if spec[0] == "exogenous":
+                    sl = spec[1]
+                    if exo_pieces is not None and isinstance(sl, slice):
+                        key = exo_key_of.get((sl.start, sl.stop))
+                        if key is not None:
+                            return exo_pieces[key]
+                    return exogenous[sl]
+                if spec[0] == "mixed":
+                    values = [_input_value(part) for part in spec[1]]
+                    result = values[0]
+                    for value in values[1:]:
+                        result = result + value
+                    return result
+                raise RuntimeError(f"unknown functional input spec {spec[0]!r}")
+
+            inputs = {}
+            for port, spec in self.wiring[c.id]:
+                if spec[0] == "vector_grouped":
+                    _, n_c, n_v, groups, exo, leftovers = spec
+                    if exo is not None and not groups and not leftovers:
+                        value = exogenous[exo[0]]
+                    else:
+                        # Assembled flat and functionally (scatter, then
+                        # scatter_add): torch 2.11 Inductor miscompiles
+                        # ``index_put`` into this unbatched buffer under
+                        # ``vmap``, every batch row writing the same storage
+                        # (#241).  Same values: the exogenous slots are
+                        # unique, the producers' values add as before.
+                        value = torch.zeros((n_c * n_v,), dtype=states_flat.dtype, device=states_flat.device)
+                        if exo is not None:
+                            value = torch.scatter(value, 0, (exo[1] * n_v + exo[2]).reshape(-1), exogenous[exo[0]].reshape(-1))
+                        for pid, pport, is_vector, s_ic, out_v, r_ic, in_v, cut in groups:
+                            out = produced[pid][pport]
+                            if is_vector and out.ndim >= 2:
+                                gathered = out[s_ic, out_v]
+                            elif is_vector:
+                                gathered = out[out_v]
+                            else:
+                                gathered = out.reshape(-1)[s_ic]
+                            if cut is True:
+                                gathered = gathered.detach()  # read without its gradient (split_worlds' cut)
+                            elif cut is not None:
+                                gathered = torch.where(cut, gathered.detach(), gathered)
+                            value = torch.scatter_add(value, 0, r_ic * n_v + in_v, gathered.reshape(-1))
+                        for rows_t, slot_full, slot_spec in leftovers:
+                            value = torch.scatter_add(value, 0, rows_t * n_v + slot_full, _input_value(slot_spec).reshape(-1))
+                        value = value.reshape(n_c, n_v)
+                    inputs[port] = value
+                elif spec[0] == "vector":
+                    vals = []
+                    for s in spec[1]:
+                        vals.append(_input_value(s))
+                    inputs[port] = torch.stack(vals, dim=-1)
+                else:
+                    inputs[port] = _input_value(spec)
+            params = self._params_for(c, theta, use_cache=not transform_mode, read=read_theta)
+            params = self._with_derived(c, params, theta, constants, use_cache=not transform_mode)
+            st = states.get(c.id, None)
+            x_next_c, outs = c.forward(st, inputs, params, self.step_size)
+            produced[c.id] = outs
+            if c.id in self.state_index:
+                x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)
+        x_next = torch.cat(x_next_parts)
+        # Producer outputs the feedback decision variables must equal.
+        if self._fb_producer:
+            fb_out = torch.cat(
+                [
+                    self._merge_sources(sources, produced).reshape(-1)
+                    for sources in self._fb_producer
+                ]
+            )
+        else:
+            fb_out = torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
+        def _meas_value(spec):
+            if spec[0] == "fresh":
+                return self._apply_routes(produced[spec[1]][spec[2]], spec[3]).reshape(-1)
+            if spec[0] == "external":
+                # Not producible by the functional map; the caller supplies the
+                # signal (e.g. a decision-variable trajectory) or rejects.
+                return torch.zeros(spec[3], dtype=x_next.dtype, device=x_next.device)
+            return exogenous[spec[1]].reshape(-1)
+
+        meas = []
+        grouped = getattr(self, "_meas_groups", None)
+        if grouped is not None:
+            # Measurements of one producer port gathered together, then put
+            # back in measurement order by one permutation.
+            blocks, perm = grouped
+            for block in blocks:
+                if block[0] == "external_all":
+                    meas.append(torch.zeros(block[1], dtype=x_next.dtype, device=x_next.device))
+                elif block[0] == "group":
+                    _, cid, port, is_vector, s_ic, out_v, whole = block
+                    out = produced[cid][port]
+                    if whole:
+                        meas.append(out.reshape(-1))
+                    elif is_vector and out.ndim >= 2:
+                        meas.append(out[s_ic, out_v])
+                    elif is_vector:
+                        meas.append(out.reshape(-1)[out_v])
+                    else:
+                        meas.append(out.reshape(-1)[s_ic])
+                else:
+                    meas.append(_meas_value(self.meas_sources[block[1]]))
+            meas = torch.cat(meas)[perm]
+        else:
+            for spec in self.meas_sources:
+                meas.append(_meas_value(spec))
+            meas = (
+                torch.cat(meas)
+                if meas
+                else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
+            )
+        return x_next, meas, fb_out
+
+    @property
+    def n_feedback(self) -> int:
+        return self._n_feedback
+
+    # -- coupling structure ------------------------------------------------------
+    def index_coupling(self):
+        """Independent blocks of the estimation problem, from the wiring alone.
+
+        Nodes are ``(component id, batch index)``; two nodes are joined when a
+        connection routes one into the other (the exact ``_apply_routes``
+        semantics, applied to index vectors), when a feedback lag connects
+        them, or when they share a theta entry.  Theta entries and residual
+        columns attach to the nodes they belong to.  Connected components are
+        the blocks: a batched layout of independent zones yields one block per
+        zone; an air-handling unit feeding every zone joins them all; a fully
+        coupled model yields a single block, which is the unstructured case.
+
+        Returns ``(theta_block, column_block, n_blocks)``: ``theta_block[t]``
+        is the block id of theta entry ``t`` (every entry has one);
+        ``column_block[c]`` is the block id of residual column ``c`` or ``-1``
+        when no estimated parameter reaches it (exogenous / external columns).
+        """
+        parent: Dict[object, object] = {}
+
+        def find(a):
+            parent.setdefault(a, a)
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        def owners(producer, out_port, routes):
+            """(producer index or -1) per routed slot, via the real route code."""
+            n = self._component_n_c(producer)
+            width = max(1, int(self._output_width(producer, out_port)))
+            # The routes' index tensors live on the device the rollout was
+            # prepared for (``prepare_routes``); the tags must sit there too.
+            device = getattr(self, "_routes_device", None) or "cpu"
+            tags = torch.arange(1, n + 1, dtype=torch.float64, device=device)[:, None].expand(n, width)
+            mapped = self._apply_routes(tags, routes, zero_detached=True)
+            if mapped.ndim == 1:
+                mapped = mapped[:, None]
+            rows = mapped.reshape(mapped.shape[0], -1)
+            out = []
+            for row in rows:
+                out.append(sorted({int(v) - 1 for v in row.tolist() if v > 0}))
+            return out  # list over slots -> producer indices feeding that slot
+
+        # feedback vector layout: position -> (producer id, index) set
+        fb_owner: List[List[tuple]] = []
+        for sources in self._fb_producer:
+            merged: List[set] = []
+            for src in sources:
+                for slot, idxs in enumerate(owners(src[0], src[1], src[2])):
+                    while len(merged) <= slot:
+                        merged.append(set())
+                    merged[slot].update((src[0].id, i) for i in idxs)
+            fb_owner.extend([sorted(m) for m in merged])
+
+        # Components no theta entry reaches (no parameter of their own, none upstream through the wiring) are
+        # functions of data: what they send couples nothing, as an exogenous input does not.  Influence runs from a
+        # parameter downstream only, so leaving their connections out never separates two entries that reach a
+        # common residual (2 Nov 2026: one envelope leakage at a fixed prior, reading replays only, feeds every room
+        # and joined them all into one block whose dense curvature filled the GPU).
+        def producer_ids(spec) -> Set[str]:
+            kind = spec[0]
+            if kind == "fresh":
+                # a source read only without its gradient (a detached connection) carries no parameter
+                return {src[0].id for src in spec[1] if not any(_route_cut(r) is True for r in src[2])}
+            if kind == "feedback":
+                sl = spec[1]
+                return {node[0] for pos in range(sl.start, sl.stop) if pos < len(fb_owner) for node in fb_owner[pos]}
+            if kind in ("mixed", "vector"):
+                return set().union(*(producer_ids(part) for part in spec[1])) if spec[1] else set()
+            if kind == "vector_grouped":
+                _, _n_c, _n_v, groups, _exo, leftovers = spec
+                out = {g[0] for g in groups if g[7] is not True}
+                for _rows, _slot, slot_spec in leftovers:
+                    out |= producer_ids(slot_spec)
+                return out
+            return set()  # "exogenous"
+
+        upstream = {cid: set().union(*(producer_ids(spec) for _port, spec in ports)) if ports else set()
+                    for cid, ports in self.wiring.items()}
+        reached: Set[str] = {cid for cid, attrs in self.theta_by_comp.items() if attrs}
+        # A connection read without its gradient (split_worlds' cut from a provided component) lets no parameter
+        # through: producer_ids leaves it out, so its readers' blocks stay apart from its sender's (7 Nov 2026: a
+        # building's hidden node, read by every room).
+        changed = True
+        while changed:
+            changed = False
+            for cid, ups in upstream.items():
+                if cid not in reached and ups & reached:
+                    reached.add(cid)
+                    changed = True
+
+        def bind(consumer_id, spec):
+            if spec[0] == "fresh":
+                for src in spec[1]:
+                    if src[0].id not in reached:
+                        continue  # a function of data
+                    for slot, idxs in enumerate(owners(src[0], src[1], src[2])):
+                        for i in idxs:
+                            union((consumer_id, slot), (src[0].id, i))
+            elif spec[0] == "feedback":
+                sl = spec[1]
+                for slot, pos in enumerate(range(sl.start, sl.stop)):
+                    if pos < len(fb_owner):
+                        for node in fb_owner[pos]:
+                            if node[0] in reached:
+                                union((consumer_id, slot), node)
+            elif spec[0] == "mixed":
+                for part in spec[1]:
+                    bind(consumer_id, part)
+            elif spec[0] == "vector":
+                for part in spec[1]:
+                    bind(consumer_id, part)
+            elif spec[0] == "vector_grouped":
+                # the grouped form of a vector port (``_group_vector_spec``):
+                # per producer the aligned pairs (s_ic, out_v, r_ic, in_v),
+                # the exogenous slots (no coupling), and per-slot leftovers
+                _, _n_c, _n_v, groups, _exo, leftovers = spec
+                for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v, cut in groups:
+                    if pid not in reached or cut is True:
+                        continue  # a function of data, or read without its gradient
+                    cuts = cut.reshape(-1).tolist() if isinstance(cut, torch.Tensor) else [False] * int(s_ic.numel())
+                    for s_i, r_i, c in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist(), cuts):
+                        if not c:
+                            union((consumer_id, int(r_i)), (pid, int(s_i)))
+                for _rows, _slot, slot_spec in leftovers:
+                    bind(consumer_id, slot_spec)
+            # "exogenous": data, no coupling
+
+        for cid, ports in self.wiring.items():
+            for _port, spec in ports:
+                bind(cid, spec)
+
+        # theta entries: per-index slices attach entry start+i to index i; a
+        # vector parameter a batched component holds flat (``_batch_flat_vectors``:
+        # one row of slots per instance, a controller's gate-slot weights; a
+        # declared System's values per copy, a curve's points) attaches each
+        # row to its instance; a single shared entry couples every index of
+        # the component.
+        n_theta = 0
+        for cid, attrs in self.theta_by_comp.items():
+            comp = next((c for c in self.cone if c.id == cid), None)
+            n_c = self._component_n_c(comp) if comp is not None else 1
+            for _attr, idx in attrs.items():
+                if isinstance(idx, (slice, list, tuple)):
+                    entries = (
+                        list(range(idx.start, idx.stop))
+                        if isinstance(idx, slice)
+                        else [int(t) for t in idx]
+                    )
+                    n_theta = max(n_theta, max(entries) + 1)
+                    if len(entries) == n_c:
+                        for i, t in enumerate(entries):
+                            union(("theta", t), (cid, i))
+                    elif (
+                        getattr(comp, "_batch_flat_vectors", False) or getattr(type(comp), "_is_declared", False)
+                    ) and n_c > 1 and len(entries) % n_c == 0:
+                        width = len(entries) // n_c
+                        for j, t in enumerate(entries):
+                            union(("theta", t), (cid, j // width))
+                    else:
+                        for t in entries:
+                            for i in range(n_c):
+                                union(("theta", t), (cid, i))
+                else:
+                    t = int(idx)
+                    n_theta = max(n_theta, t + 1)
+                    for i in range(n_c):
+                        union(("theta", t), (cid, i))
+
+        # residual columns
+        col_root: List[object] = [None] * self.n_meas
+        for src, sl in zip(self.meas_sources, self.meas_slices):
+            if src[0] == "fresh":
+                comp = next(c for c in self.cone if c.id == src[1])
+                for slot, idxs in enumerate(owners(comp, src[2], src[3])):
+                    c = sl.start + slot
+                    if c < self.n_meas:
+                        for i in idxs:
+                            union(("col", c), (comp.id, i))
+        roots = {}
+        theta_block = np.full(n_theta, -1, dtype=np.int64)
+        for t in range(n_theta):
+            r = find(("theta", t))
+            theta_block[t] = roots.setdefault(r, len(roots))
+        column_block = np.full(self.n_meas, -1, dtype=np.int64)
+        for c in range(self.n_meas):
+            if ("col", c) in parent:
+                r = find(("col", c))
+                if r in roots:
+                    column_block[c] = roots[r]
+        # kept for :meth:`state_blocks` (the union-find with the roots' ids)
+        self.__dict__["_coupling"] = (parent, find, dict(roots))
+        return theta_block, column_block, len(roots)
+
+    def curvature_groups(self, n_theta: int) -> List[object]:
+        """Per theta entry the curvature group its component names for it
+        (:meth:`System.curvature_group`), ``None`` where it names none.  A
+        shared entry (several ``(comp, attr)`` pairs routed to one index)
+        keeps the first label."""
+        labels: List[object] = [None] * int(n_theta)
+        named = [False] * int(n_theta)
+        for i, spec in enumerate(self.theta_spec):
+            comp, attr = spec[0], spec[1]
+            idx = spec[2] if len(spec) > 2 else i
+            if isinstance(idx, slice):
+                entries = range(idx.start, idx.stop)
+            elif isinstance(idx, (list, tuple)):
+                entries = [int(t) for t in idx]
+            else:
+                entries = [int(idx)]
+            hook = getattr(comp, "curvature_group", None)
+            label = hook(attr) if callable(hook) else None
+            for t in entries:
+                if 0 <= t < n_theta and not named[t]:
+                    labels[t], named[t] = label, True
+        return labels
+
+    def state_blocks(self, layout) -> np.ndarray:
+        """The block id (:meth:`index_coupling`) of every entry of the flat
+        state vector of ``layout`` (``(D,)``), ``-1`` where the state's
+        component instance is joined to no estimated parameter.  Multiple
+        shooting attaches a window's initial-state variables and continuity
+        defects to these blocks."""
+        if "_coupling" not in self.__dict__:
+            self.index_coupling()
+        parent, find, roots = self.__dict__["_coupling"]
+        out = np.full(int(layout.width), -1, dtype=np.int64)
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            for i_c in range(n_c):
+                node = (comp.id, i_c)
+                block = roots.get(find(node), -1) if node in parent else -1
+                out[start + i_c * ss : start + (i_c + 1) * ss] = block
+        return out
+
+    def prepare_trace(self) -> None:
+        """Fill what a traced step reads but cannot work out while traced:
+        the state width of every component and of the systems it owns
+        (``System.state_size`` walks ``vars(self)``, which Dynamo cannot
+        trace, and an ``initialize()`` drops the cached width).  Called
+        whenever a compiled step is asked for, so a compile, or a retrace
+        after the model was initialized again, never depends on an eager
+        step having run first."""
+        from twin4build.systems.saref4syst.system import System
+
+        seen = set()
+
+        def fill(system):
+            if id(system) in seen:
+                return
+            seen.add(id(system))
+            system.state_size()
+            for owned in vars(system).values():
+                if isinstance(owned, System):
+                    fill(owned)
+            children = getattr(system, "named_children", None)
+            for _, child in (children() if callable(children) else ()):
+                if isinstance(child, System):
+                    fill(child)
+
+        for component in self.order:
+            if isinstance(component, System):
+                fill(component)
+
+    def step(self, kind, compiled=False):
+        """The transform-mode step of a kind (:data:`STEP_KINDS`):
+        ``step(y, theta, u, constants=None) -> (y_next, meas)``, cached on the
+        model.
+
+        One signature for every kind.  ``kind`` says which of the state, theta
+        and the exogenous row carry a leading batch dimension; the step is the
+        ``vmap`` of ``F_aug`` over those.  ``constants`` are the values hoisted
+        out of the step (:meth:`derived_values` of the same theta: shared for
+        one vector, per row for a batch); without them the step derives them
+        itself, every call.
+
+        ``compiled`` wraps it in ``torch.compile``, the ``vmap`` inside the
+        compiled function (Dynamo inlines it; ``vmap`` applied from eager code
+        to a compiled function is not supported).  The whole step traces as
+        one Dynamo graph (``fullgraph=True`` guards against silent
+        fallbacks; ``dynamic=False``: every call has the same shapes, and
+        Dynamo re-specializes per shape).  Inductor fuses the step's
+        elementwise chains into a few hundred Triton kernels instead of the
+        thousands of ATen kernels of the eager step, which shrinks the
+        captured CUDA graph and its replay time several-fold (issue #134).
+        Compiled on first use (cached on disk by Inductor); it needs a
+        Triton-capable torch build on a GPU.  The ``combo_kernels`` setting
+        compiles it with Inductor's combo kernels.  The compiled steps are the ones
+        the per-step CUDA graphs capture (``compile`` over ``vmap`` was
+        numerically wrong on torch 2.11 until #241: the vector inputs are
+        assembled with ``scatter`` / ``scatter_add`` since).
+        """
+        batched = STEP_KINDS[kind]
+        if compiled:
+            self.prepare_trace()
+        name = f"_step_{kind}_{'compiled' if compiled else 'eager'}"
+        step = self.__dict__.get(name)
+        if step is None:
+            model = self
+
+            def one(y, theta, u, constants=None):
+                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
+
+            if not any(batched):
+                step = one
+            else:
+                dims = tuple(0 if b else None for b in batched)
+                rows_of_theta = batched[1]
+
+                def step(y, theta, u, constants=None):
+                    if constants is None:
+                        return torch.func.vmap(one, in_dims=dims)(y, theta, u)
+                    constant_dims = pytree.tree_map(_row_dim, constants) if rows_of_theta else None
+                    return torch.func.vmap(one, in_dims=(*dims, constant_dims))(y, theta, u, constants)
+
+            if compiled:
+                options = {"combo_kernels": True} if _settings.value("combo_kernels") else None
+                step = torch.compile(_own_code(step, f"step_{kind}"), fullgraph=True, dynamic=False, options=options)
+            self.__dict__[name] = step
+        return step
+
+    # The kinds by name, as the rollouts and the step graphs ask for them.
+    @property
+    def compiled_step(self):
+        """:meth:`step` ``("scalar", compiled=True)``: ``step(y, theta, u, constants=None)``."""
+        return self.step("scalar", compiled=True)
+
+    @property
+    def window_step(self):
+        """:meth:`step` ``("windows")``: ``step(Y, theta, U, constants)`` with
+        ``Y (P, D_aug)`` and ``U (P, n_exogenous)`` per window, one
+        ``theta (n_theta,)`` and its hoisted values shared
+        (:func:`functional_rollout_windows`)."""
+        return self.step("windows")
+
+    @property
+    def compiled_window_step(self):
+        """:meth:`step` ``("windows", compiled=True)``."""
+        return self.step("windows", compiled=True)
+
+    @property
+    def batched_step(self):
+        """:meth:`step` ``("batched")``: ``step(Y, Theta, u, constants=None)``
+        with ``Y (B, D_aug)``, ``Theta (B, n_theta)`` and one shared exogenous
+        row ``u`` (the batched single-shooting bundles, multi-start SQP)."""
+        return self.step("batched")
+
+    @property
+    def compiled_batched_step(self):
+        """:meth:`step` ``("batched", compiled=True)``."""
+        return self.step("batched", compiled=True)
+
+    @property
+    def rows_step(self):
+        """:meth:`step` ``("rows")``: ``step(Y, Theta, U, constants=None)``
+        with ``Y (N, D_aug)``, ``Theta (N, n_theta)``, ``U (N, n_exogenous)``:
+        a batch of parameter starts times a batch of windows, flattened
+        (:func:`functional_rollout_rows`)."""
+        return self.step("rows")
+
+    @property
+    def compiled_rows_step(self):
+        """:meth:`step` ``("rows", compiled=True)``."""
+        return self.step("rows", compiled=True)
+
+    @property
+    def D_aug(self) -> int:
+        """Augmented-state width: component states + cut-feedback lag variables."""
+        return self.D + self._n_feedback
+
+    def F_aug(self, y_flat, theta, exogenous, transform_mode=None, constants=None):
+        """Augmented one-step map over ``y = [state | feedback]``.
+
+        The cut-feedback signals are one-step *lag variables* -- i.e. state in a
+        discrete-time sense -- so appending them to the state turns the feedback
+        loop into ordinary state continuity: ``y_{t+1} = [F(s_t, w_t),
+        producer_output(s_t, w_t)]``.  The producer output computed at step ``t``
+        becomes the feedback consumed at ``t+1``, exactly ``do_step``'s
+        one-step-delayed (Gauss-Seidel) semantics -- with no separate defect type.
+
+        Returns ``(y_next (D_aug,), meas (n_meas,))``.
+        """
+        n_fb = self._n_feedback
+        s = y_flat[: self.D]
+        w = y_flat[self.D :] if n_fb else None
+        x_next, meas, fb_out = self.F(
+            s, theta, exogenous, w, transform_mode=transform_mode, constants=constants
+        )
+        y_next = torch.cat([x_next, fb_out]) if n_fb else x_next
+        return y_next, meas
+
+
+def record_exogenous_inputs(
+    simulator,
+    functional_model,
+    start_time,
+    end_time,
+    step_size,
+    layout=None,
+    meas_ids=(),
+):
+    """Record the reference rollout's exogenous inputs.
+
+    One batched, CONTINUOUS ``do_step`` rollout over all periods at the
+    model's *current* parameters and inputs, sampling every relevant input
+    port right after each step. Every functional caller obtains its frozen
+    map obtains its frozen exogenous inputs and warm values through this
+    function.
+
+    Two properties only a continuous ``do_step`` run provides:
+
+    * **Step-indexed exogenous drivers** are evaluated correctly: e.g. the
+      ``OccupancySystem``'s ``previousIndoorCo2Measured`` is the data sample
+      one step back -- stepping segments in isolation (every segment at its
+      own ``step_index = 0``) would freeze wrong values.
+    * **Gauss-Seidel consumption semantics**: an input port read right after
+      step ``t`` holds exactly the value ``do_step`` consumed at step ``t``
+      (the producer's current- or previous-step output depending on execution
+      order), so lag warm values and lagged step-0 sensor readings come out
+      right by construction.
+
+    The exogenous signals are independent of the unknowns by construction
+    (anything the estimated parameters influence is inside the functional_model's
+    cone, hence fresh or feedback; decision-variable slots are overridden by
+    the Optimizer), so capturing once at the current model state is valid for
+    every iterate.
+
+    The run is batched over the periods (all periods share one
+    ``model.initialize``), exactly like the corresponding object-graph
+    objectives. Decision-variable ports with ``requires_grad`` set keep
+    their current (initial-iterate) trajectories through the re-initialization,
+    which is what the Optimizer requires.
+
+    Parameters
+    ----------
+    simulator, functional_model
+        The simulator (model already configured) and the ``FunctionalModel``
+        whose ``_exogenous_keys`` / ``_feedback_keys`` define what to sample.
+    start_time, end_time, step_size
+        Period lists (one entry per period).
+    layout : StateLayout, optional
+        When given, the initial component states (right after ``initialize``)
+        are gathered into per-period ``state0`` vectors and per-period
+        augmented initial states ``Y0 = [state0 | FB[0]]`` are assembled.
+    meas_ids : sequence of str, optional
+        Measuring-device ids whose ``measuredValue`` input to sample per step.
+
+    Returns
+    -------
+    types.SimpleNamespace
+        Per-period lists, indexed by period:
+        ``state0`` (each ``(D,)``; ``None`` without ``layout``),
+        ``Y0`` (each ``(D_aug,)``; ``None`` without ``layout``),
+        ``exogenous_tape`` (each ``(n_t_p, n_exogenous)``),
+        ``feedback_tape`` (each ``(n_t_p, n_feedback)``),
+        ``measurement_tape`` (each ``(n_t_p, len(meas_ids))``),
+        ``n_timesteps`` (each ``int``).
+    """
+    model = simulator.model
+    comps = dict(model.components)
+    # Fused state-space clusters consume their members' exogenous inputs
+    # under the fused component's id (namespaced ports).
+    sim_model = getattr(model, "_simulation_model", None) or model
+    comps.update(getattr(sim_model, "_fused_components", None) or {})
+    exogenous_keys = functional_model._exogenous_keys
+    fb_keys = functional_model._feedback_keys
+    meas_keys = [(mid, "measuredValue") for mid in meas_ids]
+
+    starts, ends, steps = list(start_time), list(end_time), list(step_size)
+    simulator.get_simulation_timesteps(starts, ends, steps)
+    model.initialize(starts, ends, steps)
+    sec, dts, max_t, n_ts = simulator.get_simulation_timesteps(starts, ends, steps)
+    n_s = len(starts)
+    n_t = [int(n) for n in n_ts]
+
+    state0 = (
+        [layout.gather(p).detach().clone() for p in range(n_s)]
+        if layout is not None
+        else None
+    )
+    cache_key = (
+        id(model),
+        tuple(repr(value) for value in starts),
+        tuple(repr(value) for value in ends),
+        tuple(int(value) for value in steps),
+        tuple(repr(key) for key in exogenous_keys),
+        tuple(repr(key) for key in fb_keys),
+        tuple(meas_ids),
+        getattr(layout, "width", None),
+        recording_parameter_signature(model),
+        recording_data_signature(model),
+    )
+    cached = getattr(simulator, "_exogenous_recording_cache", None)
+    if cached is not None and cached[0] == cache_key:
+        simulator._exogenous_recording_cache_hit = True
+        simulator._exogenous_recording_cache_hits += 1
+        return _clone_recording(cached[1])
+    simulator._exogenous_recording_cache_hit = False
+    simulator._exogenous_recording_cache_misses += 1
+    device = getattr(sim_model, "device", None) or torch.device("cpu")
+    exogenous_tape = torch.zeros(
+        (int(max_t), n_s, functional_model._n_exogenous),
+        dtype=tps.float_dtype(),
+        device=device,
+    )
+    feedback_tape = torch.zeros(
+        (int(max_t), n_s, functional_model.n_feedback),
+        dtype=tps.float_dtype(),
+        device=device,
+    )
+    measurement_tape = torch.zeros(
+        (int(max_t), n_s, len(meas_keys)), dtype=tps.float_dtype(), device=device
+    )
+
+    def _sample(dst, keys, slices, masks=None):
+        if masks is None:
+            masks = [None] * len(keys)
+        for key, target_slice, mask in zip(keys, slices, masks):
+            cid, port = key[0], key[1]
+            val = comps[cid].input[port].get()
+            if isinstance(comps[cid].input[port], tps.Vector):
+                slot = key[2]
+                val = val[..., slot]
+            val = val.reshape(n_s, -1).detach()
+            if mask is not None:
+                val = val * mask.to(device=val.device, dtype=val.dtype)
+            dst[:, target_slice] = val
+
+    with torch.no_grad():
+        for t in range(int(max_t)):
+            simulator._do_system_time_step(
+                model, sec[:, t], dts[:, t], steps, t, "gauss-seidel"
+            )
+            _sample(
+                exogenous_tape[t],
+                exogenous_keys,
+                [functional_model._exogenous_index[k] for k in exogenous_keys],
+            )
+            if fb_keys:
+                _sample(
+                    feedback_tape[t],
+                    fb_keys,
+                    [functional_model._fb_index[k] for k in fb_keys],
+                    functional_model._feedback_masks,
+                )
+            if meas_keys:
+                for k, (cid, port) in enumerate(meas_keys):
+                    val = comps[cid].input[port].get()
+                    if val.reshape(n_s, -1).shape[1] != 1:
+                        raise RuntimeError(
+                            f"exogenous measurement {cid}.{port} has multiple branches"
+                        )
+                    measurement_tape[t, :, k] = val.reshape(n_s, -1)[:, 0].detach()
+
+    n_fb = functional_model.n_feedback
+    Y0 = None
+    if layout is not None:
+        Y0 = [
+            torch.cat([state0[p], feedback_tape[0, p]]) if n_fb else state0[p]
+            for p in range(n_s)
+        ]
+    recording = SimpleNamespace(
+        state0=state0,
+        Y0=Y0,
+        exogenous_tape=[exogenous_tape[: n_t[p], p, :] for p in range(n_s)],
+        feedback_tape=[feedback_tape[: n_t[p], p, :] for p in range(n_s)],
+        measurement_tape=[measurement_tape[: n_t[p], p, :] for p in range(n_s)],
+        n_timesteps=n_t,
+    )
+    simulator._exogenous_recording_cache = (cache_key, _clone_recording(recording))
+    return recording
+
+
+def functional_rollout(
+    functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
+):
+    """Roll the functional map over one period; returns ``(n_t, n_meas)``.
+
+    ``step`` optionally replaces ``functional_model.F_aug`` with a callable
+    ``step(y, theta, u) -> (y_next, meas)`` -- the compiled transform-mode
+    step from :meth:`FunctionalModel.compiled_step` -- for every time step.
+
+    A plain Python loop, NOT ``vmap``: with a handful of periods the vmap
+    dispatch overhead exceeds the batching gain, and staying in ordinary eager
+    mode lets the state-space components use the fused ``torch.matrix_exp``
+    (which has no vmap rule) instead of the unrolled scaling-and-squaring
+    fallback.  Differentiable w.r.t. ``theta``, ``y0`` and ``exogenous_tape``.
+
+    Args:
+        functional_model: The :class:`FunctionalModel`.
+        y0: ``(D_aug,)`` augmented initial state (``[state0 | FB[0]]``).
+        theta: ``(n_theta,)`` physical parameters (theta_spec order).
+        exogenous_tape: ``(n_t, n_exogenous)`` exogenous inputs for the period.
+    """
+    functional_model.prepare_routes(theta.device)
+    y = y0
+    rows = []
+    constants = functional_model.derived_values(theta) if (transform_mode or step is not None) else None
+    if step is None:
+        def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
+    for t in range(exogenous_tape.shape[0]):
+        y, meas = _step_call(step, y, theta, exogenous_tape[t], constants)
+        rows.append(meas)
+    if not rows:
+        return torch.zeros(
+            (0, functional_model.n_meas),
+            dtype=exogenous_tape.dtype,
+            device=exogenous_tape.device,
+        )
+    return torch.stack(rows)
+
+
+def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, step=None):
+    """Roll a *batch* of parameter vectors over one period.
+
+    ``Y0 (B, D_aug)``, ``Theta (B, n_theta)``; returns ``(B, n_t, n_meas)``.
+    With ``step`` (the compiled batched step) every time step is one call
+    over the whole batch; without it the scalar transform-mode rollout is
+    ``vmap``-ed, which is what the batched bundles always did.
+    """
+    functional_model.prepare_routes(Theta.device)
+    if step is None:
+        return torch.func.vmap(
+            lambda y0, th: functional_rollout(
+                functional_model, y0, th, exogenous_tape, transform_mode=True
+            )
+        )(Y0, Theta)
+    constants = functional_model.derived_values(Theta)
+    Y = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        Y, meas = step(Y, Theta, exogenous_tape[t], constants)
+        rows.append(meas)
+    if not rows:
+        return torch.zeros(
+            (Y0.shape[0], 0, functional_model.n_meas),
+            dtype=exogenous_tape.dtype,
+            device=exogenous_tape.device,
+        )
+    return torch.stack(rows, dim=1)
+
+
+def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, step=None, return_end=False, return_extent=False):
+    """Roll ONE parameter vector over a batch of windows at once.
+
+    ``Y0 (P, D_aug)`` per-window initial states, ``theta (n_theta,)``,
+    ``exogenous_tape (n_t, P, n_exogenous)`` per-window inputs (every window
+    the same length); returns ``(P, n_t, n_meas)``, or with ``return_end``
+    ``(outputs, Y_end (P, D_aug))``: the state after the last step of every
+    window (the continuity defects of multiple shooting read it), or with
+    ``return_extent`` ``(outputs, Y_end, Y_min, Y_max)``: also the lowest and
+    highest value of every state in every window, its start and end included
+    (the multiple-shooting tolerances read them).  The
+    theta-only matrices are hoisted once (:meth:`FunctionalModel.derived_values`)
+    and shared by the windows.  ``step`` defaults to
+    :attr:`FunctionalModel.window_step` (the eager vmap of the transform-mode
+    ``F_aug`` over the windows).  Differentiable w.r.t. ``theta`` and ``Y0``.
+    """
+    functional_model.prepare_routes(theta.device)
+    constants = functional_model.derived_values(theta)
+    if step is None:
+        step = functional_model.step("windows")
+    Y = Y0
+    low = high = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        Y, meas = step(Y, theta, exogenous_tape[t], constants)
+        rows.append(meas)
+        if return_extent:
+            low, high = torch.minimum(low, Y), torch.maximum(high, Y)
+    if not rows:
+        out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
+    else:
+        out = torch.stack(rows, dim=1)
+    if return_extent:
+        return out, Y, low, high
+    return (out, Y) if return_end else out
+
+
+def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step=None, return_end=False):
+    """Roll a batch of rows that each carry their own state, parameters and
+    exogenous inputs: ``Y0 (N, D_aug)``, ``Theta (N, n_theta)``,
+    ``exogenous_tape (n_t, N, n_exogenous)`` (or ``(n_t, B, P,
+    n_exogenous)``, a broadcast view flattened per step); returns ``(N, n_t, n_meas)``,
+    or with ``return_end`` ``(outputs, Y_end (N, D_aug))``.  A batch of
+    parameter starts over a batch of windows, flattened.  ``step`` defaults
+    to :attr:`FunctionalModel.rows_step` (an eager vmap); it is called as
+    ``step(Y, Theta, U, constants)`` with every row's hoisted values
+    (:meth:`FunctionalModel.derived_values`)."""
+    functional_model.prepare_routes(Theta.device)
+    if step is None:
+        step = functional_model.step("rows")
+    constants = functional_model.derived_values(Theta)
+    Y = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        u = exogenous_tape[t]
+        Y, meas = step(Y, Theta, u.reshape(-1, u.shape[-1]), constants)
+        rows.append(meas)
+    if not rows:
+        out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
+    else:
+        out = torch.stack(rows, dim=1)
+    return (out, Y) if return_end else out
+
+
+def _step_call(step, y, theta, u_t, constants):
+    """One step call, recomputed in the backward pass (``torch.utils.checkpoint``)
+    when the ``rollout_checkpoint`` setting is on: the rollout's autograd tape
+    then holds the state and exogenous rows per step and nothing of what the
+    step computed from them."""
+    if torch.is_grad_enabled() and _settings.value("rollout_checkpoint"):
+        return torch.utils.checkpoint.checkpoint(step, y, theta, u_t, constants, use_reentrant=False)
+    return step(y, theta, u_t, constants)
+
+
+def functional_rollout_tape(
+    functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
+):
+    """Roll out ``F_aug`` and return tensor-only state and output tapes.
+
+    ``states`` includes the initial augmented state at index zero and therefore
+    has shape ``(n_t + 1, D_aug)``. ``outputs`` contains every output requested
+    when constructing ``FunctionalModel`` and has shape ``(n_t, n_meas)``.
+    This deliberately contains no dictionaries so the complete fixed-shape
+    rollout can be captured by :class:`torch.cuda.CUDAGraph`.
+
+    ``step`` is the compiled transform-mode step
+    (:attr:`FunctionalModel.compiled_step`) when the simulator compiles it;
+    every time step is then one call of it, as in :func:`functional_rollout`.
+    """
+    # Routes resolved for the device once, outside the captured step
+    # (the public functional simulation captures this rollout whole).
+    functional_model.prepare_routes(exogenous_tape.device)
+    y = y0
+    states = [y]
+    outputs = []
+    compiled = step is not None
+    if step is None:
+        def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
+    constants = functional_model.derived_values(theta) if (transform_mode or compiled) else None
+    for t in range(exogenous_tape.shape[0]):
+        y, row = _step_call(step, y, theta, exogenous_tape[t], constants)
+        states.append(y)
+        outputs.append(row)
+    if outputs:
+        output_tape = torch.stack(outputs)
+    else:
+        output_tape = torch.zeros(
+            (0, functional_model.n_meas),
+            dtype=exogenous_tape.dtype,
+            device=exogenous_tape.device,
+        )
+    return torch.stack(states), output_tape

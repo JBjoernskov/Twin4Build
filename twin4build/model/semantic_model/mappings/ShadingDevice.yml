@@ -34,19 +34,19 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'solarReflectance', value['solarReflectance'], 's4bldg:SolarReflectance') }}
+      {{ create_property_value_triples(value['id'], 'solarReflectance', value['solarReflectance'], 's4bldg:solarReflectance') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'solarTransmittance', value['solarTransmittance'], 's4bldg:SolarTransmittance') }}
+      {{ create_property_value_triples(value['id'], 'solarTransmittance', value['solarTransmittance'], 's4bldg:solarTransmittance') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'thermalTransmittance', value['thermalTransmittance'], 's4bldg:ThermalTransmittance') }}
+      {{ create_property_value_triples(value['id'], 'thermalTransmittance', value['thermalTransmittance'], 's4bldg:thermalTransmittance') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'visibleLightReflectance', value['visibleLightReflectance'], 's4bldg:VisibleLightReflectance') }}
+      {{ create_property_value_triples(value['id'], 'visibleLightReflectance', value['visibleLightReflectance'], 's4bldg:visibleLightReflectance') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'visibleLightTransmittance', value['visibleLightTransmittance'], 's4bldg:VisibleLightTransmittance') }}
+      {{ create_property_value_triples(value['id'], 'visibleLightTransmittance', value['visibleLightTransmittance'], 's4bldg:visibleLightTransmittance') }}
 
   # Relationships
   - template: |-

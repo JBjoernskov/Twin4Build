@@ -1,0 +1,1018 @@
+"""Functional single-shooting estimation objective.
+
+Single-shooting's per-iteration cost is one full object-graph simulation plus
+autograd back through it.  Profiling shows most of that cost is Python
+dispatch -- the per-step Gauss-Seidel traversal over components, ``tps``
+wrapper bookkeeping, history logging -- and ``model.initialize`` re-reading
+every CSV input on EVERY objective evaluation.  None of it is tensor math.
+
+This module builds on the Simulator's functional API
+(:meth:`Simulator.build_functional_model` /
+:meth:`Simulator.record_exogenous_inputs` /
+:meth:`Simulator.rollout_functional`, implemented in
+:mod:`twin4build.simulator._functional`): the model's stateful cone is composed
+into a pure one-step map ``F_aug(y, theta, cap)``, the truly-exogenous inputs
+are captured ONCE from a reference ``do_step`` rollout, and the objective
+becomes a plain sequential torch rollout
+
+    y_{t+1}, meas_t = F_aug(y_t, theta, CAP[t])
+
+per training period.  Autograd back through this rollout is the same reverse
+pass single-shooting already paid for -- minus the object-graph overhead.
+
+Exactness: **by construction**.  Every composable component's ``do_step`` is a
+thin port-I/O wrapper that DELEGATES its math to the same ``forward`` the
+composer threads (single source of truth -- the two cannot drift apart), and
+cut feedback edges are carried as one-step lag state inside ``y`` (exactly
+``do_step``'s delayed Gauss-Seidel semantics).  Only truly exogenous inputs
+(weather, schedules, measured data series) are frozen -- and those are
+theta-independent by definition; ``OneStepComposer._validate_theta_influence``
+refuses to compose if a theta path would leak into a frozen signal.  The same single-source-of-truth rule holds
+outside the components: theta denormalization is
+:func:`twin4build.utils.types.denormalize_unit` (the function
+``tps.Parameter.denormalize`` itself routes through) and everything downstream
+of the raw residuals (sd weighting, MSE normalization, rescale-to-100,
+diagnostics) is ``Estimator._loglike_from_residuals`` -- the method the
+object-graph ``_obj`` ends in as well.  Shared parameters are supported: the
+indexed theta spec routes every member of a shared group to the same theta
+slot.  Construction performs the structural checks and the estimator silently
+falls back to the exact path for un-composable models (components without
+``forward`` or a measurement the composed map cannot produce).
+``tests/estimator/test_functional_single_shooting.py`` regression-checks the end-to-end
+value + gradient parity (guards the delegation contract and the composer's
+wiring/capture logic).
+
+Enable with ``Simulator(model, execution_mode="functional")``.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+import torch
+
+import twin4build.utils.types as tps
+from twin4build.utils.logger import LOGGER
+from twin4build.utils.scoring_mask import filled_downstream as _filled_downstream
+from twin4build.utils.scoring_mask import period_mask as _period_mask
+from twin4build.utils.scoring_mask import to_ns as _to_ns
+from twin4build.utils.types import denormalize_unit, theta_bound_tensors
+
+
+#: Roll equal-length periods out as one batch of windows (one wide step
+#: per time index) instead of one after another; the tests switch it off to
+#: compare with the sequential rollout.
+WINDOW_BATCHING = True
+
+#: The box of a window's initial-state variable: this fraction of the
+#: state's magnitude on either side of the recorded state.
+INITIAL_STATE_BOX = 0.25
+
+
+def _longest_run(flags) -> int:
+    """The longest run of consecutive true entries."""
+    best = run = 0
+    for flag in flags:
+        run = run + 1 if flag else 0
+        best = max(best, run)
+    return best
+
+
+#: The least range a state's continuity tolerance is taken from, as a
+#: fraction of its magnitude: a state that does not move in the rollout at
+#: the start point (``continuity_sd_rel`` of a tenth of its magnitude).
+REFERENCE_FLOOR = 0.1
+
+
+class FunctionalEstimationObjective:
+    """Functional-model drop-in for :meth:`Estimator._obj` (scalar mode).
+
+    Built AFTER the estimator's ``estimate`` setup (parameters, measurements,
+    normalized bounds, ``actual_readings`` all populated, model initialized at
+    ``x0``).  Construction raises on any model feature the composer cannot
+    express; callers treat that as "use the object-graph objective".
+    """
+
+    def __init__(self, estimator):
+        self.est = estimator
+
+        if getattr(estimator, "_regularization_lambda", 0) > 0:
+            raise RuntimeError("regularization penalty not supported")
+        n_theta = len(estimator._x0_norm)
+
+        # Indexed theta spec: shared parameters route several (comp, attr)
+        # entries to one theta selector; compiled private parameters use a
+        # per-branch slice.
+        theta_spec, unique_parameters = estimator._composer_theta_spec()
+
+        # Structural checks live in Simulator.build_functional_model.
+        layout, composer = estimator.simulator.build_functional_model(
+            theta_spec=theta_spec,
+            measurements=[md for md, _ in estimator._measurements],
+            step_size=estimator._stepSize,
+        )
+        if not composer.meas_sources:
+            raise RuntimeError("no measurement sources")
+        if any(s[0] != "fresh" for s in composer.meas_sources):
+            # A frozen measurement would make its residual theta-independent:
+            # the functional objective would silently ignore that sensor.
+            raise RuntimeError(
+                "a measurement is not producible by the functional model"
+            )
+        if any(s.stop - s.start != 1 for s in composer.meas_slices):
+            raise RuntimeError(
+                "each estimator measurement must resolve to exactly one branch"
+            )
+
+        self.layout = layout
+        self.composer = composer
+        self.n_theta = n_theta
+
+        # Plain (functorch-safe) denormalization from the physical bounds --
+        # one representative parameter per unique theta entry.
+        self._lb_t, self._ub_t, self._log_mask = theta_bound_tensors(
+            unique_parameters, device=estimator._device
+        )
+
+        # Sensor lag: a pass-through sensor that executes BEFORE its producer
+        # in the Gauss-Seidel order reads the producer's PREVIOUS-step output
+        # (e.g. office_co2_sensor runs before office).  The object-graph
+        # objective therefore scores a one-step-lagged signal for that sensor;
+        # F_aug returns the current step's.  Shift those columns to match.
+        self.meas_lag = []
+        for (md, _sd), spec in zip(estimator._measurements, composer.meas_sources):
+            lag = spec[0] == "fresh" and composer.pos[md.id] < composer.pos[spec[1]]
+            self.meas_lag.append(bool(lag))
+        if any(self.meas_lag):
+            LOGGER.config(
+                "Functional single-shooting: one-step sensor lag on %s",
+                [
+                    md.id
+                    for (md, _), l in zip(estimator._measurements, self.meas_lag)
+                    if l
+                ],
+            )
+        self._record_exogenous_inputs()
+        self._sd = torch.tensor(
+            [float(sd) for _md, sd in estimator._measurements],
+            dtype=tps.float_dtype(),
+            device=estimator._device,
+        )
+        self._denom = float(estimator._n_timesteps * len(estimator._measurements))
+        # Multiple shooting: the windows' initial states as decision variables
+        # with continuity defects between consecutive windows as residual
+        # columns (``estimator._multiple_shooting``); ``n_init == 0`` without.
+        self.n_init = 0
+        self._setup_multiple_shooting(getattr(estimator, "_multiple_shooting", None))
+        # A single canonical scale makes every start and every custom solver
+        # optimize exactly the same function.  Per-start scaling would make
+        # objective values and stopping tolerances incomparable.
+        with torch.no_grad():
+            x0 = torch.as_tensor(
+                estimator._x0_norm,
+                dtype=tps.float_dtype(),
+                device=estimator._device,
+            )
+            weighted = self.raw_residuals(x0) / self._sd
+            mse0 = torch.sum(weighted.square()) / self._denom
+            self.loss_scale = torch.clamp(
+                mse0 / 100.0,
+                min=torch.finfo(weighted.dtype).tiny,
+            ).detach()
+            if self.n_init:
+                # the measured part is 100 by the scale; what the start point
+                # pays for continuity beyond it (none on the continuous
+                # trajectory the variables start on)
+                self.f0 = float(self.loss(x0))
+                LOGGER.config(
+                    "multiple shooting: objective at the start point %.6g (measured 100, continuity %.3g)",
+                    self.f0, self.f0 - 100.0,
+                )
+
+    def _denorm(self, th_norm: torch.Tensor) -> torch.Tensor:
+        # Single source of truth for the normalized->physical map
+        # (tps.Parameter.denormalize routes through the same function).
+        return denormalize_unit(th_norm, self._lb_t, self._ub_t, self._log_mask)
+
+    # -- multiple shooting: initial-state variables and continuity defects ---
+    def _setup_multiple_shooting(self, config) -> None:
+        """Turn the windows' initial states into decision variables.
+
+        ``config`` (a dict, ``None`` = off), built by ``Estimator.estimate``
+        from its options:
+
+        * ``sd_rel``: the continuity tolerance of a state is ``sd_rel``
+          (default 0.01) times its scale, in its own units: for a state a
+          scored sensor measures (:meth:`System.state_output_ports`), that
+          sensor's sd, which does not depend on the start point; for any
+          other, how much it varies over the windows (every step, not only
+          their starts and ends) in a rollout at the start point, and a tenth
+          of its magnitude (:data:`REFERENCE_FLOOR`) for one that does not
+          move there, which the log names.
+        * ``energy_tol``: a state that stores heat is held to at most
+          ``energy_tol / C`` (default 3.6e5 J, 0.1 kWh), ``C`` the heat
+          capacity of the state (:meth:`System.state_heat_capacities` at the
+          start point): a jump costs by the heat it creates.  A massive state
+          (a wall, the shared interior) is held tight, a light one (room
+          air, a radiator) keeps its range tolerance, a state that holds no
+          heat (CO2, a controller's memory) too.
+        * ``ties``: one flag per window boundary, present only when some
+          window does not start where the one before ends (the
+          ``continuity_gaps`` option): a boundary flagged ``False`` has no
+          defect, so the window after a gap starts free like the first.
+
+        The tolerance is a penalty weight, not a hard limit: a fit may still
+        buy a better fit of a window with a jump at its start.
+
+        Every window gets one variable per state, the first window's too (no
+        defect column, its own first measurements pin it).  The variables
+        start on one continuous trajectory at the start point: a window tied
+        to the one before it starts where that one ends, the first window of
+        a run of tied windows at its recorded state (the model's initial
+        state), so the start point pays no continuity.  Each is normalised
+        linearly on its box: 25 % of the state's magnitude around its start,
+        widened to include the recorded state.
+        The defect ``Y_end[p] - Y0[p + 1]``, divided by the tolerance, joins
+        the residual columns (one column per state).  The variables and the
+        columns attach to the block of the state's component, so the block
+        solvers see them as any other parameter and residual.  Needs the
+        batched window rollout (equal-length periods).
+        """
+        if config is None:
+            return
+        windows = self._windows()
+        if windows is None:
+            raise ValueError(
+                "the periods' initial states are variables of the batched window rollout: give several periods "
+                "of one length"
+            )
+        Y0, _tape = windows  # (P, D_aug)
+        P = int(Y0.shape[0])
+        if P < 2:
+            return
+        layout = self.layout
+        index = np.arange(int(layout.width), dtype=np.int64)
+        blocks = self.composer.state_blocks(layout)
+        attached = blocks[index] >= 0
+        if not attached.all():
+            LOGGER.warning(
+                "multiple shooting: %d of %d states belong to no estimated block and stay fixed",
+                int((~attached).sum()), int(index.size),
+            )
+            index = index[attached]
+        if index.size == 0:
+            return
+        dev, dtype = Y0.device, Y0.dtype
+        index_t = torch.as_tensor(index, dtype=torch.long, device=dev)
+        ties = config.get("ties")
+        if ties is not None:
+            assert len(ties) == P - 1, (len(ties), P)
+            self.init_tie = torch.as_tensor([1.0 if t else 0.0 for t in ties], dtype=dtype, device=dev).reshape(-1, 1)
+            LOGGER.info(
+                "multiple shooting: %d of %d window boundaries are gaps, not tied", sum(not t for t in ties), P - 1
+            )
+        # Every window's initial state is a variable, the first window's
+        # too (pinned by its own first measurements; no defect column, there
+        # is no window before it), so no window needs a warm-up.
+        recorded = Y0[:, index_t].detach()  # (P, n_slow) physical: the model's initial state
+        # a period after a gap is not tied to the one before (continuity_gaps)
+        tied = torch.as_tensor([True] * (P - 1) if ties is None else list(ties), dtype=torch.bool, device=dev)
+        # The variables start on one continuous trajectory: a tied window
+        # where the window before it ends at the start point, one pass per
+        # window of the longest run of tied windows.  Every window recorded
+        # at the model's initial state left jumps of several kelvin (an
+        # unheated room ends a week far from 20 C) that the trust region
+        # closes a few hundredths of a kelvin per iteration: 22 Oct 2026, the
+        # rooms' air at 100-280 x its tolerance after 60 iterations.
+        passes = _longest_run(tied.tolist())
+        Y_start = Y0.clone()
+        with torch.no_grad():
+            theta0 = self._denorm(torch.as_tensor(np.asarray(self.est._x0_norm, dtype=np.float64), dtype=dtype, device=dev)[: self.n_theta])
+            for _ in range(passes):
+                _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y_start, theta0, _tape, return_end=True)
+                Y_start[1:, index_t] = torch.where(tied.unsqueeze(-1), end[:-1, index_t], Y_start[1:, index_t])
+            # The scale of every selected state: the largest magnitude it
+            # takes anywhere in the windows on that trajectory, floored at one
+            # unit -- a state recorded at zero (a controller's integral, a flow
+            # before the fan starts) must not get a vanishing tolerance or a
+            # box it cannot leave.
+            _out, end0, low0, high0 = self.est.simulator.rollout_functional_windows(self.composer, Y_start, theta0, _tape, return_extent=True)
+        x0 = Y_start[:, index_t].detach()
+        moved_from_recorded = (x0 - recorded).abs()
+        LOGGER.config(
+            "multiple shooting: the windows start on one continuous trajectory at the start point (%d pass(es)); "
+            "the largest move from the model's initial state %.3g (state %s)",
+            passes, float(moved_from_recorded.max()),
+            self._state_names(index[[int(moved_from_recorded.amax(dim=0).argmax())]])[0],
+        )
+        self.init_x0_recorded = recorded
+        self.init_theta_start = theta0  # the parameters the tolerances are read at
+        low0, high0 = low0[:, index_t].amin(dim=0), high0[:, index_t].amax(dim=0)  # (n_slow,)
+        magnitude = torch.maximum(low0.abs(), high0.abs()).clamp(min=1.0)
+        # how much each state moves over the whole windows, not only at their
+        # starts and ends: windows that all start at the same hour of the
+        # week see a state the schedules drive (a room's CO2) at one phase,
+        # where it barely moves, and the tolerance collapsed to the floor
+        # (22 Oct 2026: room CO2 held to 0.007 ppm, 95 % of the continuity
+        # penalty).  A state that does not move in the whole rollout takes
+        # the floor, named in the log.
+        moved = high0 - low0
+        floor = REFERENCE_FLOOR * magnitude
+        # a state a scored sensor measures is scaled by that sensor's sd: what
+        # the data can tell apart, the same at every start point
+        sensor_sd = self._sensor_sd_per_state(dtype)[index].to(dev)
+        measured = torch.isfinite(sensor_sd)
+        self.init_sensor_sd = sensor_sd
+        reference = torch.where(measured, sensor_sd, torch.maximum(moved, floor))
+        sd_rel = float(config.get("sd_rel", 0.01))
+        energy_tol = float(config.get("energy_tol", 3.6e5))
+        sd = (sd_rel * reference).clamp(min=1e-9)
+        capacity = self._state_capacities(layout, dev, dtype)[index_t]  # (n_slow,) J/K, NaN: no heat
+        holds_heat = torch.isfinite(capacity) & (capacity > 0)
+        by_energy = energy_tol / torch.where(holds_heat, capacity, torch.ones_like(capacity))
+        sd = torch.where(holds_heat, torch.minimum(sd, by_energy), sd).clamp(min=1e-9)
+        tightened = holds_heat & (by_energy < sd_rel * reference)
+        # the floor decides a tolerance only where neither a sensor nor the
+        # heat a state holds does
+        floored = (moved < floor) & ~measured & ~tightened
+        self.init_floored = floored
+        LOGGER.config(
+            "multiple shooting: %d of %d tied states hold heat; %d of them held to %.3g J per jump "
+            "(tolerance median %.3g K, smallest %.3g K)",
+            int(holds_heat.sum()), int(index.size), int(tightened.sum()), energy_tol,
+            float(sd[tightened].median()) if bool(tightened.any()) else float("nan"),
+            float(sd[tightened].min()) if bool(tightened.any()) else float("nan"),
+        )
+        by_sensor = measured & ~tightened
+        ranged = ~measured & ~tightened
+        LOGGER.config(
+            "multiple shooting: tolerances of the %d tied states: %d from their sensor's sd, %d from their heat, "
+            "%d from their range (median %.3g of their magnitude, smallest %.3g), %d of them at the floor",
+            int(index.size), int(by_sensor.sum()), int(tightened.sum()), int(ranged.sum()),
+            float((sd[ranged] / magnitude[ranged]).median()) if bool(ranged.any()) else float("nan"),
+            float((sd[ranged] / magnitude[ranged]).min()) if bool(ranged.any()) else float("nan"),
+            int(floored.sum()),
+        )
+        if bool(floored.any()):
+            names = self._state_names(index[floored.cpu().numpy()])
+            LOGGER.warning(
+                "multiple shooting: %d tied states do not move in the rollout at the start point; their "
+                "tolerance is %.3g of a tenth of their magnitude, not of their range: %s%s",
+                len(names), sd_rel, ", ".join(names[:12]), " ..." if len(names) > 12 else "",
+            )
+        self.init_capacity = capacity
+        half = (INITIAL_STATE_BOX * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
+        # the box of a window's start also holds its recorded state and the
+        # end of the window before it at the start point: the continuous
+        # trajectory must be feasible, or a jump the box forces (a
+        # controller's integral recorded at zero and ending far from it) is
+        # indistinguishable from one the fit chose
+        low, high = torch.minimum(x0, recorded), torch.maximum(x0, recorded)
+        previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
+        if ties is not None:  # across a gap the window before belongs to another span: its end widens nothing
+            previous_end = torch.where(torch.as_tensor(ties, device=dev).reshape(-1, 1), previous_end, x0[1:])
+        low[1:] = torch.minimum(low[1:], previous_end)
+        high[1:] = torch.maximum(high[1:], previous_end)
+        lb, ub = low - half, high + half
+        # a component and its copies in other worlds (the model's worlds, split_worlds) are one state: their windows
+        # start from one box and one start, per state entry
+        self._share_initial_states(self._world_copies(), index, x0, lb, ub)
+        n_slow = int(index.size)
+        self.n_init = int(P * n_slow)
+        self.init_index = index_t
+        self.init_n_slow = n_slow
+        self.init_blocks = np.asarray(blocks[index], dtype=np.int64)  # (n_slow,)
+        self.init_sd = sd
+        self.init_sd_reference = reference  # what sd_rel multiplies
+        self.init_magnitude = magnitude
+        self.init_x0 = x0
+        self.init_lb, self.init_ub = lb, ub
+        self.init_x0_norm = ((x0 - lb) / (ub - lb)).reshape(-1)
+        rows = torch.arange(P, device=dev).repeat_interleave(n_slow)
+        cols = index_t.repeat(P)
+        self._init_put = (rows, cols)
+        LOGGER.config(
+            "multiple shooting: %d windows, %d states per window as variables (%d total), "
+            "continuity sd %.3g of the state's range, at most %.3g J per jump in a state that stores heat",
+            P, n_slow, self.n_init, sd_rel, energy_tol,
+        )
+
+    def _world_copies(self) -> list:
+        """``[[component id, *ids of its copies], ...]``: every component the model's worlds
+        (:attr:`~twin4build.model.model.Model.worlds`, :func:`~twin4build.model.partition.split_worlds`) put in
+        several worlds; none on a model that was not split."""
+        worlds = getattr(self.est.simulator.model, "worlds", None)
+        if worlds is None:
+            return []
+        return [[cid, *copies] for cid, copies in worlds.copies.items()]
+
+    def _state_columns(self) -> dict:
+        """``{component id: [positions of its state in the layout]}`` for every state owner: a fused block's members
+        each, a batched component's instances by the ids they stand for (as ``SimulationModel.set_state`` names
+        them)."""
+        # here, not at the top: the simulation model imports the estimator
+        from twin4build.model.simulation_model.simulation_model import SimulationModel
+
+        out = {}
+        for comp, (start, _stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+            if not ss:
+                continue
+            offset = 0
+            for member in list(getattr(comp, "members", None) or [comp]):
+                if not member.is_stateful():
+                    continue
+                width = int(member.state_size())
+                ids = SimulationModel.get_source_component_ids(member)
+                for c in range(int(n_c)):
+                    sid = ids[c] if len(ids) == n_c else (ids[0] if n_c == 1 else None)
+                    if sid is not None:
+                        out[str(sid)] = [int(start + c * ss + offset + k) for k in range(width)]
+                offset += width
+        return out
+
+    def _share_initial_states(self, groups, index, x0, lb, ub) -> None:
+        """Every group of ``groups`` (component ids) starts the windows from one box and one start: per state entry
+        its members' variables get the union of their boxes and their mean start (``x0``, ``lb``, ``ub`` ``(P,
+        n_slow)`` changed in place, physical).  A member that holds no state variable here (not in the model, in no
+        estimated block) is left out; a group left with one member needs nothing."""
+        if not groups:
+            return
+        columns = self._state_columns()
+        position = {int(c): j for j, c in enumerate(np.asarray(index).tolist())}
+        n_groups, moved = 0, 0.0
+        for group in groups:
+            members = [columns[str(cid)] for cid in group if str(cid) in columns]
+            members = [m for m in members if all(c in position for c in m)]
+            if len(members) < 2:
+                continue
+            widths = {len(m) for m in members}
+            if len(widths) != 1:
+                raise ValueError(f"{list(group)} share their initial states but hold {sorted(widths)} state entries")
+            n_groups += 1
+            for k in range(widths.pop()):
+                js = torch.as_tensor([position[m[k]] for m in members], dtype=torch.long, device=x0.device)
+                lb[:, js] = lb[:, js].amin(dim=1, keepdim=True)
+                ub[:, js] = ub[:, js].amax(dim=1, keepdim=True)
+                mean = x0[:, js].mean(dim=1, keepdim=True)
+                moved = max(moved, float((x0[:, js] - mean).abs().max()))
+                x0[:, js] = mean
+        LOGGER.config(
+            "multiple shooting: %d components and their copies start each window from one box and one start (the "
+            "starts moved at most %.3g to their mean)", n_groups, moved,
+        )
+
+    @property
+    def n_theta_ext(self) -> int:
+        """Length of the solver's vector: theta plus the initial-state variables."""
+        return int(self.n_theta + self.n_init)
+
+    def _split(self, x: torch.Tensor):
+        """``(theta_norm, init_norm or None)`` from a solver vector: the plain
+        theta vector (the variables' starts, one continuous trajectory at the
+        start point, then stand in for them) or the extended one."""
+        if self.n_init == 0:
+            return x, None
+        if x.shape[-1] == self.n_theta:
+            init = self.init_x0_norm.to(x.dtype)
+            if x.dim() == 2:
+                init = init.unsqueeze(0).expand(x.shape[0], -1)
+            return x, init
+        return x[..., : self.n_theta], x[..., self.n_theta :]
+
+    def _denorm_init(self, init_norm: torch.Tensor) -> torch.Tensor:
+        """Physical initial states ``(..., P, n_slow)`` from the normalised variables."""
+        lb, ub = self.init_lb.reshape(-1), self.init_ub.reshape(-1)
+        phys = lb + init_norm * (ub - lb)
+        return phys.reshape(*init_norm.shape[:-1], self.init_lb.shape[0], self.init_n_slow)
+
+    def _Y0_with(self, Y0: torch.Tensor, init_phys):
+        """The windows' initial states with the variables written in."""
+        if init_phys is None:
+            return Y0
+        rows, cols = self._init_put
+        if init_phys.dim() == 3:  # a batch: (B, P, n_slow) -> (B, P, D_aug)
+            B = init_phys.shape[0]
+            base = Y0.unsqueeze(0).expand(B, -1, -1)
+            b_idx = torch.arange(B, device=Y0.device).repeat_interleave(rows.numel())
+            return base.index_put((b_idx, rows.repeat(B), cols.repeat(B)), init_phys.reshape(-1))
+        return Y0.index_put((rows, cols), init_phys.reshape(-1))
+
+    def _defects(self, end: torch.Tensor, Y0: torch.Tensor):
+        """``(Y_end[p] - Y0[p + 1]) / sd`` over the tied states:
+        ``(..., P-1, n_slow)``; zero across a gap between periods."""
+        idx = self.init_index
+        gap = end[..., :-1, :][..., idx] - Y0[..., 1:, :][..., idx]
+        tie = getattr(self, "init_tie", None)
+        if tie is not None:
+            gap = gap * tie
+        return gap / self.init_sd
+
+    def initial_state(self, x) -> dict:
+        """The windows' initial states at a solver vector, per executing
+        component: ``{component id: (P, n_c, state_size)}`` in physical
+        units (the recorded states with the estimated variables written in),
+        the format of the collocation's ``estimated_initial_state``; empty
+        without multiple shooting."""
+        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
+        windows = self._windows()
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
+            return {}
+        _theta, init_phys = self._physical(x)
+        Y = self._Y0_with(windows[0], init_phys)  # (P, D_aug); the component states lead
+        out = {}
+        layout = self.layout
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            out[comp.id] = Y[:, start:stop].reshape(Y.shape[0], n_c, ss).detach().cpu().clone()
+        return out
+
+    def continuity_jumps(self, x) -> dict:
+        """The jumps at the window boundaries at a solver vector, per
+        executing component: ``{component id: (P-1, n_c, state_size)}``, the
+        start of window ``p + 1`` minus the end of window ``p`` in physical
+        units (``NaN`` for a state that is not a variable, and at a boundary
+        that is a gap between periods, ``continuity_gaps``: nothing ties its
+        two sides, and its difference ranked first in the summary, 22 Oct
+        2026).  A jump is the part of a state the fit sets anew at a boundary
+        instead of carrying it over; the defect the objective scores is its
+        negative over the tolerance.  Empty without multiple shooting."""
+        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
+        windows = self._windows()
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
+            return {}
+        theta_phys, init_phys = self._physical(x)
+        Y0, tape = windows
+        Y = self._Y0_with(Y0, init_phys)
+        with torch.no_grad():
+            _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y, theta_phys, tape, return_end=True)
+        jumps = torch.full_like(Y[1:], float("nan"))
+        idx = self.init_index
+        jumps[:, idx] = Y[1:, idx] - end[:-1, idx]
+        if getattr(self, "init_tie", None) is not None:
+            jumps[~self.init_tie.reshape(-1).bool()] = float("nan")
+        return self._per_component(jumps)
+
+    def continuity_tolerance(self) -> dict:
+        """The continuity tolerance of every state that is a variable, per
+        executing component: ``{component id: (1, n_c, state_size)}``
+        (``NaN`` elsewhere); a jump over its tolerance is the defect column
+        the objective scores.  Empty without multiple shooting."""
+        windows = self._windows()
+        if self.n_init == 0 or windows is None:
+            return {}
+        Y0 = windows[0]
+        sd = torch.full_like(Y0[:1], float("nan"))
+        sd[:, self.init_index] = self.init_sd.to(sd.dtype)
+        return self._per_component(sd)
+
+    def _sensor_sd_per_state(self, dtype) -> torch.Tensor:
+        """``(D_aug,)``: the sd of the scored sensor that measures each state
+        (a sensor on the port that publishes it as it is,
+        :meth:`System.state_output_ports`; the smallest sd when several
+        do), ``NaN`` for a state no scored sensor measures."""
+        layout = self.layout
+        out = torch.full((int(layout.width),), float("nan"), dtype=dtype)
+        where = {}
+        for comp, (start, _stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            if not ss:
+                continue
+            for k, port in enumerate(comp.state_output_ports()):
+                if port is not None:
+                    where[(comp.id, port)] = (start, n_c, ss, k)
+        for (_md, sd), source in zip(self.est._measurements, self.composer.meas_sources):
+            if source[0] != "fresh" or (source[1], source[2]) not in where:
+                continue
+            start, n_c, ss, k = where[(source[1], source[2])]
+            copy = 0
+            if n_c > 1:
+                # the copy the sensor reads: the sender instance of its route
+                routes = source[3]
+                sender = torch.as_tensor(routes[0][1]).reshape(-1) if len(routes) == 1 else None
+                if sender is None or sender.numel() != 1:
+                    continue
+                copy = int(sender.item())
+            i = start + copy * ss + k
+            out[i] = float(sd) if not torch.isfinite(out[i]) else min(float(out[i]), float(sd))
+        return out
+
+    def _state_names(self, flat_index) -> list:
+        """``"<component id> x<k>"`` (``[<copy>]`` after the id when the
+        component has several) for positions of the state vector."""
+        names = []
+        for i in np.asarray(flat_index, dtype=np.int64).reshape(-1):
+            for comp, (start, stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+                if start <= i < stop:
+                    c, k = divmod(int(i) - start, ss)
+                    names.append(f"{comp.id}{f'[{c}]' if n_c > 1 else ''} x{k}")
+                    break
+        return names
+
+    def _per_component(self, flat: torch.Tensor) -> dict:
+        """``(rows, D_aug)`` split into ``{component id: (rows, n_c, state_size)}``."""
+        out = {}
+        for comp, (start, stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+            out[comp.id] = flat[:, start:stop].reshape(flat.shape[0], n_c, ss).detach().cpu().clone()
+        return out
+
+    # -- one-time capture of exogenous inputs + initial state ----------------
+    def _record_exogenous_inputs(self):
+        """One batched reference ``do_step`` rollout over all training periods
+        (at the model's current parameters, i.e. x0) via
+        :meth:`Simulator.record_exogenous_inputs`: per-step exogenous
+        inputs, the augmented initial states ``Y0``, the lagged sensors'
+        step-0 readings (``MEAS[0]``).  Also stacks the measured data per
+        period."""
+        est = self.est
+        md_list = [md for md, _ in est._measurements]
+
+        R = est.simulator.record_exogenous_inputs(
+            self.composer,
+            est._start_time,
+            est._end_time,
+            est._stepSize,
+            layout=self.layout,
+            meas_ids=[md.id for md in md_list],
+        )
+        self.CAP = R.exogenous_tape
+        self.Y0 = R.Y0
+        self.n_t = R.n_timesteps
+        self.M0 = [values[0] for values in R.measurement_tape]
+        self.ACT = []
+        dev = est._device
+        # the samples that rest on input steps a declared fill gave a value
+        filled = _filled_downstream(est.simulator.model)
+        for p, n_t in enumerate(self.n_t):
+            act = torch.zeros((n_t, len(md_list)), dtype=tps.float_dtype(), device=dev)
+            for m, md in enumerate(md_list):
+                vals = np.asarray(
+                    est.actual_readings[md.id][p].to_numpy(), dtype=np.float64
+                ).flatten()
+                act[:, m] = torch.tensor(
+                    vals[:n_t], dtype=tps.float_dtype(), device=dev
+                )
+                # ``scoring_mask``: a bool array per step on the measuring
+                # device, False where the sample must not be scored (a duct
+                # sensor while its fan is off).  Carried on the device, not
+                # in the data: the loaders interpolate gaps away.  A masked
+                # sample becomes NaN here and a zero residual below.
+                mask = getattr(md, "scoring_mask", None)
+                if mask is not None:
+                    keep = torch.as_tensor(
+                        _period_mask(mask, est.actual_readings[md.id][p].index, n_t), device=dev
+                    )
+                    act[~keep, m] = float("nan")
+                if md.id in filled:
+                    hit = np.asarray(filled[md.id][p], dtype=bool)[:n_t]
+                    act[: len(hit), m][torch.as_tensor(hit, device=dev)] = float("nan")
+            self.ACT.append(act)
+
+        LOGGER.config(
+            "Functional single-shooting: %d period(s) x %s steps | captured inputs=%d | "
+            "feedback lags=%d",
+            len(self.n_t),
+            self.n_t,
+            len(self.composer._exogenous_keys),
+            self.composer.n_feedback,
+        )
+
+    # -- the rollout ----------------------------------------------------------
+    def _state_capacities(self, layout, dev, dtype):
+        """The heat capacity of every entry of the flat state vector [J/K],
+        ``(D,)``: the executing components' :meth:`state_heat_capacities`
+        (a fused block's in its members' order), ``NaN`` where a state holds
+        no heat or its component does not say."""
+        flat = torch.full((int(layout.width),), float("nan"), dtype=dtype, device=dev)
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            method = getattr(comp, "state_heat_capacities", None)
+            caps = method() if method is not None else None
+            if caps is None:
+                continue
+            caps = caps.to(device=dev, dtype=dtype)
+            if caps.shape[0] == 1 and n_c > 1:
+                caps = caps.expand(n_c, caps.shape[-1])
+            if tuple(caps.shape) != (n_c, ss):
+                LOGGER.warning(
+                    "multiple shooting: %s gives heat capacities of shape %s for its (%d, %d) states; "
+                    "they keep the range tolerance", comp.id, tuple(caps.shape), n_c, ss,
+                )
+                continue
+            flat[start:stop] = caps.reshape(-1)
+        return flat
+
+    def _windows(self):
+        """``(Y0 (P, D_aug), tape (n_t, P, n_exogenous))`` when the periods
+        are several of equal length (one batched rollout advances them all),
+        else ``None``; built once."""
+        cached = self.__dict__.get("_windows_cache", ...)
+        if cached is ...:
+            cached = None
+            if WINDOW_BATCHING and len(self.n_t) > 1 and len(set(int(n) for n in self.n_t)) == 1:
+                cached = (torch.stack(list(self.Y0)), torch.stack(list(self.CAP), dim=1))
+            self.__dict__["_windows_cache"] = cached
+        return cached
+
+    def _rollout(self, theta_phys: torch.Tensor, init_phys=None, *, transform_mode: bool = False):
+        """Modelled measurements per period, ``[(n_t, n_meas), ...]``, and the
+        multiple-shooting defects ``(P-1, n_slow)`` or ``None``.  Equal-length
+        periods in transform mode roll out as one batch of windows
+        (:meth:`Simulator.rollout_functional_windows`), else one after another
+        (:meth:`Simulator.rollout_functional`)."""
+        sim = self.est.simulator
+        windows = self._windows() if (transform_mode or self.n_init) else None
+        if windows is not None:
+            Y0, tape = windows
+            Y0 = self._Y0_with(Y0, init_phys)
+            if self.n_init:
+                out, end = sim.rollout_functional_windows(self.composer, Y0, theta_phys, tape, return_end=True)
+                return [out[p] for p in range(out.shape[0])], self._defects(end, Y0)
+            out = sim.rollout_functional_windows(self.composer, Y0, theta_phys, tape)
+            return [out[p] for p in range(out.shape[0])], None
+        return [
+            sim.rollout_functional(
+                self.composer,
+                self.Y0[p],
+                theta_phys,
+                self.CAP[p],
+                transform_mode=transform_mode,
+            )
+            for p in range(len(self.n_t))
+        ], None
+
+    def _rollout_meas(self, theta_phys: torch.Tensor, *, transform_mode: bool = False):
+        """Modelled measurements per period (no defects); kept for callers of the plain rollout."""
+        return self._rollout(theta_phys, None, transform_mode=transform_mode)[0]
+
+    def _rollout_batched(self, theta_phys_batch: torch.Tensor, init_phys_batch=None):
+        """Batched counterpart of :meth:`_rollout`: ``[(B, n_t, n_meas), ...]``
+        and the defects ``(B, P-1, n_slow)`` or ``None``."""
+        sim = self.est.simulator
+        B = theta_phys_batch.shape[0]
+        windows = self._windows()
+        if windows is not None:
+            Y0, tape = windows
+            Y0 = self._Y0_with(Y0, init_phys_batch)
+            if self.n_init:
+                out, end = sim.rollout_functional_batched_windows(self.composer, Y0, theta_phys_batch, tape, return_end=True)
+                Y0_rows = Y0 if Y0.dim() == 3 else Y0.unsqueeze(0).expand(B, -1, -1)
+                return [out[:, p] for p in range(out.shape[1])], self._defects(end, Y0_rows)
+            out = sim.rollout_functional_batched_windows(self.composer, Y0, theta_phys_batch, tape)
+            return [out[:, p] for p in range(out.shape[1])], None
+        return [
+            sim.rollout_functional_batched(
+                self.composer,
+                self.Y0[p].unsqueeze(0).expand(B, -1),
+                theta_phys_batch,
+                self.CAP[p],
+            )
+            for p in range(len(self.n_t))
+        ], None
+
+    def _rollout_meas_batched(self, theta_phys_batch: torch.Tensor):
+        """Batched modelled measurements per period (no defects)."""
+        return self._rollout_batched(theta_phys_batch, None)[0]
+
+    def _physical(self, x: torch.Tensor):
+        """``(theta_phys, init_phys or None)`` from a solver vector."""
+        theta_norm, init_norm = self._split(x)
+        return self._denorm(theta_norm), (None if init_norm is None else self._denorm_init(init_norm))
+
+    def raw_residuals(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        """Pure scored residual matrix ``actual - model`` (the measured
+        columns; the multiple-shooting defects are not part of it).
+
+        This method has no logging or estimator-state mutation and is therefore
+        safe under ``torch.func`` transforms and CUDA Graph capture.
+        """
+        theta_phys, init_phys = self._physical(theta)
+        Ms, _defects = self._rollout(theta_phys, init_phys, transform_mode=transform_mode)
+        return self._raw_residuals_from_meas(Ms)
+
+    def _raw_residuals_from_meas(self, Ms) -> torch.Tensor:
+        """Pure post-processing of rolled-out measurements (one sample; ``vmap``-able)."""
+        nw = self.est._n_warmup
+        raw_terms = []
+        for p, M in enumerate(Ms):
+            if any(self.meas_lag):
+                cols = []
+                for m, lag in enumerate(self.meas_lag):
+                    if lag:
+                        cols.append(torch.cat([self.M0[p][m : m + 1], M[:-1, m]]))
+                    else:
+                        cols.append(M[:, m])
+                M = torch.stack(cols, dim=1)
+            act = self.ACT[p][nw:]
+            diff = act - M[nw:]
+            # A NaN reading is an unscored sample (a ``scoring_mask`` gap):
+            # zero residual and zero gradient there.
+            raw_terms.append(torch.where(torch.isnan(act), torch.zeros_like(diff), diff))
+        return torch.cat(raw_terms, dim=0)
+
+    def _weighted(self, raw: torch.Tensor) -> torch.Tensor:
+        """The measured residual matrix on the loss scale."""
+        return raw / self._sd / torch.sqrt(self.loss_scale * self._denom)
+
+    def _weighted_defects(self, defects):
+        """The defects on the loss scale (already divided by their tolerance), or ``None``."""
+        if defects is None:
+            return None
+        return defects / torch.sqrt(self.loss_scale * self._denom)
+
+    def residual_vector(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        """Weighted residual whose squared norm equals :meth:`loss`: the
+        measured residuals, then the continuity defects."""
+        theta_phys, init_phys = self._physical(theta)
+        Ms, defects = self._rollout(theta_phys, init_phys, transform_mode=transform_mode)
+        parts = [self._weighted(self._raw_residuals_from_meas(Ms)).reshape(-1)]
+        wd = self._weighted_defects(defects)
+        if wd is not None:
+            parts.append(wd.reshape(-1))
+        return torch.cat(parts)
+
+    def loss(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        residual = self.residual_vector(theta, transform_mode=transform_mode)
+        return torch.sum(residual.square())
+
+    def _loss_from_rollout(self, Ms, defects=None) -> torch.Tensor:
+        value = torch.sum(self._weighted(self._raw_residuals_from_meas(Ms)).square())
+        wd = self._weighted_defects(defects)
+        if wd is not None:
+            value = value + torch.sum(wd.square())
+        return value
+
+    def _loss_from_meas(self, Ms) -> torch.Tensor:
+        return self._loss_from_rollout(Ms, None)
+
+    # -- per-column (per residual signal) losses: sum over columns == loss ------
+    def _column_loss_from_rollout(self, Ms, defects=None) -> torch.Tensor:
+        """``(n_meas [+ n_slow],)``: the measured columns, then one column per
+        tied state summing its defects over the window boundaries."""
+        cols = self._weighted(self._raw_residuals_from_meas(Ms)).square().sum(dim=0)
+        wd = self._weighted_defects(defects)
+        if wd is not None:
+            cols = torch.cat([cols, wd.square().sum(dim=0)])
+        return cols
+
+    def _column_loss_from_meas(self, Ms) -> torch.Tensor:
+        return self._column_loss_from_rollout(Ms, None)
+
+    def column_loss(self, theta: torch.Tensor, *, transform_mode: bool = False) -> torch.Tensor:
+        """Squared-residual sum per residual column; ``column_loss(theta).sum() == loss(theta)``."""
+        theta_phys, init_phys = self._physical(theta)
+        Ms, defects = self._rollout(theta_phys, init_phys, transform_mode=transform_mode)
+        return self._column_loss_from_rollout(Ms, defects)
+
+    def batched_column_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
+        """``(B, n_meas [+ n_slow])`` per-column losses for a batch of solver vectors."""
+        if theta_batch.device.type == "cpu":
+            return torch.stack([self.column_loss(th) for th in theta_batch])
+        if theta_batch.shape[0] == 1:
+            return self.column_loss(theta_batch[0], transform_mode=True).unsqueeze(0)
+        theta_phys, init_phys = self._physical(theta_batch)
+        Ms, defects = self._rollout_batched(theta_phys, init_phys)
+        if defects is None:
+            return torch.func.vmap(self._column_loss_from_meas)(Ms)
+        return torch.func.vmap(self._column_loss_from_rollout)(Ms, defects)
+
+    def batched_column_loss_and_grad(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-column losses ``(B, n_cols)`` and the gradient of their sum ``(B, n_theta_ext)``.
+
+        For block-separable problems (:meth:`parameter_structure`) block ``k``
+        of the gradient is the gradient of block ``k``'s own column sum, so one
+        backward pass serves every block.
+        """
+        z = theta_batch.detach().clone().requires_grad_(True)
+        cols = self.batched_column_loss(z)
+        (grad,) = torch.autograd.grad(cols.sum(), z)
+        return cols.detach(), grad.detach()
+
+    def batched_column_gradients(
+        self, theta_batch: torch.Tensor, selector: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-column losses ``(B, n_cols)`` and, per row, the gradient of
+        ``selector[b] . cols[b]`` ``(B, n_theta_ext)``.
+
+        With ``theta_batch`` the same parameters on every row and
+        ``selector`` one-hot rows, this is one chunk of the Jacobian of the
+        column losses, ``d c_j / d theta`` for ``B`` columns, from a single
+        batched backward pass: the residual-side curvature a Gauss-Newton
+        model needs, computed exactly rather than from gradient differences.
+        """
+        z = theta_batch.detach().clone().requires_grad_(True)
+        cols = self.batched_column_loss(z)
+        (grad,) = torch.autograd.grad((cols * selector).sum(), z)
+        return cols.detach(), grad.detach()
+
+    def parameter_structure(self):
+        """``(theta_block, column_block, n_blocks)`` from the composer's wiring
+        (:meth:`FunctionalModel.index_coupling`), extended by the
+        multiple-shooting variables and defect columns (each in the block of
+        its state's component); cached."""
+        cached = self.__dict__.get("_parameter_structure")
+        if cached is None:
+            theta_block, column_block, n_blocks = self.composer.index_coupling()
+            if self.n_init:
+                P1 = self.init_lb.shape[0]
+                theta_block = np.concatenate([np.asarray(theta_block), np.tile(self.init_blocks, P1)])
+                column_block = np.concatenate([np.asarray(column_block), self.init_blocks])
+            cached = (theta_block, column_block, n_blocks)
+            self.__dict__["_parameter_structure"] = cached
+        return cached
+
+    def curvature_structure(self) -> list:
+        """Per entry of the extended theta the curvature group its component
+        names (:meth:`FunctionalModel.curvature_groups`); the multiple-shooting
+        variables name none (their block's main group)."""
+        return list(self.composer.curvature_groups(self.n_theta)) + [None] * int(self.n_init)
+
+    def batched_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
+        if theta_batch.device.type == "cpu":
+            return torch.stack([self.loss(th) for th in theta_batch])
+        if theta_batch.shape[0] == 1:
+            return self.loss(theta_batch[0], transform_mode=True).unsqueeze(0)
+        # Batched rollout (compiled batched step where available), then the
+        # pure residual post-processing vmap-ed over the batch dimension.
+        theta_phys, init_phys = self._physical(theta_batch)
+        Ms, defects = self._rollout_batched(theta_phys, init_phys)
+        if defects is None:
+            return torch.func.vmap(self._loss_from_meas)(Ms)
+        return torch.func.vmap(self._loss_from_rollout)(Ms, defects)
+
+    def batched_value_and_grad(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # Reverse mode is plain ``torch.autograd.grad`` on every device.
+        # functorch's ``grad_and_value`` transform records a CUDA graph that
+        # is valid for exactly one launch on some builds (torch 2.11+cu128 on
+        # an A100: the second replay raises an illegal memory access even
+        # back-to-back with nothing in between, while the same graph replays
+        # fine on torch 2.13+cu130/Windows).  ``vmap`` of the *forward*
+        # rollout alone is capture-safe (validated on the same A100 with an
+        # eager cross-check), so batches keep one wide rollout; a single
+        # start skips vmap, which captures faster.  The transform-mode
+        # rollout (no parameter cache) keeps the captured graph free of
+        # Python-side state.
+        z = theta_batch.detach().clone().requires_grad_(True)
+        value = self.batched_loss(z)
+        (grad,) = torch.autograd.grad(value.sum(), z)
+        return value.detach(), grad.detach()
+
+    def batched_residual_and_jacobian(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        fn = torch.func.jacfwd(
+            lambda th: self.residual_vector(th, transform_mode=True),
+            argnums=0,
+            has_aux=False,
+        )
+        residual = torch.func.vmap(
+            lambda th: self.residual_vector(th, transform_mode=True)
+        )(theta_batch)
+        jacobian = torch.func.vmap(fn)(theta_batch)
+        return residual, jacobian
+
+    # -- Estimator._obj drop-in (scalar mode) ---------------------------------
+    def loglike(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
+        """Same contract (and side-effect diagnostics) as ``Estimator._obj``
+        in scalar mode; differentiable w.r.t. ``theta`` (normalized)."""
+        if output != "scalar":
+            raise ValueError("functional single-shooting objective is scalar-only")
+        est = self.est
+        raw = self.raw_residuals(theta)
+        # Everything downstream of the raw residuals (sd weighting, padded-
+        # horizon normalization, rescale-to-100, diagnostics) is THE shared
+        # objective -- the same method the object-graph _obj ends in, so the
+        # two paths cannot diverge there by construction.  ``raw`` holds only
+        # the scored rows; the object-graph path passes the padded horizon
+        # with zero rows -- identical sums either way.
+        loss = est._loglike_from_residuals(raw, output)
+        if not torch.isfinite(loss.detach()).all():
+            # Mirror the object-graph recovery for diverging iterates.  The
+            # do_step path VALIDATES port values and raises on NaN, which
+            # ``_obj_ad`` converts to a large penalty + zero gradient; the
+            # composed rollout has no such validation, so a physically
+            # unstable theta would otherwise hand the solver a silent nan
+            # (SLSQP then stalls and can terminate AT the nan iterate).
+            LOGGER.warning(
+                "functional objective non-finite at this theta -- returning penalty"
+            )
+            try:
+                for line in est._format_theta_dump(theta.detach().cpu().numpy()):
+                    LOGGER.warning("%s", line)
+            except Exception:  # noqa: BLE001
+                pass
+            est._last_rmse = float("nan")
+            est._last_rmse_per_sensor = {}
+            # ``0 * theta.sum()`` keeps the result attached to theta so the
+            # autograd path yields a well-defined ZERO gradient (same
+            # backtracking behaviour as the object-graph recovery).
+            penalty = 0.0 * theta.sum() + 1e10
+            est._loglike = penalty
+            return penalty
+        return loss

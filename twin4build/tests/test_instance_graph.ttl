@@ -1,0 +1,29 @@
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+
+<http://example.org/test#AHU_1> a brick:AHU ;
+    brick:feeds <http://example.org/test#Damper_1>,
+        <http://example.org/test#Damper_2> .
+
+<http://example.org/test#Damper_1> a brick:Damper ;
+    brick:feeds <http://example.org/test#Room_1> .
+
+<http://example.org/test#Damper_2> a brick:Damper ;
+    brick:feeds <http://example.org/test#Damper_21>,
+        <http://example.org/test#Damper_22> .
+
+<http://example.org/test#Damper_21> a brick:Damper ;
+    brick:feeds <http://example.org/test#Room_2> .
+
+<http://example.org/test#Damper_22> a brick:Damper ;
+    brick:feeds <http://example.org/test#Room_2> .
+
+<http://example.org/test#Room_1> a brick:Room ;
+    brick:hasPoint <http://example.org/test#Temperature_Sensor_1> .
+
+<http://example.org/test#Temperature_Sensor_1> a brick:Temperature_Sensor .
+
+<http://example.org/test#Temperature_Sensor_2> a brick:Temperature_Sensor .
+
+<http://example.org/test#Room_2> a brick:Room ;
+    brick:hasPoint <http://example.org/test#Temperature_Sensor_2> .
+

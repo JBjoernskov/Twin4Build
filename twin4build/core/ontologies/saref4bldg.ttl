@@ -1,0 +1,2690 @@
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix s4bldg: <https://saref.etsi.org/saref4bldg/> .
+@prefix saref: <https://saref.etsi.org/core/> .
+@prefix vann: <http://purl.org/vocab/vann/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+dcterms:creator a owl:AnnotationProperty .
+
+dcterms:dateCopyrighted a owl:AnnotationProperty .
+
+dcterms:description a owl:AnnotationProperty .
+
+dcterms:issued a owl:AnnotationProperty .
+
+dcterms:license a owl:AnnotationProperty .
+
+dcterms:modified a owl:AnnotationProperty .
+
+dcterms:publisher a owl:AnnotationProperty .
+
+dcterms:rightsHolder a owl:AnnotationProperty .
+
+dcterms:source a owl:AnnotationProperty .
+
+dcterms:title a owl:AnnotationProperty .
+
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+
+xsd:duration a rdfs:Datatype .
+
+<http://www.w3.org/2003/01/geo/wgs84_pos#location> a owl:ObjectProperty ;
+    rdfs:label "location"@en ;
+    rdfs:comment "The relation between something and the point,  or other geometrical thing in space, where it is.  For example, the realtionship between a radio tower and a Point with a given lat and long. Or a relationship between a park and its outline as a closed arc of points, or a road and its location as a arc (a sequence of points). Clearly in practice there will be limit to the accuracy of any such statement, but one would expect an accuracy appropriate for the size of the object and uses such as mapping ."@en ;
+    rdfs:isDefinedBy <http://www.w3.org/2003/01/geo/wgs84_pos#> .
+
+prov:hadPrimarySource a owl:AnnotationProperty .
+
+saref:hasValue a owl:DatatypeProperty ;
+    rdfs:label "has value"@en ;
+    rdfs:comment "A relationship defining the value of a certain property, e.g., energy or power"@en ;
+    rdfs:isDefinedBy saref: .
+
+s4bldg: a owl:Ontology ;
+    dcterms:creator <http://purl.org/net/mpoveda>,
+        <http://www.garcia-castro.com/foaf.rdf#me> ;
+    dcterms:description "This ontology extends the SAREF ontology for the building domain by defining building devices and how they are located in a building. This extension is based on the ISO 16739:2013 Industry Foundation Classes (IFC) standard for data sharing in the construction and facility management industries. The descriptions of the classes and properties extracted from IFC have been taken from the IFC documentation."@en ;
+    dcterms:issued "2020-04-13"^^xsd:date ;
+    dcterms:license <https://forge.etsi.org/etsi-software-license> ;
+    dcterms:modified "2020-06-05"^^xsd:date ;
+    dcterms:publisher <https://www.etsi.org/> ;
+    dcterms:source <https://saref.etsi.org/sources/saref4bldg/> ;
+    dcterms:title "SAREF extension for building"@en ;
+    vann:preferredNamespacePrefix "s4bldg" ;
+    vann:preferredNamespaceUri "https://saref.etsi.org/saref4bldg/" ;
+    rdfs:comment """Information about changes compared to version 1.1.1: 
+ - Updated namespaces for compatibility with SAREF v3."""@en ;
+    rdfs:seeAlso <https://www.etsi.org/deliver/etsi_ts/103400_103499/10341003/01.01.02_60/ts_10341003v010102p.pdf> ;
+    owl:versionIRI <https://saref.etsi.org/saref4bldg/v1.1.2/> ;
+    owl:versionInfo "v1.1.2" .
+
+s4bldg:Actuator a owl:Class ;
+    rdfs:label "Actuator"@en ;
+    rdfs:comment "An actuator is a mechanical device for moving or controlling a mechanism or system. An actuator takes energy, usually created by air, electricity, or liquid, and converts that into some kind of motion."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcActuator" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:failPosition ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:manualOverride ],
+        saref:Actuator,
+        s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifcactuator.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_actuatortypecommon.htm> .
+
+s4bldg:AirToAirHeatRecovery a owl:Class ;
+    rdfs:label "Air to air heat recovery"@en ;
+    rdfs:comment "An air-to-air heat recovery device employs a counter-flow heat exchanger between inbound and outbound air flow. It is typically used to transfer heat from warmer air in one chamber to cooler air in the second chamber (i.e., typically used to recover heat from the conditioned air being exhausted and the outside air being supplied to a building), resulting in energy savings from reduced heating (or cooling) requirements."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcAirToAirHeatRecovery" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:heatTransferTypeEnum ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryAirFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryAirFlowRateMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryAirFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryAirFlowRateMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasDefrost ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcairtoairheatrecovery.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_airtoairheatrecoverytypecommon.htm> .
+
+s4bldg:Alarm a owl:Class ;
+    rdfs:label "Alarm"@en ;
+    rdfs:comment """An alarm is a device that signals the existence of a condition or situation that is outside the boundaries of normal expectation or that activates such a device.
+
+Alarms include the provision of break glass buttons and manual pull boxes that are used to activate alarms."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcAlarm" ;
+    rdfs:subClassOf s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifcalarm.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_alarmtypecommon.htm> .
+
+s4bldg:AudioVisualAppliance a owl:Class ;
+    rdfs:label "Audio visual appliance"@en ;
+    rdfs:comment """An audio-visual appliance is a device that displays, captures, transmits, or receives audio or video.
+
+Audio-visual appliances may be fixed in place or may be able to be moved from one space to another. They may require an electrical supply that may be supplied either by an electrical circuit or provided from a local battery source. Audio-visual appliances may be connected to data circuits including specialist circuits for audio visual purposes only."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcAudioVisualApplicance" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:audioVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:mediaSource ],
+        s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcaudiovisualappliance.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_audiovisualappliancetypecommon.htm> .
+
+s4bldg:Boiler a owl:Class ;
+    rdfs:label "Boiler"@en ;
+    rdfs:comment "A boiler is a closed, pressure-rated vessel in which water or other fluid is heated using an energy source such as natural gas, heating oil, or electricity. The fluid in the vessel is then circulated out of the boiler for use in various processes or heating applications."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcBoiler" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:heatTransferSurfaceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalEnergyConsumption ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalPartLoadRatio ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:outletTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:outletTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:pressureRating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterInletTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterInletTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterStorageCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:energySource ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isWaterStorageHeater ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:operatingMode ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcboiler.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_boilertypecommon.htm> .
+
+s4bldg:Burner a owl:Class ;
+    rdfs:label "Burner"@en ;
+    rdfs:comment "A burner is a device that converts fuel into heat through combustion. It includes gas, oil, and wood burners."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcBurner" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:energySource ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcburner.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_burnertypecommon.htm> .
+
+s4bldg:Chiller a owl:Class ;
+    rdfs:label "Chiller"@en ;
+    rdfs:comment "A chiller is a device used to remove heat from a liquid via a vapor-compression or absorption refrigeration cycle to cool a fluid, typically water or a mixture of water and glycol. The chilled fluid is then used to cool and dehumidify air in a building."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcChiller" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalCondensingTemperature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalEfficiency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalEvaporatingTemmperature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatRejectionRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalPowerConsumption ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcchiller.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_chillertypecommon.htm> .
+
+s4bldg:Coil a owl:Class ;
+    rdfs:label "Coil"@en ;
+    rdfs:comment """A coil is a device used to provide heat transfer between non-mixing media. A common example is a cooling coil, which utilizes a finned coil in which circulates chilled water, antifreeze, or refrigerant that is used to remove heat from air moving across the surface of the coil. A coil may be used either for heating or cooling purposes by placing a series of tubes (the coil) carrying a heating or cooling fluid into an airstream. The coil may be constructed from tubes bundled in a serpentine form or from finned tubes that give a extended heat transfer surface.
+
+Coils may also be used for non-airflow cases such as embedded in a floor slab."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCoil" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:airFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:airFlowRateMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalLatentCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSensibleCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalUa ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:placementType ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifccoil.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_coiltypecommon.htm> .
+
+s4bldg:CommunicationAppliance a owl:Class ;
+    rdfs:label "Communication appliance"@en ;
+    rdfs:comment """A communications appliance transmits and receives electronic or digital information as data or sound.
+
+Communication appliances may be fixed in place or may be able to be moved from one space to another. Communication appliances require an electrical supply that may be supplied either by an electrical circuit or provided from a local battery source."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCommunicationAppliance" ;
+    rdfs:subClassOf s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifccommunicationsappliance.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_communicationsappliancetypecommon.htm> .
+
+s4bldg:Compressor a owl:Class ;
+    rdfs:label "Compressor"@en ;
+    rdfs:comment "A compressor is a device that compresses a fluid typically used in a refrigeration circuit."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCompressor" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:compressorSpeed ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:idealCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:idealShaftPower ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:impellerDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:partLoadRatioMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:partLoadRatioMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasHotGasBypass ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:powerSource ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:refrigerantClass ],
+        s4bldg:FlowMovingDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifccompressor.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_compressortypecommon.htm> .
+
+s4bldg:Condenser a owl:Class ;
+    rdfs:label "Condenser"@en ;
+    rdfs:comment "A condenser is a device that is used to dissipate heat, typically by condensing a substance such as a refrigerant from its gaseous to its liquid state."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCondenser" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:externalSurfaceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalRefrigerantVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalSurfaceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalWaterVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatTransferArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatTransferCoefficient ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:refrigerantClass ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifccondenser.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_condensertypecommon.htm> .
+
+s4bldg:Controller a owl:Class ;
+    rdfs:label "Controller"@en ;
+    rdfs:comment """A controller is a device that monitors inputs and controls outputs within a building automation system.
+
+A controller may be physical (having placement within a spatial structure) or logical (a software interface or aggregated within a programmable physical controller)."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcController" ;
+    rdfs:subClassOf s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifccontroller.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_controllertypecommon.htm> .
+
+s4bldg:CooledBeam a owl:Class ;
+    rdfs:label "Cooled beam"@en ;
+    rdfs:comment "A cooled beam (or chilled beam) is a device typically used to cool air by circulating a fluid such as chilled water through exposed finned tubes above a space. Typically mounted overhead near or within a ceiling, the cooled beam uses convection to cool the space below it by acting as a heat sink for the naturally rising warm air of the space. Once cooled, the air naturally drops back to the floor where the cycle begins again."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCooledBeam" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:coilLength ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:coilWidth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalCoolingCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatingCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalReturnWaterTemperatureCooling ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalReturnWaterTemperatureHeating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSorroundingHumidityCooling ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSorroundingTemperatureCooling ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSorroundingTemperatureHeating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSupplyWaterTemperatureCooling ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSupplyWaterTemperatureHeating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalWaterFlowCooling ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalWaterFlowHeating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterPressureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterPressureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:finishColor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:integratedLightingType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isFreeHanging ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:pipeConnectionEnum ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:waterFlowControlSystemType ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifccooledbeam.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_cooledbeamtypecommon.htm> .
+
+s4bldg:CoolingTower a owl:Class ;
+    rdfs:label "Cooling tower"@en ;
+    rdfs:comment "A cooling tower is a device which rejects heat to ambient air by circulating a fluid such as water through it to reduce its temperature by partial evaporation."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcCoolingTower" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:ambientDesignDryBulbTemperature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:ambientDesignWetBulbTemperature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:basinReserveVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:liftElevationDifference ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterRequirement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:capacityControl ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:circuitType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:controlStrategy ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:flowArrangement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfCells ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:sprayType ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifccoolingtower.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_coolingtowertypecommon.htm> .
+
+s4bldg:Damper a owl:Class ;
+    rdfs:label "Damper"@en ;
+    rdfs:comment "A damper typically participates in an HVAC duct distribution system and is used to control or modulate the flow of air."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcDamper" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:closeOffRating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:faceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:frameDepth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:frameThickness ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:leakageFullyClosed ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalAirFlowRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:openPressureDrop ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:temperatureRating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:workingPressureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:bladeAction ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:bladeEdge ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:bladeShape ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:frameType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfBlades ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:operation ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:orientation ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:airFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:bladeThickness ],
+        s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcdamper.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_dampertypecommon.htm> .
+
+s4bldg:DuctSilencer a owl:Class ;
+    rdfs:label "Duct silencer"@en ;
+    rdfs:comment "A duct silencer is a device that is typically installed inside a duct distribution system for the purpose of reducing the noise levels from air movement, fan noise, etc. in the adjacent space or downstream of the duct silencer device."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcDuctSilencer" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:airFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:airFlowRateMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:hydraulicDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:length ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:weight ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:workingPressureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:workingPressureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasExteriorInsulation ],
+        s4bldg:FlowTreatmentDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcductsilencer.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_ductsilencertypecommon.htm> .
+
+s4bldg:ElectricAppliance a owl:Class ;
+    rdfs:label "Electric appliance"@en ;
+    rdfs:comment """An electric appliance is a device intended for consumer usage that is powered by electricity.
+
+Electric appliances may be fixed in place or may be able to be moved from one space to another. Electric appliances require an electrical supply that may be supplied either by an electrical circuit or provided from a local battery source."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcElectricAppliance" ;
+    rdfs:subClassOf s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcelectricappliance.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_electricappliancetypecommon.htm> .
+
+s4bldg:ElectricFlowStorageDevice a owl:Class ;
+    rdfs:label "Electric flow storage device"@en ;
+    rdfs:comment "An electric flow storage device is a device in which electrical energy is stored and from which energy may be progressively released."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcElectricFlowStorageDevice" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalFrequency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSupplyVoltage ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalSupplyVoltageMin ],
+        s4bldg:FlowStorageDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcelectricflowstoragedevice.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_electricflowstoragedevicetypecommon.htm> .
+
+s4bldg:ElectricGenerator a owl:Class ;
+    rdfs:label "Electric generator"@en ;
+    rdfs:comment "An electric generator is an engine that is a machine for converting mechanical energy into electrical energy."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcElectricGenerator" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:electricGeneratorEfficiency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:powerOutputMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:startCurrentFactor ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcelectricgenerator.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_electricgeneratortypecommon.htm> .
+
+s4bldg:ElectricMotor a owl:Class ;
+    rdfs:label "Electric motor"@en ;
+    rdfs:comment "An electric motor is an engine that is a machine for converting electrical energy into mechanical energy."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcElectricMotor" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:electricMotorEfficiency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:lockedRotorCurrent ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:powerOutputMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:startCurrentFactor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:startingTime ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:teTime ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:frameSize ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasPartWinding ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isGuarded ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:motorEnclosureType ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcelectricmotor.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_electricmotortypecommon.htm> .
+
+s4bldg:ElectricTimeControl a owl:Class ;
+    rdfs:label "Electric time control"@en ;
+    rdfs:comment "An electric time control is a device that applies control to the provision or flow of electrical energy over time."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcElectricTimeControl" ;
+    rdfs:subClassOf s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcelectrictimecontrol.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_electrictimecontroltypecommon.htm> .
+
+s4bldg:Engine a owl:Class ;
+    rdfs:label "Engine"@en ;
+    rdfs:comment "An engine is a device that converts fuel into mechanical energy through combustion."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcEngine" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:energySource ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcengine.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_enginetypecommon.htm> .
+
+s4bldg:EvaporativeCooler a owl:Class ;
+    rdfs:label "Evaporative cooler"@en ;
+    rdfs:comment "An evaporative cooler is a device that cools air by saturating it with water vapor."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcEvaporativeCooler" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:heatExchangeArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterRequirement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:flowArrangement ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcevaporativecooler.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_evaporativecoolertypecommon.htm> .
+
+s4bldg:Evaporator a owl:Class ;
+    rdfs:label "Evaporator"@en ;
+    rdfs:comment "An evaporator is a device in which a liquid refrigerent is vaporized and absorbs heat from the surrounding fluid."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcEvaporator" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:externalSurfaceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalRefrigerantVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalSurfaceArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:internalWaterVolume ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatTransferArea ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalHeatTransferCoefficient ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:evaporationCoolant ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:evaporationMediumType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:refrigerantClass ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcevaporator.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_evaporatortypecommon.htm> .
+
+s4bldg:Fan a owl:Class ;
+    rdfs:label "Fan"@en ;
+    rdfs:comment "A fan is a device which imparts mechanical work on a gas. A typical usage of a fan is to induce airflow in a building services air distribution system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFan" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalAirFlowRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalPowerRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalRotationSpeed ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalStaticPressure ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalTotalPressure ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationalRiterial ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:capacityControlType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:motorDriveType ],
+        s4bldg:FlowMovingDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcfan.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_fantypecommon.htm> .
+
+s4bldg:Filter a owl:Class ;
+    rdfs:label "Filter"@en ;
+    rdfs:comment "A filter is an apparatus used to remove particulate or gaseous matter from fluids and gases."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFilter" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:finalResistance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:fluidFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:fluidFlowRateMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:initialResistance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalFilterFaceVelocity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalFlowRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalMediaSurfaceVelocity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalParticleGeometricMeanDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalParticleGeometricStandardDeviation ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalPressureDrop ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:weight ],
+        s4bldg:FlowTreatmentDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcfilter.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_filtertypecommon.htm> .
+
+s4bldg:FireSuppressionTerminal a owl:Class ;
+    rdfs:label "Fire suppression terminal"@en ;
+    rdfs:comment """A fire suppression terminal has the purpose of delivering a fluid (gas or liquid) that will suppress a fire.
+
+A fire suppression terminal provides for all forms of sprinkler, spreader and other form of terminal that is connected to a pipework system and intended to act in the role of suppressing a fire."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFireSuppressionTerminal" ;
+    rdfs:subClassOf s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/lexical/ifcfiresuppressionterminal.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/pset/pset_firesuppressionterminaltypecommon.htm> .
+
+s4bldg:FlowInstrument a owl:Class ;
+    rdfs:label "Flow instrument"@en ;
+    rdfs:comment """A flow instrument reads and displays the value of a particular property of a system at a point, or displays the difference in the value of a property between two points.
+
+Instrumentation is typically for the purpose of determining the value of the property at a point in time. It is not the purpose of an instrument to record or integrate the values over time (although they may be connected to recording devices that do perform such a function). This entity provides for all forms of mechanical flow instrument (thermometers, pressure gauges etc.) and electrical flow instruments (ammeters, voltmeters etc.)"""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowInstrument" ;
+    rdfs:subClassOf s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifcflowinstrument.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_flowinstrumenttypecommon.htm> .
+
+s4bldg:FlowMeter a owl:Class ;
+    rdfs:label "Flow meter"@en ;
+    rdfs:comment "A flow meter is a device that is used to measure the flow rate in a system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowMeter" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:readOutType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:remoteReading ],
+        s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcflowmeter.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_flowmetertypecommon.htm> .
+
+s4bldg:HeatExchanger a owl:Class ;
+    rdfs:label "Heat exchanger"@en ;
+    rdfs:comment "A heat exchanger is a device used to provide heat transfer between non-mixing media such as plate and shell and tube heat exchangers. HeatExchanger is commonly used on water-side distribution systems to recover energy from a liquid to another liquid (typically water-based), whereas AirToAirHeatRecovery is commonly used on air-side distribution systems to recover energy from a gas to a gas (usually air)."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcHeatExchanger" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:arrangement ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcheatexchanger.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_heatexchangertypecommon.htm> .
+
+s4bldg:Humidifier a owl:Class ;
+    rdfs:label "Humidifier"@en ;
+    rdfs:comment "A humidifier is a device that adds moisture into the air."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcHumidifier" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalAirFlowRate ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalMoistureGain ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:waterRequirement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:weight ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:application ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:internalControl ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifchumidifier.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_humidifiertypecommon.htm> .
+
+s4bldg:Interceptor a owl:Class ;
+    rdfs:label "Interceptor"@en ;
+    rdfs:comment "An interceptor is a device designed and installed in order to separate and retain deleterious, hazardous or undesirable matter while permitting normal sewage or liquids to discharge into a collection system by gravity."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcInterceptor" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:coverLength ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:coverWidth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:inletConnectionSize ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalBodyDepth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalBodyLength ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalBodyWidth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:outletConnectionSize ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:ventilatingPipeSize ],
+        s4bldg:FlowTreatmentDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/lexical/ifcinterceptor.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/pset/pset_interceptortypecommon.htm> .
+
+s4bldg:Lamp a owl:Class ;
+    rdfs:label "Lamp"@en ;
+    rdfs:comment "A lamp is an artificial light source such as a light bulb or tube."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcLamp" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:colorTemperature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:contributedLuminousFlux ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:lampMaintenanceFactor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:lightEmitterNominalPower ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:spectrumMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:spectrumMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:colorAppearance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:colorRenderingIndex ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:lampBallastType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:lampCompensationType ],
+        s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifclamp.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_lamptypecommon.htm> .
+
+s4bldg:MedicalDevice a owl:Class ;
+    rdfs:label "Medical device"@en ;
+    rdfs:comment "A medical device is attached to a medical piping system and operates upon medical gases to perform a specific function. Medical gases include medical air, medical vacuum, oxygen, carbon dioxide, nitrogen, and nitrous oxide."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcMedicalDevice" ;
+    rdfs:subClassOf s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcmedicaldevice.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_medicaldevicetypecommon.htm> .
+
+s4bldg:Outlet a owl:Class ;
+    rdfs:label "Outlet"@en ;
+    rdfs:comment """An outlet is a device installed at a point to receive one or more inserted plugs for electrical power or communications.
+
+Power outlets are commonly connected within a junction box; data outlets may be directly connected to a wall. For power outlets sharing the same circuit within a junction box, the ports should indicate the logical wiring relationship to the enclosing junction box, even though they may be physically connected to a cable going to another outlet, switch, or fixture."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcOutlet" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isPluggableOutlet ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOsSockets ],
+        s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcoutlet.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_outlettypecommon.htm> .
+
+s4bldg:ProtectiveDevice a owl:Class ;
+    rdfs:label "Protective device"@en ;
+    rdfs:comment """A protective device breaks an electrical circuit when a stated electric current that passes through it is exceeded.
+
+A protective device provides protection against electrical current only (not as a general protective device). It may be used to represent the complete set of elements including both the tripping unit and the breaking unit that provide the protection. This may be particularly useful at earlier stages of design where the approach to breaking the electrical supply may be determined but the method of tripping may not. Alternatively, this entity may be used to specifically represent the breaking unit alone (in which case the tripping unit will also be specifically identified). This entity is specific to dedicated protective devices and excludes electrical outlets that may have circuit protection."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcProtectiveDevice" ;
+    rdfs:subClassOf s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcprotectivedevice.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_protectivedevicetypecommon.htm> .
+
+s4bldg:ProtectiveDeviceTrippingUnit a owl:Class ;
+    rdfs:label "Protective device tripping unit"@en ;
+    rdfs:comment "A protective device tripping unit breaks an electrical circuit at a separate breaking unit when a stated electric current that passes through the unit is exceeded."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcProtectiveDeviceTrippingUnit" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:limitingTerminalSize ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:standard ],
+        s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcprotectivedevicetrippingunit.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_protectivedevicetrippingunittypecommon.htm> .
+
+s4bldg:Pump a owl:Class ;
+    rdfs:label "Pump"@en ;
+    rdfs:comment "A pump is a device which imparts mechanical work on fluids or slurries to move them through a channel or pipeline. A typical use of a pump is to circulate chilled water or heating hot water in a building services distribution system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcPump" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:connectionSize ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:flowResistanceMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:flowResistanceMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:netPositiveSuctionHead ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nomminalRotationSpeed ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operationTemperatureMin ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:pumpFlowRateMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:pumpFlowRateMin ],
+        s4bldg:FlowMovingDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcpump.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_pumptypecommon.htm> .
+
+s4bldg:SanitaryTerminal a owl:Class ;
+    rdfs:label "Sanitary terminal"@en ;
+    rdfs:comment "A sanitary terminal is a fixed appliance or terminal usually supplied with water and used for drinking, cleaning or foul water disposal or that is an item of equipment directly used with such an appliance or terminal."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcSanitaryTerminal" ;
+    rdfs:subClassOf s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/lexical/ifcsanitaryterminal.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcplumbingfireprotectiondomain/pset/pset_sanitaryterminaltypecommon.htm> .
+
+s4bldg:Sensor a owl:Class ;
+    rdfs:label "Sensor"@en ;
+    rdfs:comment "A sensor is a device that measures a physical quantity and converts it into a signal which can be read by an observer or by an instrument."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcSensor" ;
+    rdfs:subClassOf saref:Sensor,
+        s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifcsensor.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_sensortypecommon.htm> .
+
+s4bldg:ShadingDevice a owl:Class ;
+    rdfs:label "Shading device"@en ;
+    rdfs:comment "Shading devices are purpose built devices to protect from the sunlight, from natural light, or screening them from view. Shading devices can form part of the facade or can be mounted inside the building, they can be fixed or operable."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcShadingDevice" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:solarReflectance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:solarTransmittance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:thermalTransmittance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:visibleLightReflectance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:visibleLightTransmittance ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isExternal ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:mechanicalOperated ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:roughness ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:shadingDeviceType ],
+        s4bldg:BuildingDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgelements/lexical/ifcshadingdevice.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgelements/pset/pset_shadingdevicecommon.htm> .
+
+s4bldg:SolarDevice a owl:Class ;
+    rdfs:label "Solar device"@en ;
+    rdfs:comment "A solar device converts solar radiation into other energy such as electric current or thermal energy."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcSolarDevice" ;
+    rdfs:subClassOf s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcsolardevicetypeenum.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_solardevicetypecommon.htm> .
+
+s4bldg:SpaceHeater a owl:Class ;
+    rdfs:label "Space heater"@en ;
+    rdfs:comment """Space heaters utilize a combination of radiation and/or natural convection using a heating source such as electricity, steam or hot water to heat a limited space or area. Examples of space heaters include radiators, convectors, baseboard and finned-tube heaters.
+
+UnitaryEquipment should be used for packaged units supporting a combination of heating, cooling, and/or dehumidification; Coil should be used for coil-based floor heating."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcSpaceHeater" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:bodyMass ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:outputCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:thermalEfficiency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:thermalMassHeatCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:energySource ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:heatTransferDimension ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:heatTransferMedium ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfPanels ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfSections ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:placementType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:temperatureClassification ],
+        s4bldg:FlowTerminal ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcspaceheater.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_spaceheatertypecommon.htm> .
+
+s4bldg:SwitchingDevice a owl:Class ;
+    rdfs:label "Switching device"@en ;
+    rdfs:comment """A switch is used in a cable distribution system (electrical circuit) to control or modulate the flow of electricity.
+
+Switches include those used for electrical power, communications, audio-visual, or other distribution system types as determined by the available ports."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcSwitchingDevice" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasLock ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isIlluminated ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:legend ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfGangs ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:switchFunction ],
+        s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifcswitchingdevice.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_switchingdevicetypecommon.htm> .
+
+s4bldg:Tank a owl:Class ;
+    rdfs:label "Tank"@en ;
+    rdfs:comment "A tank is a vessel or container in which a fluid or gas is stored for later use."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcTank" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:effectiveCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:firstCurvatureRadius ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalDepth ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalLengthOrDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalVolumetricCapacity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalWidthOrDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:operatingWeight ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondCurvatureRadius ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:accessType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:endShapeType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfSections ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:patternType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:storageType ],
+        s4bldg:FlowStorageDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifctank.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_tanktypecommon.htm> .
+
+s4bldg:Transformer a owl:Class ;
+    rdfs:label "Transformer"@en ;
+    rdfs:comment """A transformer is an inductive stationary device that transfers electrical energy from one circuit to another.
+
+Transformer is used to transform electric power; conversion of electric signals for other purposes is handled at other entities: Controller converts arbitrary signals, AudioVisualAppliance converts signals for audio or video streams, and CommunicationsAppliance converts signals for data or other communications usage."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcTransformer" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:apparentPowerMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:imaginaryImpedanceRatio ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryApparentPower ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryCurrent ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryFrequency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:primaryVoltage ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:realImpedanceRatio ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryApparentPower ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryCurrent ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryFrequency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:secondaryVoltage ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isNeutralPrimaryTerminalAvailable ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:isNeutralSecondaryTerminalAvailable ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:secondaryCurrentType ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:transformerVectorGroup ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/lexical/ifctransformer.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcelectricaldomain/pset/pset_transformertypecommon.htm> .
+
+s4bldg:TransportElement a owl:Class ;
+    rdfs:label "Transport element"@en ;
+    rdfs:comment "A transport element is a generalization of all transport related objects that move people, animals or goods within a building or building complex. The TransportElement defines the occurrence of a transport element. "@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcTransportElement" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:capacityWeight ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:positiveInteger ;
+            owl:onProperty s4bldg:capacityPeople ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:fireExit ],
+        saref:Device ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcproductextension/lexical/ifctransportelement.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcproductextension/pset/pset_transportelementcommon.htm> .
+
+s4bldg:TubeBundle a owl:Class ;
+    rdfs:label "Tube bundle"@en ;
+    rdfs:comment "A tube bundle is a device consisting of tubes and bundles of tubes used for heat transfer and contained typically within other energy conversion devices, such as a chiller or coil."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcTubeBundle" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:foulingFactor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:horizontalSpacing ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:inLineRowSpacing ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:insideDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:length ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:nominalDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:outsideDiameter ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:staggeredRowSpacing ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:thermalConductivity ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:verticalSpacing ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:volumen ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty s4bldg:hasTurbulator ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfCircuits ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:integer ;
+            owl:onProperty s4bldg:numberOfRows ],
+        s4bldg:EnergyConversionDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifctubebundle.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_tubebundletypecommon.htm> .
+
+s4bldg:UnitaryControlElement a owl:Class ;
+    rdfs:label "Unitary control element"@en ;
+    rdfs:comment """A unitary control element combines a number of control components into a single product, such as a thermostat or humidistat.
+
+A unitary control element provides a housing for an aggregation of control or electrical distribution elements that, in combination, perform a singular (unitary) purpose. Each item in the aggregation may have its own geometric representation and location."""@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcUnitaryControlElement" ;
+    rdfs:subClassOf s4bldg:DistributionControlDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/lexical/ifcunitarycontrolelement.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcbuildingcontrolsdomain/pset/pset_unitarycontrolelementtypecommon.htm> .
+
+s4bldg:Valve a owl:Class ;
+    rdfs:label "Valve"@en ;
+    rdfs:comment "A valve is used in a building services piping distribution system to control or modulate the flow of the fluid."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcValve" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:closeOffRating ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:flowCoefficient ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:size ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:testPressure ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:workingPressure ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:valveMechanism ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:valveOperation ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty s4bldg:valvePattern ],
+        s4bldg:FlowController ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcvalve.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_valvetypecommon.htm> .
+
+s4bldg:VibrationIsolator a owl:Class ;
+    rdfs:label "Vibration isolator"@en ;
+    rdfs:comment "A vibration isolator is a device used to minimize the effects of vibration transmissibility in a building."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcVibrationIsolator" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:height ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:isolatorCompressibility ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:isolatorStaticDeflection ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:supportedWeightMax ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty s4bldg:vibrationTransmissibility ],
+        saref:Device ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/lexical/ifcvibrationisolator.htm>,
+        <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifchvacdomain/pset/pset_vibrationisolatortypecommon.htm> .
+
+s4bldg:nominalSupplyVoltageMax a owl:ObjectProperty ;
+    rdfs:label "nominal supply voltage offset"@en ;
+    rdfs:comment "The maximum and minimum allowed voltage of the supply e.g. boundaries of 380V/440V may be applied for a nominal voltage of 400V."@en .
+
+s4bldg:shortCircuitVoltage a owl:ObjectProperty ;
+    rdfs:label "short circuit voltage"@en ;
+    rdfs:comment "A complex number that specifies the real and imaginary parts of the short-circuit voltage at rated current of a transformer given in %."@en .
+
+saref:Actuator a owl:Class ;
+    rdfs:label "Actuator"@en ;
+    rdfs:comment "A device responsible for moving or controlling a mechanism or system"@en ;
+    rdfs:isDefinedBy saref: .
+
+saref:Sensor a owl:Class ;
+    rdfs:label "Sensor"@en ;
+    rdfs:comment """A device that detects and responds to events or changes in the physical environment such as light, motion, or temperature changes.
+A device that has category saref:Sensor and performs a saref:SensingFunction."""@en ;
+    rdfs:isDefinedBy saref: .
+
+saref:hasTimestamp a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:label "has timestamp"@en ;
+    rdfs:comment "A relationship stating the timestamp of an entity (e.g. a measurement)."@en ;
+    rdfs:isDefinedBy "https://saref.etsi.org/core/" ;
+    rdfs:range xsd:dateTime .
+
+s4bldg:Building a owl:Class ;
+    rdfs:label "Building"@en ;
+    rdfs:comment "A building represents a structure that provides shelter for its occupants or contents and stands in one place. The building is also used to provide a basic element within the spatial structure hierarchy for the components of a building project (together with site, storey, and space)."@en ;
+    rdfs:seeAlso <https://w3id.org/ifc/IFC4_ADD1#IfcBuilding> ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom s4bldg:BuildingSpace ;
+            owl:onProperty s4bldg:hasSpace ] ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcproductextension/lexical/ifcbuilding.htm> .
+
+s4bldg:BuildingObject a owl:Class ;
+    rdfs:label "Building object"@en ;
+    rdfs:comment "An object in the building that can be controlled by devices, such as a door or a window that can be automatically opened or closed by an actuator.  (Definition taken from SAREF 1.0)"@en ;
+    rdfs:subClassOf s4bldg:PhysicalObject .
+
+s4bldg:accessType a owl:DatatypeProperty ;
+    rdfs:label "access type"@en ;
+    rdfs:comment "Defines the types of access (or cover) to a tank that may be specified. Note that covers are generally specified for rectangular tanks. For cylindrical tanks, access will normally be via a manhole."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:ambientDesignDryBulbTemperature a owl:ObjectProperty ;
+    rdfs:label "ambient design dry bulb temperature"@en ;
+    rdfs:comment "Ambient design dry bulb temperature used for selecting the cooling tower. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:ambientDesignWetBulbTemperature a owl:ObjectProperty ;
+    rdfs:label "ambient design wet bulb temperature"@en ;
+    rdfs:comment "Ambient design wet bulb temperature used for selecting the cooling tower. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:apparentPowerMax a owl:ObjectProperty ;
+    rdfs:label "maximum apparent power"@en ;
+    rdfs:comment "Maximum apparent power/capacity in VA (volt ampere). Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:application a owl:DatatypeProperty ;
+    rdfs:label "application"@en ;
+    rdfs:comment "Humidifier application. Fixed: Humidifier installed in a ducted flow distribution system. Portable: Humidifier is not installed in a ducted flow distribution system."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:arrangement a owl:DatatypeProperty ;
+    rdfs:label "arrangement"@en ;
+    rdfs:comment "Defines the basic flow arrangements for the heat exchanger: COUNTERFLOW: Counterflow heat exchanger arrangement. CROSSFLOW: Crossflow heat exchanger arrangement. PARALLELFLOW: Parallel flow heat exchanger arrangement. MULTIPASS: Multipass flow heat exchanger arrangement. OTHER: Other type of heat exchanger flow arrangement not defined above."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:audioVolume a owl:ObjectProperty ;
+    rdfs:label "audio volume"@en ;
+    rdfs:comment "Indicates discrete audio volume levels and corresponding sound power offsets, if applicable. Missing values may be interpolated. Measured in watts."@en .
+
+s4bldg:basinReserveVolume a owl:ObjectProperty ;
+    rdfs:label "basin reserve volume"@en ;
+    rdfs:comment "Volume between operating and overflow levels in cooling tower basin. Usually measured in cubic metre (m3)."@en .
+
+s4bldg:bladeAction a owl:DatatypeProperty ;
+    rdfs:label "blade action"@en ;
+    rdfs:comment "Blade action."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:bladeEdge a owl:DatatypeProperty ;
+    rdfs:label "blade edge"@en ;
+    rdfs:comment "Blade edge."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:bladeShape a owl:DatatypeProperty ;
+    rdfs:label "blade shape"@en ;
+    rdfs:comment "Blade shape. Flat means triple V-groove."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:bladeThickness a owl:ObjectProperty ;
+    rdfs:label "blade thickness"@en ;
+    rdfs:comment "The thickness of the damper blade. Usually measured in millimeters (mm)."@en .
+
+s4bldg:bodyMass a owl:ObjectProperty ;
+    rdfs:label "body mass"@en ;
+    rdfs:comment "Overall body mass of the heater. Usually measured in kilograms (kg) or grams (g)."@en .
+
+s4bldg:capacityControl a owl:DatatypeProperty ;
+    rdfs:label "capacity control"@en ;
+    rdfs:comment "FanCycling: Fan is cycled on and off to control duty. TwoSpeedFan: Fan is switched between low and high speed to control duty. VariableSpeedFan: Fan speed is varied to control duty. DampersControl: Dampers modulate the air flow to control duty. BypassValveControl: Bypass valve modulates the water flow to control duty. MultipleSeriesPumps: Turn on/off multiple series pump to control duty. TwoSpeedPump: Switch between high/low pump speed to control duty. VariableSpeedPump: vary pump speed to control duty."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:capacityControlType a owl:DatatypeProperty ;
+    rdfs:label "capacity control type"@en ;
+    rdfs:comment "InletVane: Control by adjusting inlet vane. VariableSpeedDrive: Control by variable speed drive. BladePitchAngle: Control by adjusting blade pitch angle. TwoSpeed: Control by switch between high and low speed. DischargeDamper: Control by modulating discharge damper."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:capacityPeople a owl:DatatypeProperty ;
+    rdfs:label "capacity people"@en ;
+    rdfs:comment "Capacity of the transportation element measured in numbers of person."@en ;
+    rdfs:range xsd:nonNegativeInteger .
+
+s4bldg:capacityWeight a owl:ObjectProperty ;
+    rdfs:label "capacity weight"@en ;
+    rdfs:comment "Capacity of the transport element measured by weight. Usually measured in kilograms (kg) or grams (g)."@en .
+
+s4bldg:circuitType a owl:DatatypeProperty ;
+    rdfs:label "circuit type"@en ;
+    rdfs:comment "OpenCircuit: Exposes water directly to the cooling atmosphere. CloseCircuit: The fluid is separated from the atmosphere by a heat exchanger. Wet: The air stream or the heat exchange surface is evaporatively cooled. Dry: No evaporation into the air stream. DryWet: A combination of a dry tower and a wet tower."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:coilLength a owl:ObjectProperty ;
+    rdfs:label "coil length"@en ;
+    rdfs:comment "Length of coil. Usually measured in millimeters (mm)."@en .
+
+s4bldg:coilWidth a owl:ObjectProperty ;
+    rdfs:label "coil width"@en ;
+    rdfs:comment "Width of coil. Usually measured in millimeters (mm"@en .
+
+s4bldg:colorAppearance a owl:DatatypeProperty ;
+    rdfs:label "color appearance"@en ;
+    rdfs:comment "In both the DIN and CIE standards, artificial light sources are classified in terms of their color appearance. To the human eye they all appear to be white the difference can only be detected by direct comparison. Visual performance is not directly affected by differences in color appearance."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:colorRenderingIndex a owl:DatatypeProperty ;
+    rdfs:label "color rendering index"@en ;
+    rdfs:comment "The CRI indicates how well a light source renders eight standard colors compared to perfect reference lamp with the same color temperature. The CRI scale ranges from 1 to 100, with 100 representing perfect rendering properties."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:colorTemperature a owl:ObjectProperty ;
+    rdfs:label "color temperature"@en ;
+    rdfs:comment "The color temperature of any source of radiation is defined as the temperature (in Kelvin) of a black-body or Planckian radiator whose radiation has the same chromaticity as the source of radiation. Often the values are only approximate color temperatures as the black-body radiator cannot emit radiation of every chromaticity value. The color temperatures of the commonest artificial light sources range from less than 3000K (warm white) to 4000K (intermediate) and over 5000K (daylight). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:compressorSpeed a owl:ObjectProperty ;
+    rdfs:label "compressor speed"@en ;
+    rdfs:comment "Compressor speed. Usually measured in cycles/s."@en .
+
+s4bldg:connectionSize a owl:ObjectProperty ;
+    rdfs:label "connection size"@en ;
+    rdfs:comment "The connection size of the to and from the pump. Usually measured in millimeters (mm)."@en .
+
+s4bldg:contributedLuminousFlux a owl:ObjectProperty ;
+    rdfs:label "contributed luminous flux"@en ;
+    rdfs:comment "Luminous flux is a photometric measure of radiant flux, i.e. the volume of light emitted from a light source. Luminous flux is measured either for the interior as a whole or for a part of the interior (partial luminous flux for a solid angle). All other photometric parameters are derivatives of luminous flux. Luminous flux is measured in lumens (lm). The luminous flux is given as a nominal value for each lamp. Usually measured in Lumen (lm, Candela Steradian)."@en .
+
+s4bldg:controlStrategy a owl:DatatypeProperty ;
+    rdfs:label "control strategy"@en ;
+    rdfs:comment "FixedExitingWaterTemp: The capacity is controlled to maintain a fixed exiting water temperature. WetBulbTempReset: The set-point is reset based on the wet-bulb temperature."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:coverLength a owl:ObjectProperty ;
+    rdfs:label "cover length"@en ;
+    rdfs:comment "The length measured along the x-axis in the local coordinate system or the radius (in the case of a circular shape in plan) of the cover of the oil interceptor. Usually measured in millimeters (mm)."@en .
+
+s4bldg:coverWidth a owl:ObjectProperty ;
+    rdfs:label "cover width"@en ;
+    rdfs:comment "The length measured along the x-axis in the local coordinate system of the cover of the oil interceptor. Usually measured in millimeters (mm)."@en .
+
+s4bldg:effectiveCapacity a owl:ObjectProperty ;
+    rdfs:label "effective capacity"@en ;
+    rdfs:comment "The total effective or actual volumetric capacity of the tank. Usually measured in cubic metre (m3).B3"@en .
+
+s4bldg:electricGeneratorEfficiency a owl:ObjectProperty ;
+    rdfs:label "electric generator efficiency"@en ;
+    rdfs:comment "The ratio of output capacity to intake capacity."@en .
+
+s4bldg:electricMotorEfficiency a owl:ObjectProperty ;
+    rdfs:label "electric motor efficiency"@en ;
+    rdfs:comment "The ratio of output capacity to intake capacity."@en .
+
+s4bldg:endShapeType a owl:DatatypeProperty ;
+    rdfs:label "end shape type"@en ;
+    rdfs:comment "Defines the types of end shapes that can be used for preformed tanks. The convention for reading these enumerated values is that for a vertical cylinder, the first value is the base and the second is the top for a horizontal cylinder, the order of reading should be left to right. For a speherical tank, the value UNSET should be used.B5"@en ;
+    rdfs:range xsd:string .
+
+s4bldg:evaporationCoolant a owl:DatatypeProperty ;
+    rdfs:label "evaporation coolant"@en ;
+    rdfs:comment "The fluid used for the coolant in the evaporator."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:evaporationMediumType a owl:DatatypeProperty ;
+    rdfs:label "evaporation medium type"@en ;
+    rdfs:comment "ColdLiquid: Evaporator is using liquid type of fluid to exchange heat with refrigerant. ColdAir: Evaporator is using air to exchange heat with refrigerant."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:faceArea a owl:ObjectProperty ;
+    rdfs:label "face area"@en ;
+    rdfs:comment "Face area open to the airstream. Usually measured in square metre (m2)."@en .
+
+s4bldg:failPosition a owl:DatatypeProperty ;
+    rdfs:label "fail position"@en ;
+    rdfs:comment "Specifies the required fail-safe position of the actuator."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:finalResistance a owl:ObjectProperty ;
+    rdfs:label "final resistance"@en ;
+    rdfs:comment "Filter fluid resistance when replacement is required (i.e., Pressure drop at the maximum air flowrate across the filter when the filter needs replacement per ASHRAE Standard 52.1). Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:finishColor a owl:DatatypeProperty ;
+    rdfs:label "finish color"@en ;
+    rdfs:comment "Finish color for cooled beam."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:fireExit a owl:DatatypeProperty ;
+    rdfs:label "fire exit"@en ;
+    rdfs:comment "Indication whether this object is designed to serve as an exit in the case of fire (TRUE) or not (FALSE). Here whether the transport element (in case of e.g., a lift) is designed to serve as a fire exit, e.g., for fire escape purposes."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:firstCurvatureRadius a owl:ObjectProperty ;
+    rdfs:label "first curvature radius"@en ;
+    rdfs:comment "FirstCurvatureRadius should be defined as the base or left side radius of curvature value. Usually measured in millimeters (mm)."@en .
+
+s4bldg:flowCoefficient a owl:ObjectProperty ;
+    rdfs:label "flow coefficient"@en ;
+    rdfs:comment "Flow coefficient (the quantity of fluid that passes through a fully open valve at unit pressure drop), typically expressed as the Kv or Cv value for the valve."@en .
+
+s4bldg:flowResistanceMax a owl:ObjectProperty ;
+    rdfs:label "flow resistance range"@en ;
+    rdfs:comment "Allowable range of frictional resistance against which the fluid is being pumped. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:flowResistanceMin a owl:ObjectProperty ;
+    rdfs:label "flow resistance range"@en ;
+    rdfs:comment "Allowable range of frictional resistance against which the fluid is being pumped. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:fluidFlowRateMax a owl:ObjectProperty ;
+    rdfs:label "fluid flow rate range"@en ;
+    rdfs:comment "Possible range of fluid flowrate that can be delivered. Usually measured in m3/s."@en .
+
+s4bldg:fluidFlowRateMin a owl:ObjectProperty ;
+    rdfs:label "fluid flow rate range"@en ;
+    rdfs:comment "Possible range of fluid flowrate that can be delivered. Usually measured in m3/s."@en .
+
+s4bldg:foulingFactor a owl:ObjectProperty ;
+    rdfs:label "fouling factor"@en ;
+    rdfs:comment "Fouling factor of the tubes in the tube bundle. Usually measured in m2 Kelvin/Watt."@en .
+
+s4bldg:frameDepth a owl:ObjectProperty ;
+    rdfs:label "frame depth"@en ;
+    rdfs:comment "The length (or depth) of the damper frame. Usually measured in millimeters (mm)."@en .
+
+s4bldg:frameSize a owl:DatatypeProperty ;
+    rdfs:label "frame size"@en ;
+    rdfs:comment "Designation of the frame size according to the named range of frame sizes designated at the place of use or according to a given standard."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:frameThickness a owl:ObjectProperty ;
+    rdfs:label "frame thickness"@en ;
+    rdfs:comment "The thickness of the damper frame material. Usually measured in millimeters (mm)."@en .
+
+s4bldg:frameType a owl:DatatypeProperty ;
+    rdfs:label "frame type"@en ;
+    rdfs:comment "The type of frame used by the damper (e.g., Standard, Single Flange, Single Reversed Flange, Double Flange, etc.)."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:hasDefrost a owl:DatatypeProperty ;
+    rdfs:label "has defrost"@en ;
+    rdfs:comment "Whether the heat exchanger has defrost function or not."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:hasExteriorInsulation a owl:DatatypeProperty ;
+    rdfs:label "has exterior insulation"@en ;
+    rdfs:comment "TRUE if the silencer has exterior insulation. FALSE if it does not."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:hasHotGasBypass a owl:DatatypeProperty ;
+    rdfs:label "has hot gas bypass"@en ;
+    rdfs:comment "Whether or not hot gas bypass is provided for the compressor. TRUE = Yes, FALSE = No."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:hasLock a owl:DatatypeProperty ;
+    rdfs:label "has lock"@en ;
+    rdfs:comment "Indication of whether a switching device has a key operated lock (=TRUE) or not (= FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:hasPartWinding a owl:DatatypeProperty ;
+    rdfs:label "has part winding"@en ;
+    rdfs:comment "Indication of whether the motor is single speed, i.e. has a single winding (= FALSE) or multi-speed i.e.has part winding (= TRUE) ."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:hasTurbulator a owl:DatatypeProperty ;
+    rdfs:label "has turbulator"@en ;
+    rdfs:comment "TRUE if the tube has a turbulator, FALSE if it does not."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:heatExchangeArea a owl:ObjectProperty ;
+    rdfs:label "heat exchange area"@en ;
+    rdfs:comment "Heat exchange area. Usually measured in square metre (m2)."@en .
+
+s4bldg:heatTransferDimension a owl:DatatypeProperty ;
+    rdfs:label "heat transfer dimension"@en ;
+    rdfs:comment "Indicates how heat is transmitted according to the shape of the space heater."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:heatTransferMedium a owl:DatatypeProperty ;
+    rdfs:label "heat transfer medium"@en ;
+    rdfs:comment "Enumeration defining the heat transfer medium if applicable."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:heatTransferSurfaceArea a owl:ObjectProperty ;
+    rdfs:label "heat transfer surface area"@en ;
+    rdfs:comment "Total heat transfer area of the vessel. Usually measured in square metre (m2)."@en .
+
+s4bldg:heatTransferTypeEnum a owl:DatatypeProperty ;
+    rdfs:label "heat transfer type enum"@en ;
+    rdfs:comment "Type of heat transfer between the two air streams."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:height a owl:ObjectProperty ;
+    rdfs:label "height"@en ;
+    rdfs:comment "Height of the vibration isolator before tha application of load. Usually measured in millimeters (mm)."@en .
+
+s4bldg:horizontalSpacing a owl:ObjectProperty ;
+    rdfs:label "horizontal spacing"@en ;
+    rdfs:comment "Horizontal spacing between tubes in the tube bundle. Usually measured in millimeters (mm)."@en .
+
+s4bldg:hydraulicDiameter a owl:ObjectProperty ;
+    rdfs:label "hydraulic diameter"@en ;
+    rdfs:comment "Hydraulic diameter. Usually measured in millimeters (mm)."@en .
+
+s4bldg:idealCapacity a owl:ObjectProperty ;
+    rdfs:label "ideal capacity"@en ;
+    rdfs:comment "Compressor capacity under ideal conditions. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:idealShaftPower a owl:ObjectProperty ;
+    rdfs:label "ideal shaft power"@en ;
+    rdfs:comment "Compressor shaft power under ideal conditions. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:imaginaryImpedanceRatio a owl:ObjectProperty ;
+    rdfs:label "imaginary impedance ratio"@en ;
+    rdfs:comment "The ratio between the imaginary part of the zero sequence impedance and the imaginary part of the positive impedance (i.e. imaginary part of the short-circuit voltage) of the transformer. Used for three-phase transformer which includes a N-conductor."@en .
+
+s4bldg:impellerDiameter a owl:ObjectProperty ;
+    rdfs:label "impeller diameter"@en ;
+    rdfs:comment "Diameter of compressor impeller - used to scale performance of geometrically similar compressors. Usually measured in millimeters (mm)."@en .
+
+s4bldg:inLineRowSpacing a owl:ObjectProperty ;
+    rdfs:label "in line row spacing"@en ;
+    rdfs:comment "In-line tube row spacing. Usually measured in millimeters (mm)."@en .
+
+s4bldg:initialResistance a owl:ObjectProperty ;
+    rdfs:label "initial resistance"@en ;
+    rdfs:comment "Initial new filter fluid resistance (i.e., pressure drop at the maximum air flowrate across the filter when the filter is new per ASHRAE Standard 52.1). Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:inletConnectionSize a owl:ObjectProperty ;
+    rdfs:label "inlet connection size"@en ;
+    rdfs:comment "Size of the inlet connection. Usually measured in millimeters (mm)."@en .
+
+s4bldg:insideDiameter a owl:ObjectProperty ;
+    rdfs:label "inside diameter"@en ;
+    rdfs:comment "Actual inner diameter of the tube in the tube bundle. Usually measured in millimeters (mm)."@en .
+
+s4bldg:integratedLightingType a owl:DatatypeProperty ;
+    rdfs:label "integrated lighting type"@en ;
+    rdfs:comment "Integrated lighting in cooled beam."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:internalControl a owl:DatatypeProperty ;
+    rdfs:label "internal control"@en ;
+    rdfs:comment "Internal modulation control."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:isExternal a owl:DatatypeProperty ;
+    rdfs:label "is external"@en ;
+    rdfs:comment "Indication whether the element is designed for use in the exterior (TRUE) or not (FALSE). If (TRUE) it is an external element and faces the outside of the building."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isFreeHanging a owl:DatatypeProperty ;
+    rdfs:label "is free hanging"@en ;
+    rdfs:comment "Is it free hanging type (not mounted in a false ceiling)?"@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isGuarded a owl:DatatypeProperty ;
+    rdfs:label "is guarded"@en ;
+    rdfs:comment "Indication of whether the motor enclosure is guarded (= TRUE) or not (= FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isIlluminated a owl:DatatypeProperty ;
+    rdfs:label "is illuminated"@en ;
+    rdfs:comment "An indication of whether there is an illuminated indicator to show that the switch is on (=TRUE) or not (= FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isNeutralPrimaryTerminalAvailable a owl:DatatypeProperty ;
+    rdfs:label "is neutral primary terminal available"@en ;
+    rdfs:comment "An indication of whether the neutral point of the primary winding is available as a terminal (=TRUE) or not (= FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isNeutralSecondaryTerminalAvailable a owl:DatatypeProperty ;
+    rdfs:label "is neutral secondary terminal available"@en ;
+    rdfs:comment "An indication of whether the neutral point of the secondary winding is available as a terminal (=TRUE) or not (= FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isPluggableOutlet a owl:DatatypeProperty ;
+    rdfs:label "is pluggable outlet"@en ;
+    rdfs:comment "Indication of whether the outlet accepts a loose plug connection (= TRUE) or whether it is directly connected (= FALSE) or whether the form of connection has not yet been determined (= UNKNOWN)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isWaterStorageHeater a owl:DatatypeProperty ;
+    rdfs:label "is water storage heater"@en ;
+    rdfs:comment "This is used to identify if the boiler has storage capacity (TRUE). If FALSE, then there is no storage capacity built into the boiler, such as an instantaneous hot water heater."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:isolatorCompressibility a owl:ObjectProperty ;
+    rdfs:label "isolator compressibility"@en ;
+    rdfs:comment "The compressibility of the vibration isolator."@en .
+
+s4bldg:isolatorStaticDeflection a owl:ObjectProperty ;
+    rdfs:label "isolator static deflection"@en ;
+    rdfs:comment "Static deflection of the vibration isolator. Usually measured in millimeters (mm)."@en .
+
+s4bldg:lampBallastType a owl:DatatypeProperty ;
+    rdfs:label "lamp ballast type"@en ;
+    rdfs:comment "The type of ballast used to stabilise gas discharge by limiting the current during operation and to deliver the necessary striking voltage for starting. Ballasts are needed to operate Discharge Lamps such as Fluorescent, Compact Fluorescent, High-pressure Mercury, Metal Halide and High-pressure Sodium Lamps. Magnetic ballasts are chokes which limit the current passing through a lamp connected in series on the principle of self-induction. The resultant current and power are decisive for the efficient operation of the lamp. A specially designed ballast is required for every type of lamp to comply with lamp rating in terms of Luminous Flux, Color Appearance and service life. The two types of magnetic ballasts for fluorescent lamps are KVG Conventional (EC-A series) and VVG Low-loss ballasts (EC-B series). Low-loss ballasts have a higher efficiency, which means reduced ballast losses and a lower thermal load. Electronic ballasts are used to run fluorescent lamps at high frequencies (approx. 35 - 40 kHz)."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:lampCompensationType a owl:DatatypeProperty ;
+    rdfs:label "lamp compensation type"@en ;
+    rdfs:comment "Identifies the form of compensation used for power factor correction and radio suppression."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:lampMaintenanceFactor a owl:ObjectProperty ;
+    rdfs:label "lamp maintenance factor"@en ;
+    rdfs:comment "Non recoverable losses of luminous flux of a lamp due to lamp depreciation i.e. the decreasing of light output of a luminaire due to aging and dirt."@en .
+
+s4bldg:leakageFullyClosed a owl:ObjectProperty ;
+    rdfs:label "leakage fully closed"@en ;
+    rdfs:comment "Leakage when fully closed. Usually measured in m3/s."@en .
+
+s4bldg:legend a owl:DatatypeProperty ;
+    rdfs:label "legend"@en ;
+    rdfs:comment "A text inscribed or applied to the switch as a legend to indicate purpose or function."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:liftElevationDifference a owl:ObjectProperty ;
+    rdfs:label "lift elevation difference"@en ;
+    rdfs:comment "Elevation difference between cooling tower sump and the top of the tower. Usually measured in millimeters (mm)."@en .
+
+s4bldg:lightEmitterNominalPower a owl:ObjectProperty ;
+    rdfs:label "light emitter nominal power"@en ;
+    rdfs:comment "Light emitter nominal power. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:limitingTerminalSize a owl:ObjectProperty ;
+    rdfs:label "limiting terminal size"@en ;
+    rdfs:comment "The maximum terminal size capacity of the device. Usually measured in square metre (m2)."@en .
+
+s4bldg:lockedRotorCurrent a owl:ObjectProperty ;
+    rdfs:label "locked rotor current"@en ;
+    rdfs:comment "Input current when a motor armature is energized but not rotating. Usually measured in Ampere (A)."@en .
+
+s4bldg:manualOverride a owl:DatatypeProperty ;
+    rdfs:label "manual override"@en ;
+    rdfs:comment "Identifies whether hand-operated operation is provided as an override (= TRUE) or not (= FALSE). Note that this value should be set to FALSE by default in the case of a Hand Operated Actuator."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:mechanicalOperated a owl:DatatypeProperty ;
+    rdfs:label "mechanical operated"@en ;
+    rdfs:comment "Indication whether the element is operated machanically (TRUE) or not, i.e. manually (FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:mediaSource a owl:DatatypeProperty ;
+    rdfs:label "media source"@en ;
+    rdfs:comment "Indicates media sources and corresponding names of ports (DistributionPort with FlowDirection=SINK and PredefinedType=AUDIOVISUAL) or aggregated audio/video components (AudioVisualAppliance)."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:motorDriveType a owl:DatatypeProperty ;
+    rdfs:label "motor drive type"@en ;
+    rdfs:comment "Motor drive type: DIRECTDRIVE: Direct drive. BELTDRIVE: Belt drive. COUPLING: Coupling. OTHER: Other type of motor drive. UNKNOWN: Unknown motor drive type. "@en ;
+    rdfs:range xsd:string .
+
+s4bldg:motorEnclosureType a owl:DatatypeProperty ;
+    rdfs:label "motor enclosure type"@en ;
+    rdfs:comment "A list of the available types of motor enclosure from which that required may be selected."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:netPositiveSuctionHead a owl:ObjectProperty ;
+    rdfs:label "net positive suction head"@en ;
+    rdfs:comment "Minimum liquid pressure at the pump inlet to prevent cavitation. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:nominalBodyDepth a owl:ObjectProperty ;
+    rdfs:label "nominal body depth"@en ;
+    rdfs:comment "Nominal or quoted =length, measured along the z-axis of the local coordinate system of the object, of the body of the object. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalBodyLength a owl:ObjectProperty ;
+    rdfs:label "nominal body length"@en ;
+    rdfs:comment "Nominal or quoted length, measured along the x-axis of the local coordinate system of the object, of the body of the object. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalBodyWidth a owl:ObjectProperty ;
+    rdfs:label "nominal body width"@en ;
+    rdfs:comment "Nominal or quoted length, measured along the y-axis of the local coordinate system of the object, of the body of the object. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalCondensingTemperature a owl:ObjectProperty ;
+    rdfs:label "nominal condensing temperature"@en ;
+    rdfs:comment "Chiller condensing temperature. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalCoolingCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal cooling capacity"@en ;
+    rdfs:comment "Nominal cooling capacity. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalDepth a owl:ObjectProperty ;
+    rdfs:label "nominal depth"@en ;
+    rdfs:comment "The nominal depth of the tank. Note: Not required for a horizontal cylindrical tank. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalDiameter a owl:ObjectProperty ;
+    rdfs:label "nominal diameter"@en ;
+    rdfs:comment "Nominal diameter or width of the tubes in the tube bundle. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalEfficiency a owl:ObjectProperty ;
+    rdfs:label "nominal efficiency"@en ;
+    rdfs:comment "Nominal chiller efficiency under nominal conditions. "@en .
+
+s4bldg:nominalEnergyConsumption a owl:ObjectProperty ;
+    rdfs:label "nominal energy consumption"@en ;
+    rdfs:comment "Nominal fuel consumption rate required to produce the total boiler heat output. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalEvaporatingTemmperature a owl:ObjectProperty ;
+    rdfs:label "nominal evaporating temmperature"@en ;
+    rdfs:comment "Chiller evaporating temperature.Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalFilterFaceVelocity a owl:ObjectProperty ;
+    rdfs:label "nominal filter face velocity"@en ;
+    rdfs:comment "Filter face velocity. Usually measured in m/s."@en .
+
+s4bldg:nominalFlowRate a owl:ObjectProperty ;
+    rdfs:label "nominal flow rate"@en ;
+    rdfs:comment "Nominal fluid flow rate through the filter. Usually measured in m3/s."@en .
+
+s4bldg:nominalFrequency a owl:ObjectProperty ;
+    rdfs:label "nominal frequency"@en ;
+    rdfs:comment "The nominal frequency of the supply. Usually measured in cycles/s or Hertz (Hz)."@en .
+
+s4bldg:nominalHeatRejectionRate a owl:ObjectProperty ;
+    rdfs:label "nominal heat rejection rate"@en ;
+    rdfs:comment "Sum of the refrigeration effect and the heat equivalent of the power input to the compressor. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalHeatingCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal heating capacity"@en ;
+    rdfs:comment "Nominal heating capacity. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalLatentCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal latent capacity"@en ;
+    rdfs:comment "Nominal latent capacity. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalLengthOrDiameter a owl:ObjectProperty ;
+    rdfs:label "nominal length or diameter"@en ;
+    rdfs:comment "The nominal length or, in the case of a vertical cylindrical tank, the nominal diameter of the tank. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalMediaSurfaceVelocity a owl:ObjectProperty ;
+    rdfs:label "nominal media surface velocity"@en ;
+    rdfs:comment "Average fluid velocity at the media surface. Usually measured in m/s."@en .
+
+s4bldg:nominalMoistureGain a owl:ObjectProperty ;
+    rdfs:label "nominal moisture gain"@en ;
+    rdfs:comment "Nominal rate of water vapor added into the airstream. Usually measured in kg/s."@en .
+
+s4bldg:nominalPartLoadRatio a owl:ObjectProperty ;
+    rdfs:label "nominal part load ratio"@en ;
+    rdfs:comment "Allowable part load ratio range."@en .
+
+s4bldg:nominalParticleGeometricMeanDiameter a owl:ObjectProperty ;
+    rdfs:label "nominal particle geometric mean diameter"@en ;
+    rdfs:comment "Particle geometric mean diameter associated with nominal efficiency. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalParticleGeometricStandardDeviation a owl:ObjectProperty ;
+    rdfs:label "nominal particle geometric standard deviation"@en ;
+    rdfs:comment "Particle geometric standard deviation associated with nominal efficiency. "@en .
+
+s4bldg:nominalPowerConsumption a owl:ObjectProperty ;
+    rdfs:label "nominal power consumption"@en ;
+    rdfs:comment "Nominal total power consumption. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalPowerRate a owl:ObjectProperty ;
+    rdfs:label "nominal power rate"@en ;
+    rdfs:comment "Nominal fan power rate.Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalPressureDrop a owl:ObjectProperty ;
+    rdfs:label "nominal pressure drop"@en ;
+    rdfs:comment "Total pressure drop across the filter. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:nominalReturnWaterTemperatureCooling a owl:ObjectProperty ;
+    rdfs:label "nominal return water temperature cooling"@en ;
+    rdfs:comment "Nominal return water temperature (refers to nominal cooling capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalReturnWaterTemperatureHeating a owl:ObjectProperty ;
+    rdfs:label "nominal return water temperature heating"@en ;
+    rdfs:comment "Nominal return water temperature (refers to nominal heating capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalRotationSpeed a owl:ObjectProperty ;
+    rdfs:label "nominal rotation speed"@en ;
+    rdfs:comment "Nominal fan wheel speed. Usually measured in cycles/s."@en .
+
+s4bldg:nominalSensibleCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal sensible capacity"@en ;
+    rdfs:comment "Nominal sensible capacity. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:nominalSorroundingHumidityCooling a owl:ObjectProperty ;
+    rdfs:label "nominal sorrounding humidity cooling"@en ;
+    rdfs:comment "Nominal surrounding humidity (refers to nominal cooling capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalSorroundingTemperatureCooling a owl:ObjectProperty ;
+    rdfs:label "nominal sorrounding temperature cooling"@en ;
+    rdfs:comment "Nominal surrounding temperature (refers to nominal cooling capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalSorroundingTemperatureHeating a owl:ObjectProperty ;
+    rdfs:label "nominal sorrounding temperature heating"@en ;
+    rdfs:comment "Nominal surrounding temperature (refers to nominal heating capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalStaticPressure a owl:ObjectProperty ;
+    rdfs:label "nominal static pressure"@en ;
+    rdfs:comment "The static pressure within the air stream that the fan must overcome to insure designed circulation of air. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:nominalSupplyVoltage a owl:ObjectProperty ;
+    rdfs:label "nominal supply voltage"@en ;
+    rdfs:comment "The nominal voltage of the supply. Usually measured in Volts (V, W/A)."@en .
+
+s4bldg:nominalSupplyVoltageMin a owl:ObjectProperty ;
+    rdfs:label "nominal supply voltage offset"@en ;
+    rdfs:comment "The maximum and minimum allowed voltage of the supply e.g. boundaries of 380V/440V may be applied for a nominal voltage of 400V."@en .
+
+s4bldg:nominalSupplyWaterTemperatureCooling a owl:ObjectProperty ;
+    rdfs:label "nominal supply water temperature cooling"@en ;
+    rdfs:comment "Nominal supply water temperature (refers to nominal cooling capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalSupplyWaterTemperatureHeating a owl:ObjectProperty ;
+    rdfs:label "nominal supply water temperature heating"@en ;
+    rdfs:comment "Nominal supply water temperature (refers to nominal heating capacity). Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:nominalTotalPressure a owl:ObjectProperty ;
+    rdfs:label "nominal total pressure"@en ;
+    rdfs:comment "Nominal total pressure rise across the fan. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:nominalUa a owl:ObjectProperty ;
+    rdfs:label "nominal ua"@en ;
+    rdfs:comment "Nominal UA value."@en .
+
+s4bldg:nominalVolumetricCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal volumetric capacity"@en ;
+    rdfs:comment "The total nominal or design volumetric capacity of the tank. Usually measured in cubic metre (m3)."@en .
+
+s4bldg:nominalWaterFlowCooling a owl:ObjectProperty ;
+    rdfs:label "nominal water flow cooling"@en ;
+    rdfs:comment "Nominal water flow (refers to nominal cooling capacity). Usually measured in m3/s."@en .
+
+s4bldg:nominalWaterFlowHeating a owl:ObjectProperty ;
+    rdfs:label "nominal water flow heating"@en ;
+    rdfs:comment "Nominal water flow (refers to nominal heating capacity). Usually measured in m3/s."@en .
+
+s4bldg:nominalWidthOrDiameter a owl:ObjectProperty ;
+    rdfs:label "nominal width or diameter"@en ;
+    rdfs:comment "The nominal width or, in the case of a horizontal cylindrical tank, the nominal diameter of the tank. Note: Not required for a vertical cylindrical tank. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nomminalRotationSpeed a owl:ObjectProperty ;
+    rdfs:label "nomminal rotation speed"@en ;
+    rdfs:comment "Pump rotational speed under nominal conditions. Usually measured in cycles/s."@en .
+
+s4bldg:numberOfBlades a owl:DatatypeProperty ;
+    rdfs:label "number of blades"@en ;
+    rdfs:comment "Number of blades."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOfCells a owl:DatatypeProperty ;
+    rdfs:label "number of cells"@en ;
+    rdfs:comment "Number of cells in one cooling tower unit."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOfCircuits a owl:DatatypeProperty ;
+    rdfs:label "number of circuits"@en ;
+    rdfs:comment "Number of parallel fluid tube circuits."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOfGangs a owl:DatatypeProperty ;
+    rdfs:label "number of gangs"@en ;
+    rdfs:comment "Number of gangs/buttons on this switch."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOfPanels a owl:DatatypeProperty ;
+    rdfs:label "number of panels"@en ;
+    rdfs:comment "Number of panels."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOfRows a owl:DatatypeProperty ;
+    rdfs:label "number of rows"@en ;
+    rdfs:comment "Number of tube rows in the tube bundle assembly."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:numberOsSockets a owl:DatatypeProperty ;
+    rdfs:label "number os sockets"@en ;
+    rdfs:comment "The number of sockets that may be connected. In case of inconsistency, sockets defined on ports take precedence."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:openPressureDrop a owl:ObjectProperty ;
+    rdfs:label "open pressure drop"@en ;
+    rdfs:comment "Total pressure drop across damper. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:operatingMode a owl:DatatypeProperty ;
+    rdfs:label "operating mode"@en ;
+    rdfs:comment "Identifies the operating mode of the boiler."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:operatingWeight a owl:ObjectProperty ;
+    rdfs:label "operating weight"@en ;
+    rdfs:comment "Operating weight of the tank including all of its contents. Usually measured in kilograms (kg) or grams (g)."@en .
+
+s4bldg:operation a owl:DatatypeProperty ;
+    rdfs:label "operation"@en ;
+    rdfs:comment "The operational mechanism for the damper operation."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:operationalRiterial a owl:ObjectProperty ;
+    rdfs:label "operational riterial"@en ;
+    rdfs:comment "Time of operation at maximum operational ambient air temperature. Measured in seconds (s) or days (d) or other units of time."@en .
+
+s4bldg:orientation a owl:DatatypeProperty ;
+    rdfs:label "orientation"@en ;
+    rdfs:comment "The intended orientation for the damper as specified by the manufacturer."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:outletConnectionSize a owl:ObjectProperty ;
+    rdfs:label "outlet connection size"@en ;
+    rdfs:comment "Size of the outlet connection. Usually measured in millimeters (mm)."@en .
+
+s4bldg:outletTemperatureMax a owl:ObjectProperty ;
+    rdfs:label "outlet temperature range"@en ;
+    rdfs:comment "Allowable outlet temperature of either the water or the steam. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:outletTemperatureMin a owl:ObjectProperty ;
+    rdfs:label "outlet temperature range"@en ;
+    rdfs:comment "Allowable outlet temperature of either the water or the steam. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:outputCapacity a owl:ObjectProperty ;
+    rdfs:label "output capacity"@en ;
+    rdfs:comment "Total nominal heat output as listed by the manufacturer. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:outsideDiameter a owl:ObjectProperty ;
+    rdfs:label "outside diameter"@en ;
+    rdfs:comment "Actual outside diameter of the tube in the tube bundle. Usually measured in millimeters (mm)."@en .
+
+s4bldg:partLoadRatioMax a owl:ObjectProperty ;
+    rdfs:label "maximum part load ratio"@en ;
+    rdfs:comment "Maximum part load ratio as a fraction of nominal capacity."@en .
+
+s4bldg:partLoadRatioMin a owl:ObjectProperty ;
+    rdfs:label "minimum part load ratio"@en ;
+    rdfs:comment "Minimum part load ratio as a fraction of nominal capacity."@en .
+
+s4bldg:patternType a owl:DatatypeProperty ;
+    rdfs:label "pattern type"@en ;
+    rdfs:comment "Defines the types of pattern (or shape of a tank that may be specified."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:pipeConnectionEnum a owl:DatatypeProperty ;
+    rdfs:label "pipe connection enum"@en ;
+    rdfs:comment "The manner in which the pipe connection is made to the cooled beam."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:powerSource a owl:DatatypeProperty ;
+    rdfs:label "power source"@en ;
+    rdfs:comment "Type of power driving the compressor."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:pressureRating a owl:ObjectProperty ;
+    rdfs:label "pressure rating"@en ;
+    rdfs:comment "Nominal pressure rating of the boiler as rated by the agency having jurisdiction. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:primaryAirFlowRateMax a owl:ObjectProperty ;
+    rdfs:label "primary air flow rate range"@en ;
+    rdfs:comment "Maximum primary airflow that can be delivered. Usually measured in m3/s."@en .
+
+s4bldg:primaryAirFlowRateMin a owl:ObjectProperty ;
+    rdfs:label "primary air flow rate range"@en ;
+    rdfs:comment "Minimum primary airflow that can be delivered. Usually measured in m3/s."@en .
+
+s4bldg:primaryApparentPower a owl:ObjectProperty ;
+    rdfs:label "primary apparent power"@en ;
+    rdfs:comment "The power in VA (volt ampere) that has been transformed and that runs into the transformer on the primary side. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:primaryCurrent a owl:ObjectProperty ;
+    rdfs:label "primary current"@en ;
+    rdfs:comment "The current that is going to be transformed and that runs into the transformer on the primary side. Usually measured in Ampere (A)."@en .
+
+s4bldg:primaryFrequency a owl:ObjectProperty ;
+    rdfs:label "primary frequency"@en ;
+    rdfs:comment "The frequency that is going to be transformed and that runs into the transformer on the primary side. Usually measured in cycles/s or Hertz (Hz)."@en .
+
+s4bldg:primaryVoltage a owl:ObjectProperty ;
+    rdfs:label "primary voltage"@en ;
+    rdfs:comment "The voltage that is going to be transformed and that runs into the transformer on the primary side. Usually measured in Volts (V, W/A)."@en .
+
+s4bldg:pumpFlowRateMax a owl:ObjectProperty ;
+    rdfs:label "pump flow rate range"@en ;
+    rdfs:comment "Allowable range of volume of fluid being pumped against the resistance specified. Usually measured in kg/s."@en .
+
+s4bldg:pumpFlowRateMin a owl:ObjectProperty ;
+    rdfs:label "pump flow rate range"@en ;
+    rdfs:comment "Allowable range of volume of fluid being pumped against the resistance specified. Usually measured in kg/s."@en .
+
+s4bldg:readOutType a owl:DatatypeProperty ;
+    rdfs:label "read out type"@en ;
+    rdfs:comment "Indication of the form that readout from the meter takes. In the case of a dial read out, this may comprise multiple dials that give a cumulative reading and/or a mechanical odometer."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:realImpedanceRatio a owl:ObjectProperty ;
+    rdfs:label "real impedance ratio"@en ;
+    rdfs:comment "The ratio between the real part of the zero sequence impedance and the real part of the positive impedance (i.e. real part of the short-circuit voltage) of the transformer. Used for three-phase transformer which includes a N-conductor."@en .
+
+s4bldg:remoteReading a owl:DatatypeProperty ;
+    rdfs:label "remote reading"@en ;
+    rdfs:comment "Indicates whether the meter has a connection for remote reading through connection of a communication device (set TRUE) or not (set FALSE)."@en ;
+    rdfs:range xsd:boolean .
+
+s4bldg:roughness a owl:DatatypeProperty ;
+    rdfs:label "roughness"@en ;
+    rdfs:comment "A measure of the vertical deviations of the surface."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:secondCurvatureRadius a owl:ObjectProperty ;
+    rdfs:label "second curvature radius"@en ;
+    rdfs:comment "SecondCurvatureRadius should be defined as the top or right side radius of curvature value. Usually measured in millimeters (mm)."@en .
+
+s4bldg:secondaryAirFlowRateMax a owl:ObjectProperty ;
+    rdfs:label "secondary air flow rate range"@en ;
+    rdfs:comment "Maximum secondary airflow that can be delivered. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:secondaryAirFlowRateMin a owl:ObjectProperty ;
+    rdfs:label "secondary air flow rate range"@en ;
+    rdfs:comment "Maximum secondary airflow that can be delivered. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:secondaryApparentPower a owl:ObjectProperty ;
+    rdfs:label "secondary apparent power"@en ;
+    rdfs:comment "The power in VA (volt ampere) that has been transformed and is running out of the transformer on the secondary side. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:secondaryCurrent a owl:ObjectProperty ;
+    rdfs:label "secondary current"@en ;
+    rdfs:comment "The current that has been transformed and is running out of the transformer on the secondary side. Usually measured in Ampere (A)."@en .
+
+s4bldg:secondaryCurrentType a owl:DatatypeProperty ;
+    rdfs:label "secondary current type"@en ;
+    rdfs:comment "A list of the secondary current types that can result from transformer output."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:secondaryFrequency a owl:ObjectProperty ;
+    rdfs:label "secondary frequency"@en ;
+    rdfs:comment "The frequency that has been transformed and is running out of the transformer on the secondary side. Usually measured in cycles/s or Hertz (Hz)."@en .
+
+s4bldg:secondaryVoltage a owl:ObjectProperty ;
+    rdfs:label "secondary voltage"@en ;
+    rdfs:comment "The voltage that has been transformed and is running out of the transformer on the secondary side. Usually measured in Volts (V, W/A)."@en .
+
+s4bldg:shadingDeviceType a owl:DatatypeProperty ;
+    rdfs:label "shading device type"@en ;
+    rdfs:comment "Specifies the type of shading device."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:size a owl:ObjectProperty ;
+    rdfs:label "size"@en ;
+    rdfs:comment "The size of the connection to the valve (or to each connection for faucets, mixing valves, etc.). Usually measured in millimeters (mm)."@en .
+
+s4bldg:solarReflectance a owl:ObjectProperty ;
+    rdfs:label "solar reflectance"@en ;
+    rdfs:comment "(Rsol): The ratio of incident solar radiation that is reflected by a shading system (also named _e). Note the following equation Asol + Rsol + Tsol = 1"@en .
+
+s4bldg:solarTransmittance a owl:ObjectProperty ;
+    rdfs:label "solar transmittance"@en ;
+    rdfs:comment "(Tsol) The ratio of incident solar radiation that directly passes through a shading system (also named _e). Note the following equation Asol + Rsol + Tsol = 1"@en .
+
+s4bldg:spectrumMax a owl:ObjectProperty ;
+    rdfs:label "maximum spectrum"@en ;
+    rdfs:comment "The spectrum of radiation describes its composition with regard to wavelength. Light, for example, as the portion of electromagnetic radiation that is visible to the human eye, is radiation with wavelengths in the range of approx. 380 to 780 nm (1 nm = 10 m). The corresponding range of colours varies from violet to indigo, blue, green, yellow, orange, and red. These colours form a continuous spectrum, in which the various spectral sectors merge into each other."@en .
+
+s4bldg:spectrumMin a owl:ObjectProperty ;
+    rdfs:label "minimum spectrum"@en ;
+    rdfs:comment "The spectrum of radiation describes its composition with regard to wavelength. Light, for example, as the portion of electromagnetic radiation that is visible to the human eye, is radiation with wavelengths in the range of approx. 380 to 780 nm (1 nm = 10 m). The corresponding range of colours varies from violet to indigo, blue, green, yellow, orange, and red. These colours form a continuous spectrum, in which the various spectral sectors merge into each other."@en .
+
+s4bldg:sprayType a owl:DatatypeProperty ;
+    rdfs:label "spray type"@en ;
+    rdfs:comment "SprayFilled: Water is sprayed into airflow. SplashTypeFill: water cascades over successive rows of splash bars. FilmTypeFill: water flows in a thin layer over closely spaced sheets."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:staggeredRowSpacing a owl:ObjectProperty ;
+    rdfs:label "staggered row spacing"@en ;
+    rdfs:comment "Staggered tube row spacing. Usually measured in millimeters (mm)."@en .
+
+s4bldg:standard a owl:DatatypeProperty ;
+    rdfs:label "standard"@en ;
+    rdfs:comment "The designation of the standard applicable for the definition of the characteristics of the unit."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:startingTime a owl:ObjectProperty ;
+    rdfs:label "starting time"@en ;
+    rdfs:comment "The time (in s) needed for the motor to reach its rated speed with its driven equipment attached, starting from standstill and at the nominal voltage applied at its terminals."@en .
+
+s4bldg:storageType a owl:DatatypeProperty ;
+    rdfs:label "storage type"@en ;
+    rdfs:comment "Defines the general material category intended to be stored."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:supportedWeightMax a owl:ObjectProperty ;
+    rdfs:label "maximum supported weight"@en ;
+    rdfs:comment "The maximum weight that can be carried by the vibration isolator. Usually measured in kilograms (kg) or grams (g)."@en .
+
+s4bldg:switchFunction a owl:DatatypeProperty ;
+    rdfs:label "switch function"@en ;
+    rdfs:comment "Indicates types of switches which differs in functionality."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:teTime a owl:ObjectProperty ;
+    rdfs:label "te time"@en ;
+    rdfs:comment "The maximum time (in s) at which the motor could run with locked rotor when the motor is used in an EX-environment. The time indicates that a protective device should trip before this time when the starting current of the motor is slowing through the device."@en .
+
+s4bldg:temperatureClassification a owl:DatatypeProperty ;
+    rdfs:label "temperature classification"@en ;
+    rdfs:comment "Enumeration defining the temperature classification of the space heater surface temperature. low temperature - surface temperature is relatively low, usually heated by hot water or electricity. high temperature - surface temperature is relatively high, usually heated by gas or steam."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:temperatureRating a owl:ObjectProperty ;
+    rdfs:label "temperature rating"@en ;
+    rdfs:comment "Temperature rating. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:testPressure a owl:ObjectProperty ;
+    rdfs:label "test pressure"@en ;
+    rdfs:comment "The maximum pressure to which the valve has been subjected under test. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:thermalConductivity a owl:ObjectProperty ;
+    rdfs:label "thermal conductivity"@en ;
+    rdfs:comment "Fouling factor of the tubes in the tube bundle. Usually measured in m2 Kelvin/Watt."@en .
+
+s4bldg:thermalEfficiency a owl:ObjectProperty ;
+    rdfs:label "thermal efficiency"@en ;
+    rdfs:comment "Overall Thermal Efficiency is defined as gross energy output of the heat transfer device divided by the energy input."@en .
+
+s4bldg:thermalMassHeatCapacity a owl:ObjectProperty ;
+    rdfs:label "thermal mass heat capacity"@en ;
+    rdfs:comment "Product of component mass and specific heat."@en .
+
+s4bldg:thermalTransmittance a owl:ObjectProperty ;
+    rdfs:label "thermal transmittance"@en ;
+    rdfs:comment "Rate at which energy is transmitted through a body. Usually measured in Watts/m2 Kelvin."@en .
+
+s4bldg:transformerVectorGroup a owl:DatatypeProperty ;
+    rdfs:label "transformer vector group"@en ;
+    rdfs:comment "List of the possible vector groups for the transformer from which that required may be set. Values in the enumeration list follow a standard international code where the first letter describes how the primary windings are connected, the second letter describes how the secondary windings are connected, and the numbers describe the rotation of voltages and currents from the primary to the secondary side in multiples of 30 degrees. D: means that the windings are delta-connected. Y: means that the windings are star-connected. Z: means that the windings are zig-zag connected (a special start-connected providing low reactance of the transformer). The connectivity is only relevant for three-phase transformers."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:valveMechanism a owl:DatatypeProperty ;
+    rdfs:label "valve mechanism"@en ;
+    rdfs:comment "The mechanism by which the valve function is achieved where: BALL: Valve that has a ported ball that can be turned relative to the body seat ports. BUTTERFLY: Valve in which a streamlined disc pivots about a diametric axis. CONFIGUREDGATE: Screwdown valve in which the closing gate is shaped in a configured manner to have a more precise control of pressure and flow change across the valve. GLAND: Valve with a tapered seating, in which a rotatable plug is retained by means of a gland and gland packing. GLOBE: Screwdown valve that has a spherical body. LUBRICATEDPLUG: Plug valve in which a lubricant is injected under pressure between the plug face and the body. NEEDLE: Valve for regulating the flow in or from a pipe, in which a slender cone moves along the axis of flow to close against a fixed conical seat. PARALLELSLIDE: Screwdown valve that has a machined plate that slides in formed grooves to form a seal. PLUG: Valve that has a ported plug that can be turned relative to the body seat ports. WEDGEGATE: Screwdown valve that has a wedge shaped plate fitting into tapered guides to form a seal."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:valveOperation a owl:DatatypeProperty ;
+    rdfs:label "valve operation"@en ;
+    rdfs:comment "The method of valve operation where: DROPWEIGHT: A valve that is closed by the action of a weighted lever being released, the weight normally being prevented from dropping by being held by a wire, the closure normally being made by the action of heat on a fusible link in the wire FLOAT: A valve that is opened and closed by the action of a float that rises and falls with water level. The float may be a ball attached to a lever or other mechanism HYDRAULIC: A valve that is opened and closed by hydraulic actuation LEVER: A valve that is opened and closed by the action of a lever rotating the gate within the valve. LOCKSHIELD: A valve that requires the use of a special lockshield key for opening and closing, the operating mechanism being protected by a shroud during normal operation. MOTORIZED: A valve that is opened and closed by the action of an electric motor on an actuator PNEUMATIC: A valve that is opened and closed by pneumatic actuation SOLENOID: A valve that is normally held open by a magnetic field in a coil acting on the gate but that is closed immediately if the electrical current generating the magnetic field is removed. SPRING: A valve that is normally held in position by the pressure of a spring on a plate but that may be caused to open if the pressure of the fluid is sufficient to overcome the spring pressure. THERMOSTATIC: A valve in which the ports are opened or closed to maintain a required predetermined temperature. WHEEL: A valve that is opened and closed by the action of a wheel moving the gate within the valve."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:valvePattern a owl:DatatypeProperty ;
+    rdfs:label "valve pattern"@en ;
+    rdfs:comment "The configuration of the ports of a valve according to either the linear route taken by a fluid flowing through the valve or by the number of ports where: SINGLEPORT: Valve that has a single entry port from the system that it serves, the exit port being to the surrounding environment. ANGLED_2_PORT: Valve in which the direction of flow is changed through 90 degrees. STRAIGHT_2_PORT: Valve in which the flow is straight through. STRAIGHT_3_PORT: Valve with three separate ports. CROSSOVER_4_PORT: Valve with 4 separate ports."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:ventilatingPipeSize a owl:ObjectProperty ;
+    rdfs:label "ventilating pipe size"@en ;
+    rdfs:comment "Size of the ventilating pipe(s). Usually measured in millimeters (mm)."@en .
+
+s4bldg:verticalSpacing a owl:ObjectProperty ;
+    rdfs:label "vertical spacing"@en ;
+    rdfs:comment "Vertical spacing between tubes in the tube bundle.Usually measured in millimeters (mm)."@en .
+
+s4bldg:vibrationTransmissibility a owl:ObjectProperty ;
+    rdfs:label "vibration transmissibility"@en ;
+    rdfs:comment "The vibration transmissibility percentage."@en .
+
+s4bldg:visibleLightReflectance a owl:ObjectProperty ;
+    rdfs:label "visible light reflectance"@en ;
+    rdfs:comment "Fraction of the visible light that is reflected by the glazing at normal incidence. It is a value without unit."@en .
+
+s4bldg:visibleLightTransmittance a owl:ObjectProperty ;
+    rdfs:label "visible light transmittance"@en ;
+    rdfs:comment "Fraction of the visible light that passes the shading system at normal incidence. It is a value without unit."@en .
+
+s4bldg:volumen a owl:ObjectProperty ;
+    rdfs:label "volumen"@en ;
+    rdfs:comment "Total volume of fluid in the tubes and their headers. Usually measured in cubic metre (m3)."@en .
+
+s4bldg:waterFlowControlSystemType a owl:DatatypeProperty ;
+    rdfs:label "water flow control system type"@en ;
+    rdfs:comment "Factory fitted waterflow control system."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:waterInletTemperatureMax a owl:ObjectProperty ;
+    rdfs:label "water inlet temperature range"@en ;
+    rdfs:comment "Allowable water inlet temperature range. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:waterInletTemperatureMin a owl:ObjectProperty ;
+    rdfs:label "water inlet temperature range"@en ;
+    rdfs:comment "Allowable water inlet temperature range. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:waterPressureMax a owl:ObjectProperty ;
+    rdfs:label "water pressure range"@en ;
+    rdfs:comment "Allowable water circuit working pressure range. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:waterPressureMin a owl:ObjectProperty ;
+    rdfs:label "water pressure range"@en ;
+    rdfs:comment "Allowable water circuit working pressure range. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:waterStorageCapacity a owl:ObjectProperty ;
+    rdfs:label "water storage capacity"@en ;
+    rdfs:comment "Water storage capacity. Usually measured in cubic metre (m3)."@en .
+
+s4bldg:workingPressure a owl:ObjectProperty ;
+    rdfs:label "working pressure"@en ;
+    rdfs:comment "The normally expected maximum working pressure of the valve. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:workingPressureMin a owl:ObjectProperty ;
+    rdfs:label "minimum working pressure"@en ;
+    rdfs:comment "Allowable minimum working pressure (relative to ambient pressure). Usually measured in Pascals (Pa, N/m2)."@en .
+
+saref:isMeasuredIn a owl:ObjectProperty ;
+    rdfs:label "is measured in"@en ;
+    rdfs:comment "A relation between a measurement and the unit of measure in which the measurement value is expressed."@en ;
+    rdfs:isDefinedBy "https://saref.etsi.org/core/" .
+
+saref:relatesToProperty a owl:ObjectProperty ;
+    rdfs:label "relates to property"@en ;
+    rdfs:comment "A relation between a measurement and the property such measurement is about."@en ;
+    rdfs:isDefinedBy "https://saref.etsi.org/core/" .
+
+s4bldg:BuildingDevice a owl:Class ;
+    rdfs:label "Building device"@en ;
+    rdfs:comment "A tangible object designed to accomplish a particular task in a building."@en ;
+    rdfs:subClassOf saref:Device,
+        s4bldg:BuildingObject .
+
+s4bldg:DistributionDevice a owl:Class ;
+    rdfs:label "Distribution device"@en ;
+    rdfs:comment "Generalization of all devices that participate in a distribution system. (Definition adapated from http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcproductextension/lexical/ifcdistributionelement.htm)"@en ;
+    rdfs:subClassOf s4bldg:BuildingDevice .
+
+s4bldg:FlowStorageDevice a owl:Class ;
+    rdfs:label "Flow storage device"@en ;
+    rdfs:comment "The distribution flow element FlowStorageDevice defines the occurrence of a device that participates in a distribution system and is used for temporary storage (such as a tank)."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowStorageDevice" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcflowstoragedevice.htm> .
+
+s4bldg:airFlowRateMin a owl:ObjectProperty ;
+    rdfs:label "air flow rate range min"@en ;
+    rdfs:comment "Minimum allowable air flow rate. Usually measured in m3/s."@en .
+
+s4bldg:closeOffRating a owl:ObjectProperty ;
+    rdfs:label "close off rating"@en ;
+    rdfs:comment "Close off rating. Usually measured in Pascals (Pa, N/m2)."@en .
+
+s4bldg:contains a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "contains"@en ;
+    rdfs:comment "A relation between a physical space and the objects located in such space."@en ;
+    owl:inverseOf s4bldg:isContainedIn .
+
+s4bldg:externalSurfaceArea a owl:ObjectProperty ;
+    rdfs:label "external surface area"@en ;
+    rdfs:comment "External surface area (both primary and secondary area). Usually measured in square metre (m2)."@en .
+
+s4bldg:flowArrangement a owl:DatatypeProperty ;
+    rdfs:label "flow arrangement"@en ;
+    rdfs:comment "CounterFlow: Air and water flow enter in different directions. CrossFlow: Air and water flow are perpendicular. ParallelFlow: air and water flow enter in same directions."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:hasSpace a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "has space"@en ;
+    rdfs:comment "Relation between a building or a building space and the spaces it can be divided into."@en ;
+    owl:inverseOf s4bldg:isSpaceOf .
+
+s4bldg:internalRefrigerantVolume a owl:ObjectProperty ;
+    rdfs:label "internal refrigerant volume"@en ;
+    rdfs:comment "Internal volume of evaporator (refrigerant side). Usually measured in cubic metre (m3)."@en .
+
+s4bldg:internalSurfaceArea a owl:ObjectProperty ;
+    rdfs:label "internal surface area"@en ;
+    rdfs:comment "Internal surface area. Usually measured in square metre (m2)."@en .
+
+s4bldg:internalWaterVolume a owl:ObjectProperty ;
+    rdfs:label "internal water volume"@en ;
+    rdfs:comment "Internal volume of evaporator (water side). Usually measured in cubic metre (m3)."@en .
+
+s4bldg:isContainedIn a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "is contained in"@en ;
+    rdfs:comment "A relation between an object and the physical space in which it is located."@en .
+
+s4bldg:isSpaceOf a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "isSpaceOf"@en ;
+    rdfs:comment "Relation between a building space and the building or building space it belongs to."@en .
+
+s4bldg:length a owl:ObjectProperty ;
+    rdfs:label "length"@en ;
+    rdfs:comment "The finished length of the device. Usually measured in millimeters (mm)."@en .
+
+s4bldg:nominalHeatTransferArea a owl:ObjectProperty ;
+    rdfs:label "nominal heat transfer area"@en ;
+    rdfs:comment "Nominal heat transfer surface area associated with nominal overall heat transfer coefficient. Usually measured in square metre (m2)."@en .
+
+s4bldg:nominalHeatTransferCoefficient a owl:ObjectProperty ;
+    rdfs:label "nominal heat transfer coefficient"@en ;
+    rdfs:comment "Nominal overall heat transfer coefficient associated with nominal heat transfer area. Usually measured in Watts/m2 Kelvin."@en .
+
+s4bldg:numberOfSections a owl:DatatypeProperty ;
+    rdfs:label "number of sections"@en ;
+    rdfs:comment "Number of sections used."@en ;
+    rdfs:range xsd:integer .
+
+s4bldg:placementType a owl:DatatypeProperty ;
+    rdfs:label "placement type"@en ;
+    rdfs:comment "Indicates how the device is designed to be placed."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:powerOutputMax a owl:ObjectProperty ;
+    rdfs:label "maximum power output"@en ;
+    rdfs:comment "The maximum output power rating of the engine. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:startCurrentFactor a owl:ObjectProperty ;
+    rdfs:label "start current factor"@en ;
+    rdfs:comment "IEC. Start current factor defines how large the peek starting current will become on the engine. StartCurrentFactor is multiplied to NominalCurrent and we get the start current."@en .
+
+s4bldg:workingPressureMax a owl:ObjectProperty ;
+    rdfs:label "maximum working pressure"@en ;
+    rdfs:comment "Maximum working pressure. Usually measured in Pascals (Pa, N/m2)."@en .
+
+saref:Device a owl:Class ;
+    rdfs:label "Device"@en ;
+    rdfs:comment "A tangible object designed to accomplish a particular task in households, common public buildings or offices. In order to accomplish this task, the device performs one or more functions. For example, a washing machine is designed to wash (task) and to accomplish this task it performs the start and stop function."@en ;
+    rdfs:isDefinedBy saref: ;
+    rdfs:subClassOf s4bldg:PhysicalObject .
+
+saref:Property a owl:Class ;
+    rdfs:label "Property"@en ;
+    rdfs:comment "An aspect of an entity that can be observable by a sensor."@en ;
+    rdfs:isDefinedBy "https://saref.etsi.org/core/" ;
+    owl:disjointWith saref:UnitOfMeasure .
+
+s4bldg:FlowMovingDevice a owl:Class ;
+    rdfs:label "Flow moving device"@en ;
+    rdfs:comment "The distribution flow element FlowMovingDevice defines the occurrence of an apparatus used to distribute, circulate or perform conveyance of fluids, including liquids and gases (such as a pump or fan), and typically participates in a flow distribution system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowMovingDevice" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcflowmovingdevice.htm> .
+
+s4bldg:FlowTreatmentDevice a owl:Class ;
+    rdfs:label "Flow treatment device"@en ;
+    rdfs:comment "The distribution flow element FlowTreatmentDevice defines the occurrence of a device typically used to remove unwanted matter from a fluid, either liquid or gas, and typically participates in a flow distribution system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowTreatmentDevice" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcflowtreatmentdevice.htm> .
+
+s4bldg:airFlowRateMax a owl:ObjectProperty ;
+    rdfs:label "air flow rate range max"@en ;
+    rdfs:comment "Maximum allowable air flow rate. Usually measured in m3/s."@en .
+
+s4bldg:nominalAirFlowRate a owl:ObjectProperty ;
+    rdfs:label "nominal air flow rate"@en ;
+    rdfs:comment "Nominal rate of air flow. Usually measured in m3/s."@en .
+
+s4bldg:nominalCapacity a owl:ObjectProperty ;
+    rdfs:label "nominal capacity"@en ;
+    rdfs:comment "Nominal capacity. Usually measured in Watts (W, J/s)."@en .
+
+s4bldg:refrigerantClass a owl:DatatypeProperty ;
+    rdfs:label "refrigerant class"@en ;
+    rdfs:comment "Refrigerant class used by the compressor. CFC: Chlorofluorocarbons. HCFC: Hydrochlorofluorocarbons. HFC: Hydrofluorocarbons."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:waterRequirement a owl:ObjectProperty ;
+    rdfs:label "water requirement"@en ;
+    rdfs:comment "Make-up water requirement. Usually measured in m3/s."@en .
+
+s4bldg:weight a owl:ObjectProperty ;
+    rdfs:label "weight"@en ;
+    rdfs:comment "The weight of the device. Usually measured in kilograms (kg) or grams (g)."@en .
+
+saref:UnitOfMeasure a owl:Class ;
+    rdfs:label "Unit of measure"@en ;
+    rdfs:comment "The unit of measure is a standard for measurement of a quantity, such as a Property. For example,  Power is a property and Watt is a unit of power that represents a definite predetermined power: when we say 10 Watt, we actually mean 10 times the definite predetermined power called \"watt\". Our definition is based on the definition of unit of measure in the Ontology of units of Measure (OM). We propose here a list of some units of measure that are relevant for the purpose of the Smart Appliances ontology, but this list can be extended."@en ;
+    rdfs:isDefinedBy saref: .
+
+s4bldg:BuildingSpace a owl:Class ;
+    rdfs:label "Building space"@en ;
+    rdfs:comment "An entity used to define the physical spaces of the building. A building space contains devices or building objects."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom s4bldg:PhysicalObject ;
+            owl:onProperty s4bldg:contains ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom s4bldg:BuildingSpace ;
+            owl:onProperty s4bldg:hasSpace ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a owl:Class ;
+                    owl:unionOf [ a rdf:List ;
+                            rdf:first s4bldg:Building ;
+                            rdf:rest [ a rdf:List ;
+                                    rdf:first s4bldg:BuildingSpace ;
+                                    rdf:rest () ] ] ] ;
+            owl:onProperty s4bldg:isSpaceOf ] .
+
+s4bldg:energySource a owl:DatatypeProperty ;
+    rdfs:label "energy source"@en ;
+    rdfs:comment "Enumeration defining the energy source or fuel cumbusted to generate heat."@en,
+        "The source of energy."@en ;
+    rdfs:range xsd:string .
+
+s4bldg:PhysicalObject a owl:Class ;
+    rdfs:label "Physical object"@en ;
+    rdfs:comment "Any Object that has a proper space region.  (Definition extracted from DUL ontology)"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom s4bldg:PhysicalObject ;
+            owl:onProperty s4bldg:contains ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a owl:Class ;
+                    owl:unionOf [ a rdf:List ;
+                            rdf:first s4bldg:BuildingSpace ;
+                            rdf:rest [ a rdf:List ;
+                                    rdf:first s4bldg:PhysicalObject ;
+                                    rdf:rest () ] ] ] ;
+            owl:onProperty s4bldg:isContainedIn ] .
+
+s4bldg:DistributionFlowDevice a owl:Class ;
+    rdfs:label "DistributionFlowDevice"@en ;
+    rdfs:comment "Represents devices of a distribution system that facilitate the distribution of energy or matter, such as air, water or power. (Definition adapated from http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcdistributionflowelement.htm)"@en ;
+    rdfs:subClassOf s4bldg:DistributionDevice .
+
+s4bldg:FlowController a owl:Class ;
+    rdfs:label "Flow controller"@en ;
+    rdfs:comment "The distribution flow element FlowController defines the occurrence of elements of a distribution system that are used to regulate flow through a distribution system. Examples include dampers, valves, switches, and relays."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowController" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcflowcontroller.htm> .
+
+s4bldg:DistributionControlDevice a owl:Class ;
+    rdfs:label "Distribution control device"@en ;
+    rdfs:comment "Represents devices of a building automation control system that are used to impart control over elements of a distribution system. (Definition adapated from http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcdistributioncontrolelement.htm)"@en ;
+    rdfs:subClassOf s4bldg:DistributionDevice .
+
+s4bldg:FlowTerminal a owl:Class ;
+    rdfs:label "Flow terminal"@en ;
+    rdfs:comment "The distribution flow element FlowTerminal defines the occurrence of a permanently attached element that acts as a terminus or beginning of a distribution system (such as an air outlet, drain, water closet, or sink). A terminal is typically a point at which a system interfaces with an external environment."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcFlowTerminal" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcflowterminal.htm> .
+
+s4bldg:operationTemperatureMax a owl:ObjectProperty ;
+    rdfs:label "operation temperature range"@en ;
+    rdfs:comment "Allowable operation ambient (air, fluid) temperature range. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:operationTemperatureMin a owl:ObjectProperty ;
+    rdfs:label "operation temperature range"@en ;
+    rdfs:comment "Allowable operation ambient (air, fluid) temperature range. Usually measured in degrees Kelvin (K)."@en .
+
+s4bldg:EnergyConversionDevice a owl:Class ;
+    rdfs:label "Energy conversion device"@en ;
+    rdfs:comment "The distribution flow element EnergyConversionDevice defines the occurrence of a device used to perform energy conversion or heat transfer and typically participates in a flow distribution system."@en ;
+    rdfs:seeAlso "https://w3id.org/ifc/IFC4_ADD1#IfcEnergyConversionDevice" ;
+    rdfs:subClassOf s4bldg:DistributionFlowDevice ;
+    prov:hadPrimarySource <http://www.buildingsmart-tech.org/ifc/IFC4/Add1/html/schema/ifcsharedbldgserviceelements/lexical/ifcenergyconversiondevice.htm> .
+
+saref:Measurement a owl:Class ;
+    rdfs:label "Measurement"@en ;
+    rdfs:comment "Represents the measured value made over a property. It is also linked to the unit of measure in which the value is expressed and the timestamp of the measurement."@en ;
+    rdfs:isDefinedBy "https://saref.etsi.org/core/" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:UnitOfMeasure ;
+            owl:onProperty saref:isMeasuredIn ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:relatesToProperty ],
+        [ a owl:Restriction ;
+            owl:onClass saref:UnitOfMeasure ;
+            owl:onProperty saref:isMeasuredIn ;
+            owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
+        [ a owl:Restriction ;
+            owl:onClass saref:Property ;
+            owl:onProperty saref:relatesToProperty ;
+            owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:dateTime ;
+            owl:onProperty saref:hasTimestamp ] ;
+    owl:disjointWith saref:Property,
+        saref:UnitOfMeasure .
+

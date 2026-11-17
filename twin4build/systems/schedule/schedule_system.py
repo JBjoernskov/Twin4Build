@@ -1,379 +1,168 @@
 # Standard library imports
-import datetime
+import copy
 import random
-from random import randrange
-from typing import Optional
+
+# Third party imports
+import numpy as np
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
-
-
-def get_signature_pattern():
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="schedule_signature_pattern"
-    )
-    sp.add_modeled_node(node0)
-    return sp
+from twin4build.systems.saref4syst.declarations import Output, Setting
+from twin4build.utils.data_loaders.sources import as_source
 
 
 class ScheduleSystem(core.System):
-    r"""
-    A system that either 1) generates a schedule value based on rulesets defined for different weekdays and times or 2) reads a schedule value from a spreadsheet or database.
+    r"""A schedule: a data source (ADR 0001, decision 6) whose value at each
+    step comes from rulesets for the days of the week, or from a reader.
 
-    This system provides a flexible way to create and apply different schedules for various days of the week.
-    It supports both spreadsheet-based and database-based input methods.
+    A ruleset is a dict::
 
-    Args:
-        weekDayRulesetDict: A dictionary of rulesets for weekdays.
-        weekendRulesetDict: A dictionary of rulesets for weekends.
-        mondayRulesetDict: A dictionary of rulesets for Mondays.
-        tuesdayRulesetDict: A dictionary of rulesets for Tuesdays.
-        wednesdayRulesetDict: A dictionary of rulesets for Wednesdays.
-        thursdayRulesetDict: A dictionary of rulesets for Thursdays.
-        fridayRulesetDict: A dictionary of rulesets for Fridays.
-        saturdayRulesetDict: A dictionary of rulesets for Saturdays.
-        sundayRulesetDict: A dictionary of rulesets for Sundays.
-        add_noise: A boolean to add noise to the schedule value.
-        useSpreadsheet: A boolean to use a spreadsheet to read the schedule value.
-        useDatabase: A boolean to use a database to read the schedule value.
-        filename: The filename of the spreadsheet to read the schedule value.
-        datecolumn: The column index of the date in the spreadsheet.
-        valuecolumn: The column index of the value in the spreadsheet.
-        uuid: The uuid of the database to read the schedule value.
-        name: The name of the database to read the schedule value.
-        dbconfig: The configuration of the database to read the schedule value.
-
-    """
-
-    sp = [get_signature_pattern()]
-
-    def __init__(
-        self,
-        weekDayRulesetDict: dict = None,
-        weekendRulesetDict: dict = None,
-        mondayRulesetDict: dict = None,
-        tuesdayRulesetDict: dict = None,
-        wednesdayRulesetDict: dict = None,
-        thursdayRulesetDict: dict = None,
-        fridayRulesetDict: dict = None,
-        saturdayRulesetDict: dict = None,
-        sundayRulesetDict: dict = None,
-        add_noise: bool = False,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
-        filename: str = None,
-        datecolumn: int = 0,
-        valuecolumn: int = 1,
-        uuid: str = None,
-        name: str = None,
-        dbconfig: dict = None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
-        self.weekDayRulesetDict = weekDayRulesetDict
-        self.weekendRulesetDict = weekendRulesetDict
-        self.mondayRulesetDict = mondayRulesetDict
-        self.tuesdayRulesetDict = tuesdayRulesetDict
-        self.wednesdayRulesetDict = wednesdayRulesetDict
-        self.thursdayRulesetDict = thursdayRulesetDict
-        self.fridayRulesetDict = fridayRulesetDict
-        self.saturdayRulesetDict = saturdayRulesetDict
-        self.sundayRulesetDict = sundayRulesetDict
-        self.add_noise = add_noise
-        self.useSpreadsheet = useSpreadsheet
-        self.useDatabase = useDatabase
-        self.filename = filename
-        self.datecolumn = datecolumn
-        self.valuecolumn = valuecolumn
-        self.uuid = uuid
-        self.name = name
-        self.dbconfig = dbconfig
-        random.seed(0)
-        self.input = {}
-        self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
-        self._config = {
-            "parameters": [
-                "weekDayRulesetDict",
-                "weekendRulesetDict",
-                "mondayRulesetDict",
-                "tuesdayRulesetDict",
-                "wednesdayRulesetDict",
-                "thursdayRulesetDict",
-                "fridayRulesetDict",
-                "saturdayRulesetDict",
-                "sundayRulesetDict",
-                "add_noise",
-                "useSpreadsheet",
-                "useDatabase",
-            ],
-            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
-            "database": ["uuid", "name", "dbconfig"],
+        {
+            "ruleset_default_value": 20.0,
+            "ruleset_start_hour": [7],   "ruleset_start_minute": [0],
+            "ruleset_end_hour": [17],    "ruleset_end_minute": [0],
+            "ruleset_value": [22.0],
         }
 
+    The first rule that covers a step's local time gives its value; no rule,
+    the default.  ``weekday_ruleset`` stands for Monday to Friday and
+    ``weekend_ruleset`` for Saturday and Sunday, unless a day has its own;
+    without a weekend ruleset the weekend follows ``weekday_ruleset``.
+
+    Args:
+        weekday_ruleset, weekend_ruleset: The rulesets of the weekdays and the
+            weekend.
+        monday_ruleset ... sunday_ruleset: A day's own ruleset.
+        add_noise: Add random noise to a ruleset schedule: a value drawn from
+            ``[-noise_hour_range, noise_hour_range]`` each hour plus one from
+            ``[-noise_day_range, noise_day_range]`` each day.  The draws are
+            the same in every run.
+        noise_hour_range, noise_day_range: The half-widths of the noise.
+        source: A reader (:class:`~twin4build.utils.data_loaders.sources.CsvSource`,
+            :class:`~twin4build.utils.data_loaders.sources.DatabaseSource`, ...)
+            to read the schedule from instead of rulesets.
+    """
+
+    #: Deprecated keyword names and the ones that replaced them.
+    DEPRECATED_KEYWORDS = {
+        "weekDayRulesetDict": "weekday_ruleset",
+        "weekendRulesetDict": "weekend_ruleset",
+        "mondayRulesetDict": "monday_ruleset",
+        "tuesdayRulesetDict": "tuesday_ruleset",
+        "wednesdayRulesetDict": "wednesday_ruleset",
+        "thursdayRulesetDict": "thursday_ruleset",
+        "fridayRulesetDict": "friday_ruleset",
+        "saturdayRulesetDict": "saturday_ruleset",
+        "sundayRulesetDict": "sunday_ruleset",
+    }
+
+    #: The data-source keywords of 1.x and what replaced them.
+    REMOVED_ATTRIBUTES = {
+        **{name: "give the schedule a reader, source=CsvSource(path, date_column, value_column)"
+           for name in ("filename", "date_column", "value_column", "datecolumn", "valuecolumn", "use_spreadsheet")},
+        **{name: "give the schedule a reader, source=DatabaseSource(uuid)"
+           for name in ("uuid", "name", "dbconfig", "use_database")},
+        "use_dict": "a schedule with rulesets and no source reads the rulesets",
+        "fill": "the fill is an option of the reader (CsvSource(..., fill=...))",
+    }
+
+    DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    RULE_KEYS = ("ruleset_start_minute", "ruleset_end_minute", "ruleset_start_hour", "ruleset_end_hour", "ruleset_value")
+
+    weekday_ruleset = Setting(None, doc="The ruleset of Monday to Friday")
+    weekend_ruleset = Setting(None, doc="The ruleset of Saturday and Sunday")
+    monday_ruleset = Setting(None)
+    tuesday_ruleset = Setting(None)
+    wednesday_ruleset = Setting(None)
+    thursday_ruleset = Setting(None)
+    friday_ruleset = Setting(None)
+    saturday_ruleset = Setting(None)
+    sunday_ruleset = Setting(None)
+    add_noise = Setting(False, doc="Add the hourly and daily noise to a ruleset schedule")
+    noise_hour_range = Setting(4.0, doc="Half-width of the noise drawn each hour")
+    noise_day_range = Setting(10.0, doc="Half-width of the noise drawn each day")
+    source = Setting(None, convert=as_source, doc="A reader to read the schedule from instead of rulesets")
+    scheduleValue = Output(doc="The schedule's value")
+
     @property
-    def config(self):
-        return self._config
-
-    def validate(self, p):
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_optimizer = True
-
-        if self.useSpreadsheet and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useSpreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        elif self.useDatabase and (self.uuid is None and self.name is None):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        elif (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        return (
-            validated_for_simulator,
-            validated_for_estimator,
-            validated_for_optimizer,
+    def has_data(self) -> bool:
+        """Whether the schedule has something to give: a reader or a ruleset."""
+        return self.source is not None or any(
+            getattr(self, f"{day}_ruleset") is not None for day in ("weekday", "weekend", *self.DAYS)
         )
 
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> None:
-        self.noise = 0
-        self.bias = 0
-        assert (
-            self.useSpreadsheet and self.filename is None
-        ) == False, "filename must be provided if useSpreadsheet is True."
-        assert (
-            self.useDatabase and (self.uuid is None and self.name is None)
-        ) == False, "uuid or name must be provided if useDatabase is True."
-        assert (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ) == False, "weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False."
+    def set_dbconfig(self, dbconfig) -> None:
+        """The database connection of a database reader."""
+        if hasattr(self.source, "dbconfig"):
+            self.source.dbconfig = dbconfig
 
-        if self.mondayRulesetDict is None:
-            self.mondayRulesetDict = self.weekDayRulesetDict
-        if self.tuesdayRulesetDict is None:
-            self.tuesdayRulesetDict = self.weekDayRulesetDict
-        if self.wednesdayRulesetDict is None:
-            self.wednesdayRulesetDict = self.weekDayRulesetDict
-        if self.thursdayRulesetDict is None:
-            self.thursdayRulesetDict = self.weekDayRulesetDict
-        if self.fridayRulesetDict is None:
-            self.fridayRulesetDict = self.weekDayRulesetDict
-        if self.saturdayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.saturdayRulesetDict = self.weekDayRulesetDict
-            else:
-                self.saturdayRulesetDict = self.weekendRulesetDict
-        if self.sundayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.sundayRulesetDict = self.weekDayRulesetDict
-            else:
-                self.sundayRulesetDict = self.weekendRulesetDict
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.weekDayRulesetDict is not None, (
-            "weekDayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.mondayRulesetDict is not None, (
-            "mondayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.tuesdayRulesetDict is not None, (
-            "tuesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.wednesdayRulesetDict is not None, (
-            "wednesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.thursdayRulesetDict is not None, (
-            "thursdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.fridayRulesetDict is not None, (
-            "fridayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.saturdayRulesetDict is not None, (
-            "saturdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.sundayRulesetDict is not None, (
-            "sundayRulesetDict must be provided as argument."
-        )
+    def day_rulesets(self) -> list:
+        """The ruleset of each day, Monday first, each with every rule key (a
+        copy: the settings are never changed)."""
+        days = []
+        for i, day in enumerate(self.DAYS):
+            ruleset = getattr(self, f"{day}_ruleset")
+            if ruleset is None and i >= 5:
+                ruleset = self.weekend_ruleset
+            if ruleset is None:
+                ruleset = self.weekday_ruleset
+            if ruleset is None:
+                raise ValueError(
+                    f"ScheduleSystem '{self.id}': no ruleset for {day} (give weekday_ruleset, weekend_ruleset "
+                    f"or {day}_ruleset), and no source"
+                )
+            ruleset = copy.deepcopy(ruleset)
+            lengths = {len(ruleset[k]) for k in self.RULE_KEYS if k in ruleset}
+            if len(lengths) > 1:
+                raise ValueError(f"ScheduleSystem '{self.id}': the rules of {day} differ in length")
+            n = lengths.pop() if lengths else 0
+            for key in self.RULE_KEYS:
+                ruleset.setdefault(key, [0] * n)
+            days.append(ruleset)
+        return days
 
-        if self.useSpreadsheet or self.useDatabase:
-            time_series_input = TimeSeriesInputSystem(
-                id=f"time series input - {self.id}",
-                filename=self.filename,
-                datecolumn=self.datecolumn,
-                valuecolumn=self.valuecolumn,
-                useSpreadsheet=self.useSpreadsheet,
-                useDatabase=self.useDatabase,
-                uuid=self.uuid,
-                name=self.name,
-                dbconfig=self.dbconfig,
-            )
-            time_series_input.initialize(start_time, end_time, step_size, simulator)
-            self.output["scheduleValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=time_series_input.df.values,
-            )
-        else:
-            required_dicts = [
-                self.mondayRulesetDict,
-                self.tuesdayRulesetDict,
-                self.wednesdayRulesetDict,
-                self.thursdayRulesetDict,
-                self.fridayRulesetDict,
-                self.saturdayRulesetDict,
-                self.sundayRulesetDict,
-            ]
-            required_keys = [
-                "ruleset_start_minute",
-                "ruleset_end_minute",
-                "ruleset_start_hour",
-                "ruleset_end_hour",
-                "ruleset_value",
-            ]
-            for rulesetDict in required_dicts:
-                has_key = False
-                len_key = None
-                for key in required_keys:
-                    if key in rulesetDict:
-                        if len_key is not None:
-                            assert (
-                                len(rulesetDict[key]) == len_key
-                            ), "All keys in rulesetDict must have the same length."
-                        len_key = len(rulesetDict[key])
-                        has_key = True
-                if has_key == False:
-                    for key in required_keys:
-                        rulesetDict[key] = []
-                else:
-                    for key in required_keys:
-                        if key not in rulesetDict:
-                            rulesetDict[key] = [0] * len_key
+    @staticmethod
+    def value_at(date_time, days) -> float:
+        """The value the rulesets give at a local time."""
+        ruleset = days[date_time.weekday()]
+        for i in range(len(ruleset["ruleset_start_hour"])):
+            start_hour, end_hour = ruleset["ruleset_start_hour"][i], ruleset["ruleset_end_hour"][i]
+            if start_hour == date_time.hour and date_time.minute >= ruleset["ruleset_start_minute"][i]:
+                return ruleset["ruleset_value"][i]
+            if start_hour < date_time.hour < end_hour:
+                return ruleset["ruleset_value"][i]
+            if end_hour == date_time.hour and date_time.minute <= ruleset["ruleset_end_minute"][i]:
+                return ruleset["ruleset_value"][i]
+        return ruleset["ruleset_default_value"]
 
-            self.output["scheduleValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=[
-                    self.get_schedule_value(dateTime)
-                    for dateTime in simulator.dateTimeSteps
-                ],
-            )
+    def _noise(self, timestamps) -> np.ndarray:
+        """A new hourly value at each full hour, a new daily value at
+        midnight."""
+        hour, day = 0.0, 0.0
+        noise = []
+        for t in timestamps:
+            if t.minute == 0:
+                hour = random.uniform(-self.noise_hour_range, self.noise_hour_range)
+            if t.hour == 0 and t.minute == 0:
+                day = random.uniform(-self.noise_day_range, self.noise_day_range)
+            noise.append(hour + day)
+        return np.array(noise)
 
-    def get_schedule_value(self, dateTime):
-        if (
-            dateTime.minute == 0
-        ):  # Compute a new noise value if a new hour is entered in the simulation
-            self.noise = randrange(-4, 4)
-
-        if (
-            dateTime.hour == 0 and dateTime.minute == 0
-        ):  # Compute a new bias value if a new day is entered in the simulation
-            self.bias = randrange(-10, 10)
-
-        if dateTime.weekday() == 0:
-            rulesetDict = self.mondayRulesetDict
-        elif dateTime.weekday() == 1:
-            rulesetDict = self.tuesdayRulesetDict
-        elif dateTime.weekday() == 2:
-            rulesetDict = self.wednesdayRulesetDict
-        elif dateTime.weekday() == 3:
-            rulesetDict = self.thursdayRulesetDict
-        elif dateTime.weekday() == 4:
-            rulesetDict = self.fridayRulesetDict
-        elif dateTime.weekday() == 5:
-            rulesetDict = self.saturdayRulesetDict
-        elif dateTime.weekday() == 6:
-            rulesetDict = self.sundayRulesetDict
-
-        n = len(rulesetDict["ruleset_start_hour"])
-        found_match = False
-        for i_rule in range(n):
-            if (
-                rulesetDict["ruleset_start_hour"][i_rule] == dateTime.hour
-                and dateTime.minute >= rulesetDict["ruleset_start_minute"][i_rule]
-            ):
-                schedule_value = rulesetDict["ruleset_value"][i_rule]
-                found_match = True
-                break
-            elif (
-                rulesetDict["ruleset_start_hour"][i_rule] < dateTime.hour
-                and dateTime.hour < rulesetDict["ruleset_end_hour"][i_rule]
-            ):
-                schedule_value = rulesetDict["ruleset_value"][i_rule]
-                found_match = True
-                break
-            elif (
-                rulesetDict["ruleset_end_hour"][i_rule] == dateTime.hour
-                and dateTime.minute <= rulesetDict["ruleset_end_minute"][i_rule]
-            ):
-                schedule_value = rulesetDict["ruleset_value"][i_rule]
-                found_match = True
-                break
-
-        if found_match == False:
-            schedule_value = rulesetDict["ruleset_default_value"]
-        elif self.add_noise and schedule_value > 0:
-            schedule_value += self.noise + self.bias
-            if schedule_value < 0:
-                schedule_value = 0
-        return schedule_value
-
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        """
-        simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times.
-        It also adds noise and bias to the calculated value.
-        """
-        self.output["scheduleValue"].set(stepIndex=stepIndex)
+    def series(self, timestamps, step_size):
+        """The schedule's value at every step of the run."""
+        if self.source is not None:
+            start_time, end_time, step_sizes = self.periods(timestamps, step_size)
+            return {"scheduleValue": self.source.read(start_time, end_time, step_sizes, owner=self.id).values}
+        days = self.day_rulesets()
+        values = np.zeros(timestamps.shape, dtype=float)
+        noise_cache = self.__dict__.setdefault("noise_cache", {})
+        random.seed(0)
+        for b, row in enumerate(timestamps):
+            own = [t for t in row if t is not None]
+            values[b, : len(own)] = [self.value_at(t, days) for t in own]
+            if self.add_noise and own:
+                key = (own[0], len(own), step_size)
+                if key not in noise_cache:
+                    noise_cache[key] = self._noise(own)
+                values[b, : len(own)] += noise_cache[key]
+        return {"scheduleValue": values}

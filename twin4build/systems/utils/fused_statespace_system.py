@@ -1,0 +1,942 @@
+r"""Compile-time fusion of connected linear state-space components.
+
+Why fusion exists
+-----------------
+
+Components are co-simulated Gauss-Seidel style: each steps once per timestep
+against the other's held (one-step-lagged) outputs.  For a cycle like
+``BuildingSpace <-> WallSystem`` the lag is unavoidable by ordering, and
+when the exchanged signal is a stiff algebraic function of a neighbour's state
+(a heat flow with gain :math:`1/R`) the loop gain :math:`\Delta t/(R\,C)` can
+exceed 1 and the pair diverges -- for ANY execution order, because the loop
+gain is invariant to where the cycle is cut.
+
+:class:`FusedStateSpaceSystem` removes the problem at the root: clusters of
+connected linear/bilinear state-space components are assembled into ONE
+monolithic block whose continuous matrices couple the member states exactly
+(the internal connections are eliminated algebraically), discretized with a
+single exact ZOH step.  There is no intra-cluster lag at all, so the coupled
+dynamics are exact and unconditionally stable by construction -- while every
+parameter stays on, and is only ever consumed by, its owning component.
+
+The elimination
+---------------
+
+Each member decomposes into state-space *units* (leaf systems exposing
+``_build_matrices`` and ``_ss_layout``; a composite like
+``BuildingSpaceSystem`` contributes its ``thermal`` and ``mass``
+submodels).  For unit :math:`i` with continuous matrices
+:math:`(A_i, B_i, C_i, D_i, E_i, F_i)` and input vector :math:`u_i`, every
+*internal* input (fed by another member through a fusable connection) is
+substituted by the sender's output row:
+
+.. math::
+
+   u_i[k] = y_j[l] = C_j[l,:]\,x_j + D_j[l,:]\,u_j
+
+recursively until only states and external inputs remain (the feedthrough
+chain must be acyclic -- asserted).  Stacking the units gives
+
+.. math::
+
+   u_i = S^x_i\,x + S^u_i\,u_{ext} \qquad\Rightarrow\qquad
+   A[i\text{-rows}] = [\,0\;A_i\;0\,] + B_i S^x_i,\quad
+   B[i\text{-rows}] = B_i S^u_i
+
+which for a zone-wall pair reproduces literally the monolithic RC matrix that
+a hand-derived combined model would have.  Bilinear terms (``E``/``F``) are
+required to act on *external* inputs only (asserted) and are re-indexed into
+the joint input vector.
+
+Execution semantics
+-------------------
+
+The fused component is a normal :class:`~twin4build.systems.saref4syst.system.System`
+that appears in the execution order INSTEAD of its members (the members stay
+in ``model.components`` for parameter targeting, port history and user
+access):
+
+* ``forward`` is the pure one-step map over the joint state -- the single
+  source of truth, used by ``do_step``, the composed fast paths and
+  collocation alike.
+* ``do_step`` reads the members' input ports (assigned generically through
+  the synthesized connection-point views), takes one joint step and writes
+  every member output port, so sensors and downstream components observe the
+  members exactly as before.
+* State lives in the members' own ``ss_model`` states (the generic
+  ``get_state``/``set_state`` walk reaches them through the registered
+  member modules), so estimator state seeding and collocation state layouts
+  see one stateful component with the concatenated member state.
+* Parameters are routed by prefixed names (``"<member_key>.<unit>.<name>"``),
+  mirroring the composite-component convention; non-estimated entries fall
+  back to the owning member's ``tps.Parameter`` defaults.  A unit parameter
+  the member declares shared (``SHARED_UNIT_PARAMS``, e.g. a zone's thermal
+  infiltration reading ``mass.m_inf``) is routed by its source's name.
+
+Published diagnostic outputs with feedthrough (e.g. the wall's heat flows)
+are evaluated at the end-of-step state with held external inputs; this can
+differ slightly from the unfused object graph (which used the lagged
+neighbour value), but only in the *reported* signal -- the dynamics are
+exact.
+
+Derived outputs
+---------------
+
+An output that is no row of the linear output equation -- a radiator's
+water-side power ``waterFlowRate * c_p * (supplyWaterTemperature -
+outletWaterTemperature)`` is bilinear -- is declared by its unit with
+``SS_DERIVED_OUTPUT_PORTS`` and computed by the unit's pure
+``_ss_derived_outputs(inputs, rows)`` from the external inputs it names
+(``SS_DERIVED_INPUT_PORTS``) and its output rows at the end of the joint
+step (``SS_DERIVED_ROW_PORTS``).  The member's own ``forward`` calls the same
+hook, so fused and unfused agree by construction.  A derived output cannot
+couple members: only output rows are eliminated.
+"""
+
+# Standard library imports
+import datetime
+from typing import Dict, List, Optional, Tuple
+
+# Third party imports
+import torch
+import torch.nn as nn
+
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+from twin4build import settings as _settings
+from twin4build.systems.utils.discrete_statespace_system import (
+    SparseBilinear,
+    bilinear_onestep,
+    bilinear_plan,
+    matmul,
+    structure_constant,
+)
+from twin4build.utils.logger import LOGGER
+from twin4build.utils.rgetattr import rgetattr
+
+
+def _module_key(component_id: str) -> str:
+    """Sanitize a component id into a valid nn.Module attribute name."""
+    key = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in component_id)
+    if not key or key[0].isdigit():
+        key = "m_" + key
+    return key
+
+
+class _ConnectionPointView:
+    """Receiver-side view of a member's connection point, re-keyed to the
+    fused component's namespaced port name.
+
+    Carries the REAL ``Connection`` objects and the real index dicts, so the
+    simulator's generic input assignment and the composer's source resolution
+    work on the fused component unchanged -- the write lands on the member's
+    own port object (aliased in ``fused.input``)."""
+
+    __slots__ = (
+        "input_port", "connects_system_through", "input_port_index",
+        "output_port_index", "output_component_index", "input_component_index",
+        "connection_point_of", "_real",
+    )
+
+    def __init__(self, fused, namespaced_port, real_cp, connections):
+        self.input_port = namespaced_port
+        self.connects_system_through = list(connections)
+        self.input_port_index = real_cp.input_port_index
+        self.output_port_index = real_cp.output_port_index
+        self.output_component_index = real_cp.output_component_index
+        self.input_component_index = real_cp.input_component_index
+        self.connection_point_of = fused
+        self._real = real_cp
+
+    def detached_of(self, connection):
+        """The member's connection point's flag (``ConnectionPoint.detached_of``)."""
+        return self._real.detached_of(connection)
+
+
+class _ConnectionView:
+    """Sender-side view of a member's outgoing connection, re-keyed to the
+    fused component's namespaced output port (used by the required-
+    initialization mapping after cycle cutting)."""
+
+    __slots__ = ("connects_system", "output_port", "connects_system_at")
+
+    def __init__(self, fused, namespaced_port, real_conn):
+        self.connects_system = fused
+        self.output_port = namespaced_port
+        self.connects_system_at = real_conn.connects_system_at
+
+
+class FusedStateSpaceSystem(core.System, nn.Module):
+    """One monolithic state-space block replacing a cluster of connected
+    linear/bilinear state-space components in the execution order.
+
+    Args:
+        members: The cluster's components, in a deterministic order (this
+            order defines the joint state layout).
+        internal_arcs: The eliminated connections, as tuples
+            ``(sender, output_port, receiver, input_port, slot)`` where
+            ``slot`` is the vector-port slot index (0 for scalar ports).
+        id: Component id of the fused block.
+    """
+
+    PARAM_NAMES: tuple = ()
+
+    def __init__(self, members: List, internal_arcs: List[tuple], **kwargs):
+        super().__init__(**kwargs)
+        nn.Module.__init__(self)
+
+        self._members = list(members)
+        self._member_keys = {}
+        for m in self._members:
+            key = _module_key(m.id)
+            assert not hasattr(self, key), f"duplicate member module key {key}"
+            self.add_module(key, m)
+            self._member_keys[m.id] = key
+        self._internal_arcs = list(internal_arcs)
+
+        # (receiver_id, input_port, slot) -> (sender_id, output_port)
+        self._internal_recv = {
+            (r.id, r_port, int(slot)): (s.id, s_port)
+            for (s, s_port, r, r_port, slot) in self._internal_arcs
+        }
+        internal_recv_ports = {(rid, port) for (rid, port, _) in self._internal_recv}
+        internal_conns = set()
+        for (s, s_port, r, r_port, slot) in self._internal_arcs:
+            for cp in r.connects_at:
+                if cp.input_port != r_port:
+                    continue
+                for conn in cp.connects_system_through:
+                    if conn.connects_system is s and conn.output_port == s_port:
+                        internal_conns.add(id(conn))
+
+        # A vector port fed partly inside the cluster and partly from outside
+        # (a room whose wall toward a hallway is fused and whose walls toward
+        # other rooms are not) stays an external port: its outside slots are
+        # its column, the inside slots are substituted.
+        ext_recv_ports = {
+            (m.id, cp.input_port)
+            for m in self._members
+            for cp in m.connects_at
+            if any(id(conn) not in internal_conns for conn in cp.connects_system_through)
+        }
+
+        # Namespaced port dicts ALIASING the member port objects: a write
+        # through the fused dict is a write to the member port.
+        fused_input = {}
+        fused_output = {}
+        for m in self._members:
+            for port, obj in m.input.items():
+                if (m.id, port) in internal_recv_ports and (m.id, port) not in ext_recv_ports:
+                    continue  # eliminated into the joint matrices
+                fused_input[f"{m.id}.{port}"] = obj
+            for port, obj in m.output.items():
+                fused_output[f"{m.id}.{port}"] = obj
+        self.input = fused_input
+        self.output = fused_output
+
+        # Synthesized graph views (external arcs only).
+        self.connects_at = []
+        self.connected_through = []
+        for m in self._members:
+            for cp in m.connects_at:
+                ext = [
+                    conn for conn in cp.connects_system_through
+                    if id(conn) not in internal_conns
+                ]
+                if ext:
+                    self.connects_at.append(
+                        _ConnectionPointView(
+                            self, f"{m.id}.{cp.input_port}", cp, ext
+                        )
+                    )
+            for conn in m.connected_through:
+                if id(conn) not in internal_conns:
+                    self.connected_through.append(
+                        _ConnectionView(self, f"{m.id}.{conn.output_port}", conn)
+                    )
+
+        self._ext_slot_masks = {}  # set by initialize
+        self._config = {"parameters": []}
+        self._do_step_params = None
+        self.INITIALIZED = False
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def members(self) -> List:
+        return list(self._members)
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
+
+    def state_heat_capacities(self):
+        """The members' units' heat capacities in the block's state order
+        (members in order, then each member's units), ``(n_c, D)``."""
+        from twin4build.systems.saref4syst.system import _concatenate_capacities
+
+        parts = [unit.state_heat_capacities() for m in self._members for _prefix, unit in m._ss_units()]
+        caps = _concatenate_capacities(parts, self.n_c)
+        width = self.state_size()
+        if caps is None or caps.shape[-1] != width:
+            raise ValueError(
+                f"fused block '{self.id}': its units' capacities cover {None if caps is None else caps.shape[-1]} "
+                f"of its {width} states"
+            )
+        return caps
+
+    def state_output_ports(self):
+        """The members' units' state outputs in the block's state order,
+        under the block's namespaced names (``"<member id>.<port>"``)."""
+        ports = [
+            None if port is None else f"{m.id}.{port}"
+            for m in self._members
+            for _prefix, unit in m._ss_units()
+            for port in unit.state_output_ports()
+        ]
+        return ports if len(ports) == self.state_size() else [None] * self.state_size()
+
+    def initialize(
+        self,
+        start_time: datetime.datetime = None,
+        end_time: datetime.datetime = None,
+        step_size: int = None,
+    ) -> None:
+        """Initialize the members (their own topology discovery still works on
+        the original, un-contracted connections), then build the joint layout:
+        unit table, state offsets, external input columns and internal-arc
+        substitution wiring."""
+        for m in self._members:
+            m.initialize(start_time, end_time, step_size)
+
+        # -- unit table: (member, unit_prefix, unit, layout, param_prefix) --
+        self._units = []
+        # The bilinear terms' indices and their summing plans, by (device, N,
+        # M): structure only, built at the first assembly (:meth:`_assemble`).
+        self._sparse_cache = {}
+        for m in self._members:
+            key = self._member_keys[m.id]
+            shared = getattr(m, "SHARED_UNIT_PARAMS", None) or {}
+            for prefix, unit in m._ss_units():
+                param_prefix = f"{key}.{prefix}" if prefix else key
+                # name -> member-relative parameter path (a shared one: its source)
+                paths = {}
+                for name in unit.PARAM_NAMES:
+                    path = f"{prefix}.{name}" if prefix else name
+                    paths[name] = shared.get(path, path)
+                self._units.append(
+                    {
+                        "member": m,
+                        "unit": unit,
+                        "layout": unit._ss_layout(),
+                        "param_prefix": param_prefix,
+                        "param_paths": paths,
+                        "member_key": key,
+                    }
+                )
+
+        # -- state offsets from the default-parameter matrices ---------------
+        offset = 0
+        for entry in self._units:
+            unit = entry["unit"]
+            matrices = unit._build_matrices()
+            A, _, C, D, E, F = matrices
+            entry["n_states"] = A.shape[-1]
+            entry["x_offset"] = offset
+            offset += entry["n_states"]
+            support = unit._ss_support()
+            assert set(support) == {"D", "E", "F"}, (
+                f"{type(unit).__name__}._ss_support() must define exactly D, E and F"
+            )
+
+            d_by_row = {}
+            for row, col in support["D"]:
+                assert 0 <= row < D.shape[-2] and 0 <= col < D.shape[-1], (
+                    f"{type(unit).__name__} declares out-of-range D support "
+                    f"({row}, {col}) for shape {tuple(D.shape[-2:])}"
+                )
+                d_by_row.setdefault(row, []).append(col)
+
+            e_inputs = set()
+            for input_col, state_row, state_col in support["E"]:
+                assert (
+                    0 <= input_col < E.shape[-3]
+                    and 0 <= state_row < E.shape[-2]
+                    and 0 <= state_col < E.shape[-1]
+                ), (
+                    f"{type(unit).__name__} declares out-of-range E support "
+                    f"({input_col}, {state_row}, {state_col}) for shape "
+                    f"{tuple(E.shape[-3:])}"
+                )
+                e_inputs.add(input_col)
+
+            f_by_input = {}
+            for input_col, state_row, input_col_2 in support["F"]:
+                assert (
+                    0 <= input_col < F.shape[-3]
+                    and 0 <= state_row < F.shape[-2]
+                    and 0 <= input_col_2 < F.shape[-1]
+                ), (
+                    f"{type(unit).__name__} declares out-of-range F support "
+                    f"({input_col}, {state_row}, {input_col_2}) for shape "
+                    f"{tuple(F.shape[-3:])}"
+                )
+                f_by_input.setdefault(input_col, set()).add(input_col_2)
+
+            entry["support"] = {
+                "D_by_row": {
+                    row: tuple(sorted(cols)) for row, cols in d_by_row.items()
+                },
+                "E_inputs": frozenset(e_inputs),
+                "F_by_input": {
+                    col: tuple(sorted(cols)) for col, cols in f_by_input.items()
+                },
+            }
+        self._n_joint_states = offset
+
+        # -- input columns: internal (substituted) or external (joint u) -----
+        # External columns are keyed by the namespaced port name; the same
+        # port may feed several unit columns (composite submodels sharing a
+        # port object).  A vector port's slots enter its column as their sum;
+        # a port fed partly inside the cluster sums its outside slots only
+        # (``_ext_slot_masks``: 1 outside, 0 inside -- the inside slots are
+        # substituted, and the port object still holds their values, written
+        # after each step).
+        self._ext_names: List[str] = []
+        self._ext_slot_masks: Dict[str, torch.Tensor] = {}
+        ext_index = {}
+        ref = self._units[0]["unit"]._build_matrices()[0] if self._units else torch.zeros(1)
+        for entry in self._units:
+            m = entry["member"]
+            cols = []  # per unit column: ("ext", j) | ("int", sender_id, out_port)
+            for port, width in entry["layout"]["u"]:
+                inside = []
+                for slot in range(width):
+                    src = self._internal_recv.get((m.id, port, slot))
+                    if src is not None:
+                        cols.append(("int", src[0], src[1]))
+                        inside.append(slot)
+                    else:
+                        name = f"{m.id}.{port}"
+                        assert name in self._input, (
+                            f"fused input port {name} missing (an outside slot "
+                            "of a port with no outside connection)"
+                        )
+                        if name not in ext_index:
+                            ext_index[name] = len(self._ext_names)
+                            self._ext_names.append(name)
+                        cols.append(("ext", ext_index[name]))
+                name = f"{m.id}.{port}"
+                if inside and len(inside) < width:
+                    mask = torch.ones(width, dtype=ref.dtype, device=ref.device)
+                    mask[inside] = 0.0
+                    previous = self._ext_slot_masks.get(name)
+                    assert previous is None or torch.equal(previous, mask), (
+                        f"fused input port {name}: its units disagree on the inside slots"
+                    )
+                    self._ext_slot_masks[name] = mask
+            entry["cols"] = cols
+
+        # -- per-unit input transforms (e.g. the room models' balanced
+        # ventilation make-up flow): a pure function of the unit's ORIGINAL
+        # external inputs, applied once per namespaced port before the joint
+        # ``u`` is stacked.  Two units of one member sharing a port (thermal
+        # and mass ``exhaustAirFlowRate``) compute the same value, so the
+        # last write wins harmlessly.  The ports it reads must be external:
+        # an internal (substituted) column would bypass the transform.
+        self._input_transforms = []
+        for entry in self._units:
+            transform = getattr(entry["unit"], "_ss_transform_inputs", None)
+            if transform is None:
+                continue
+            m = entry["member"]
+            ports = tuple(getattr(entry["unit"], "SS_TRANSFORM_PORTS", ()))
+            for port in ports:
+                assert f"{m.id}.{port}" in ext_index, (
+                    f"{type(entry['unit']).__name__} transforms input port "
+                    f"{port!r}, which is not an external column of fused "
+                    f"member {m.id}"
+                )
+            self._input_transforms.append((m.id, transform, ports))
+
+        # -- per-unit derived outputs (a radiator's water-side power): the
+        # outputs that are no rows of the linear output equation, a pure
+        # function of the unit's external inputs and its output rows at the
+        # end of the joint step (see "Derived outputs" in the module
+        # docstring).  The inputs they read must be external columns, like a
+        # transform's: a substituted input has no value of its own here.
+        self._derived_outputs = []
+        for entry in self._units:
+            derived_outputs = getattr(entry["unit"], "_ss_derived_outputs", None)
+            if derived_outputs is None:
+                continue
+            unit = entry["unit"]
+            m = entry["member"]
+            in_ports = tuple(getattr(unit, "SS_DERIVED_INPUT_PORTS", ()))
+            row_ports = tuple(getattr(unit, "SS_DERIVED_ROW_PORTS", ()))
+            out_ports = tuple(getattr(unit, "SS_DERIVED_OUTPUT_PORTS", ()))
+            for port in in_ports:
+                assert f"{m.id}.{port}" in ext_index, (
+                    f"{type(unit).__name__} derives outputs from input port "
+                    f"{port!r}, which is not an external column of fused "
+                    f"member {m.id}"
+                )
+            for port in row_ports:
+                assert port in entry["layout"]["y"], (
+                    f"{type(unit).__name__} derives outputs from {port!r}, "
+                    "which is not one of its output rows"
+                )
+            self._derived_outputs.append((m.id, derived_outputs, in_ports, row_ports, out_ports))
+
+        # Bilinear inputs must be external.  Validate this structural rule once
+        # from the declared support instead of asserting inside every traced
+        # assembly.
+        for i, entry in enumerate(self._units):
+            support = entry["support"]
+            bilinear_inputs = set(support["E_inputs"]) | set(
+                support["F_by_input"]
+            )
+            for k in bilinear_inputs:
+                assert entry["cols"][k][0] == "ext", (
+                    f"bilinear input column {k} of unit {i} is internal -- "
+                    "cluster is not fusable"
+                )
+            for input_cols in support["F_by_input"].values():
+                for k2 in input_cols:
+                    assert entry["cols"][k2][0] == "ext", (
+                        "bilinear F term references an internal input -- "
+                        "cluster is not fusable"
+                    )
+
+        # -- output rows: every member output, namespaced --------------------
+        # (unit index, row) per published output name.
+        self._out_names: List[str] = []
+        self._out_rows: List[Tuple[int, int]] = []
+        for i, entry in enumerate(self._units):
+            m = entry["member"]
+            for port, row in entry["layout"]["y"].items():
+                self._out_names.append(f"{m.id}.{port}")
+                self._out_rows.append((i, row))
+
+        # sender (member_id, output_port) -> (unit index, row)
+        self._sender_rows = {}
+        for i, entry in enumerate(self._units):
+            m = entry["member"]
+            for port, row in entry["layout"]["y"].items():
+                self._sender_rows[(m.id, port)] = (i, row)
+        for (s, s_port, _, _, _) in self._internal_arcs:
+            assert (s.id, s_port) in self._sender_rows, (
+                f"internal arc source {s.id}.{s_port} is not a state-space "
+                "output of the cluster"
+            )
+        # Every member output is written by the joint step, as a row or as a
+        # derived output; one that is neither would keep its initial value.
+        published = set(self._out_names) | {
+            f"{member_id}.{port}"
+            for (member_id, _, _, _, out_ports) in self._derived_outputs
+            for port in out_ports
+        }
+        unpublished = sorted(set(self._output) - published)
+        if unpublished:
+            LOGGER.warning(
+                "Fused state-space cluster %s does not compute member output(s) %s "
+                "(neither output rows nor derived outputs); they keep their initial values",
+                self.id,
+                ", ".join(unpublished),
+            )
+
+        # Validate the declared feedthrough graph once.  Runtime matrix values
+        # cannot safely decide graph structure: a coefficient may vanish only
+        # at the current parameter iterate, and inspecting it would synchronize
+        # CUDA during every transformed assembly.
+        visiting = set()
+        visited = set()
+        input_order = []
+
+        def visit_input(i, k):
+            node = (i, k)
+            if node in visited:
+                return
+            assert node not in visiting, (
+                "algebraic loop in fused feedthrough support -- cluster is not "
+                "fusable"
+            )
+            visiting.add(node)
+            kind = self._units[i]["cols"][k]
+            if kind[0] == "int":
+                j, row = self._sender_rows[(kind[1], kind[2])]
+                for kk in self._units[j]["support"]["D_by_row"].get(row, ()):
+                    visit_input(j, kk)
+            visiting.remove(node)
+            visited.add(node)
+            input_order.append(node)
+
+        for i, entry in enumerate(self._units):
+            for k in range(len(entry["cols"])):
+                visit_input(i, k)
+        self._input_order = tuple(input_order)
+        # A shared parameter is one name, however many units read it.
+        self.PARAM_NAMES = tuple(
+            dict.fromkeys(
+                f"{entry['member_key']}.{path}"
+                for entry in self._units
+                for path in entry["param_paths"].values()
+            )
+        )
+        if _settings.value("fused_sparse"):
+            # The bilinear terms' indices and plan, from one assembly of the
+            # default parameters here: a step that rebuilds the matrices under
+            # torch.compile (a batched step) cannot build them (numpy).
+            self._assemble({})
+
+        self._do_step_params = None
+        self.INITIALIZED = True
+
+    # ------------------------------------------------------------------
+    # Joint matrix assembly
+    # ------------------------------------------------------------------
+
+    def _unit_params(self, entry, params):
+        """Physical-parameter dict for one unit: estimated entries from the
+        prefixed ``params`` (``"<member_key>.<unit>.<name>"``, a shared one by
+        its source's name), the rest from the member's ``tps.Parameter``
+        defaults."""
+        member = entry["member"]
+        out = {}
+        for name, path in entry["param_paths"].items():
+            key = f"{entry['member_key']}.{path}"
+            out[name] = params[key] if key in params else rgetattr(member, path).get()
+        return out
+
+    def _assemble(self, params):
+        """Build the joint ``(A, B, C, D, E, F)`` from the unit matrices,
+        eliminating the internal arcs exactly.  ``E`` and ``F`` come as their
+        entries (:class:`SparseBilinear`, ``None`` for a block without such
+        terms) unless the ``fused_sparse`` setting is off (dense tensors)."""
+        units = self._units
+        mats = [u["unit"]._build_matrices(self._unit_params(u, params)) for u in units]
+
+        n_c = max(m[0].shape[0] for m in mats)
+        N = self._n_joint_states
+        M = len(self._ext_names)
+        dtype = mats[0][0].dtype
+        device = mats[0][0].device
+
+        def _expand(t):
+            return t if t.shape[0] == n_c else t.expand(n_c, *t.shape[1:])
+
+        # Substitution: per unit, u_i = S_x[i] @ x + S_u[i] @ u_ext.
+        # Row cache keyed (unit index, column); cycle-guarded (a cyclic
+        # feedthrough chain would be a purely algebraic loop -- not fusable).
+        row_cache = {}
+        ext_eye = torch.eye(M, dtype=dtype, device=device)
+        for i, k in self._input_order:
+            kind = units[i]["cols"][k]
+            if kind[0] == "ext":
+                sx = torch.zeros((n_c, 1, N), dtype=dtype, device=device)
+                su = ext_eye[kind[1]].reshape(1, 1, M).expand(n_c, -1, -1)
+            else:
+                j, row = self._sender_rows[(kind[1], kind[2])]
+                _, _, Cj, Dj, _, _ = mats[j]
+                oj, nj = units[j]["x_offset"], units[j]["n_states"]
+                sx = torch.nn.functional.pad(
+                    _expand(Cj)[:, row:row + 1, :],
+                    (oj, N - oj - nj),
+                )
+                su = torch.zeros((n_c, 1, M), dtype=dtype, device=device)
+                Dj_row = _expand(Dj)[:, row, :]  # (n_c, m_j)
+                for kk in units[j]["support"]["D_by_row"].get(row, ()):
+                    col = Dj_row[:, kk]
+                    sub_sx, sub_su = row_cache[(j, kk)]
+                    sx = sx + col.reshape(n_c, 1, 1) * sub_sx
+                    su = su + col.reshape(n_c, 1, 1) * sub_su
+            row_cache[(i, k)] = (sx, su)
+
+        S = []  # per unit: (S_x (n_c, m_i, N), S_u (n_c, m_i, M))
+        for i, entry in enumerate(units):
+            m_i = len(entry["cols"])
+            if m_i:
+                rows = [row_cache[(i, k)] for k in range(m_i)]
+                sx = torch.cat([r[0] for r in rows], dim=1)
+                su = torch.cat([r[1] for r in rows], dim=1)
+            else:
+                sx = torch.zeros((n_c, 0, N), dtype=dtype, device=device)
+                su = torch.zeros((n_c, 0, M), dtype=dtype, device=device)
+            S.append((sx, su))
+
+        # Each unit owns the joint state rows o .. o + n (the units' states are
+        # contiguous, in unit order), so every matrix is the units' row blocks
+        # stacked: a unit builds only its own rows.  Padded to the full joint
+        # shape and stacked before the sum, the terms held one (n_c, M, N, M)
+        # copy per bilinear term at once (a storey-wide block, ~158 states x
+        # 588 inputs: ~200 MB per copy in float32).  Same values; the peak is
+        # about one joint matrix.
+        sparse = _settings.value("fused_sparse")
+        a_rows = []
+        b_rows = []
+        e_rows = []
+        f_rows = []
+        # sparse: the (input, row, column) indices and the (n_c, entries)
+        # values, every entry the dense form has; the indices and their
+        # summing plans depend on the structure only: built once
+        e_idx, f_idx, e_vals, f_vals = [], [], [], []
+        cache_key = (str(device), N, M)
+        cached = self._sparse_cache.get(cache_key) if sparse else None
+        build = sparse and cached is None
+        for i, entry in enumerate(units):
+            Ai, Bi, Ci, Di, Ei, Fi = (_expand(t) for t in mats[i])
+            o, n = entry["x_offset"], entry["n_states"]
+            sx, su = S[i]
+            a_rows.append(torch.nn.functional.pad(Ai, (o, N - o - n)) + matmul(Bi, sx))  # (n_c, n, N)
+            b_rows.append(matmul(Bi, su))  # (n_c, n, M)
+
+            # Bilinear terms must act on external inputs only: substituted
+            # (state-valued) bilinear inputs would create quadratic state
+            # terms that no LTI block can represent.
+            e_unit = None  # (n_c, M, n, N): the unit's rows of E
+            f_unit = None  # (n_c, M, n, M): the unit's rows of F
+            rows = torch.arange(n, device=device)
+            for k, kind in enumerate(entry["cols"]):
+                has_E = k in entry["support"]["E_inputs"]
+                f_inputs = entry["support"]["F_by_input"].get(k, ())
+                if not has_E and not f_inputs:
+                    continue
+                j = kind[1]
+                if has_E:
+                    if sparse:
+                        # the unit's whole (n, n) block of this input, as the dense form takes it
+                        if build:
+                            r, c = torch.meshgrid(rows, rows, indexing="ij")
+                            e_idx.append((torch.full((n * n,), j, device=device), o + r.reshape(-1), o + c.reshape(-1)))
+                        e_vals.append(Ei[:, k].reshape(n_c, n * n))
+                    else:
+                        term = ext_eye[j].reshape(1, M, 1, 1) * torch.nn.functional.pad(
+                            Ei[:, k], (o, N - o - n)
+                        ).unsqueeze(1)
+                        e_unit = term if e_unit is None else e_unit + term
+                for k2 in f_inputs:
+                    kind2 = entry["cols"][k2]
+                    col = Fi[:, k][:, :, k2]  # (n_c, n)
+                    if sparse:
+                        if build:
+                            f_idx.append(
+                                (torch.full((n,), j, device=device), o + rows, torch.full((n,), kind2[1], device=device))
+                            )
+                        f_vals.append(col)
+                    else:
+                        term = (
+                            ext_eye[j].reshape(1, M, 1, 1)
+                            * col.reshape(n_c, 1, n, 1)
+                            * ext_eye[kind2[1]].reshape(1, 1, 1, M)
+                        )
+                        f_unit = term if f_unit is None else f_unit + term
+            if not sparse:
+                e_rows.append(e_unit if e_unit is not None else torch.zeros((n_c, M, n, N), dtype=dtype, device=device))
+                f_rows.append(f_unit if f_unit is not None else torch.zeros((n_c, M, n, M), dtype=dtype, device=device))
+
+        A = torch.cat(a_rows, dim=1)
+        B = torch.cat(b_rows, dim=1)
+        if sparse:
+            if build:
+                def _indices(idx, cols):
+                    if not idx:
+                        return None
+                    # plain tensors even when the first assembly runs inside a
+                    # transform: the cache outlives it
+                    k_, i_, j_ = (
+                        structure_constant(torch.cat([t[p] for t in idx]).to(torch.long)) for p in range(3)
+                    )
+                    return (k_, i_, j_, bilinear_plan(k_, i_, j_, cols))
+
+                cached = self._sparse_cache[cache_key] = (_indices(e_idx, N), _indices(f_idx, M))
+
+            def _sparse(idx, vals):
+                if idx is None:
+                    return None
+                values = torch.cat(vals, dim=1)
+                assert values.shape[1] == idx[0].numel(), "the cached bilinear indices do not match the block's terms"
+                return SparseBilinear(*idx[:3], values, idx[3])
+
+            E = _sparse(cached[0], e_vals)
+            F = _sparse(cached[1], f_vals)
+        else:
+            E = torch.cat(e_rows, dim=2)
+            F = torch.cat(f_rows, dim=2)
+
+        # Published outputs: y = (C_i + D_i S_x) x + (D_i S_u) u_ext rows.
+        c_rows = []
+        d_rows = []
+        for i, row in self._out_rows:
+            _, _, Ci, Di, _, _ = mats[i]
+            o, n = self._units[i]["x_offset"], self._units[i]["n_states"]
+            sx, su = S[i]
+            Di_row = _expand(Di)[:, row:row + 1, :]  # (n_c, 1, m_i)
+            c_rows.append(
+                torch.nn.functional.pad(
+                    _expand(Ci)[:, row:row + 1, :],
+                    (o, N - o - n),
+                )
+                + matmul(Di_row, sx)
+            )
+            d_rows.append(matmul(Di_row, su))
+        C = torch.cat(c_rows, dim=1)
+        D = torch.cat(d_rows, dim=1)
+
+        return A, B, C, D, E, F
+
+    # ------------------------------------------------------------------
+    # forward / do_step
+    # ------------------------------------------------------------------
+
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._assemble(p)}
+
+    def forward(self, x, inputs, params, step_size):
+        """Pure one-step of the fused cluster: ``(state, inputs, params) ->
+        (new_state, outputs)``.
+
+        ``inputs`` is keyed by the namespaced external port names
+        (``"<member_id>.<port>"``); ``params`` by prefixed parameter paths
+        (``"<member_key>.<unit>.<name>"``); outputs cover every member output,
+        namespaced: the output rows, then the derived outputs (evaluated on
+        the step's external inputs and the end-of-step rows).  Matrices are
+        cached per params-dict identity (theta-only work, done once per theta
+        in a sequential rollout)."""
+        A, B, C, D, E, F = params["matrices"]
+        # A member's Vector input (a zone's per-branch air flows) enters the
+        # fused input vector as its total: the state-space units declare one
+        # column for it, and the zone itself sums the branches.  The members'
+        # input transforms (a zone's balanced make-up flow) see those totals.
+        n_lead = x.dim() - 1
+        # An OPTIONAL member input with no producer (a zone's make-up-air
+        # port without a transfer node) still owns a joint-u column, but the
+        # caller only passes connected inputs.  Its coefficients are zero in
+        # that case (the member routes the term to its default slot), so a
+        # zero column stands in.  A missing required input is an error.
+        missing = [name for name in self._ext_names if name not in inputs]
+        if missing:
+            required = [name for name in missing if not self._input[name].optional]
+            if required:
+                raise KeyError(f"fused cluster {self.id}: missing input(s) {required}")
+            ref = next(v for v in inputs.values() if v.dim() == n_lead)
+            inputs = dict(inputs)
+            inputs.update({name: torch.zeros_like(ref) for name in missing})
+        port_values = {}
+        for name in self._ext_names:
+            value = inputs[name]
+            if value.dim() > n_lead:
+                mask = self._ext_slot_masks.get(name)
+                if mask is not None:  # a port fed partly inside: its outside slots only
+                    value = value * mask.to(dtype=value.dtype, device=value.device)
+                value = value.sum(dim=-1)
+            port_values[name] = value
+        summed = self._transform_inputs(port_values)
+        u = torch.stack([summed[name] for name in self._ext_names], dim=-1)
+        x_next, y = bilinear_onestep(
+            A,
+            B,
+            C,
+            D,
+            E,
+            F,
+            x,
+            u,
+            step_size,
+        )
+        outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
+        # Derived outputs read the ports' values, not the transformed matrix
+        # columns (a zone's imbalance needs its exhaust, not its make-up flow).
+        for member_id, derived_outputs, in_ports, row_ports, out_ports in self._derived_outputs:
+            derived = derived_outputs(
+                {port: port_values[f"{member_id}.{port}"] for port in in_ports},
+                {port: outputs[f"{member_id}.{port}"] for port in row_ports},
+            )
+            for port in out_ports:
+                outputs[f"{member_id}.{port}"] = derived[port]
+        return x_next, outputs
+
+    def _transform_inputs(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Apply the members' ``_ss_transform_inputs`` hooks (see
+        :meth:`initialize`) to the namespaced external inputs.  Every hook
+        sees the original values; the returned dict carries the replaced
+        slots.  Identity when no member declares a transform."""
+        if not self._input_transforms:
+            return inputs
+        out = dict(inputs)
+        for member_id, transform, ports in self._input_transforms:
+            local = {port: inputs[f"{member_id}.{port}"] for port in ports}
+            for port, value in transform(local).items():
+                out[f"{member_id}.{port}"] = value
+        return out
+
+    def _forward_params(self, step_size=None) -> dict:
+        """Params dict for the ``do_step`` path: every unit parameter under its
+        prefixed name, from the members' own ``tps.Parameter`` values.
+
+        Built ONCE per :meth:`initialize` (i.e. once per simulation):
+        parameters cannot change during a simulation, and the stable dict
+        identity lets :meth:`forward` reuse the assembled joint matrices for
+        the whole rollout.  Estimation writes parameters and re-simulates,
+        which re-initializes and rebuilds -- with the fresh autograd graph.
+        The joint matrices (:meth:`derive`) are built with it."""
+        params = self._do_step_params
+        if params is None:
+            params = {
+                f"{entry['member_key']}.{path}": rgetattr(entry["member"], path).get()
+                for entry in self._units
+                for path in entry["param_paths"].values()
+            }
+            params = {**params, **self.derive(params, step_size)}
+            self._do_step_params = params
+        return params
+
+    def input_defaults(self) -> dict:
+        """The members' unwired inputs that read another of their inputs,
+        by their namespaced names (``"<member>.<input>"``)."""
+        out = {}
+        for m in self._members:
+            for port, source in m.input_defaults().items():
+                name, read = f"{m.id}.{port}", f"{m.id}.{source}"
+                if name in self._input and read in self._input:
+                    out[name] = read
+        return out
+
+    def do_step(
+        self,
+        second_time=None,
+        date_time=None,
+        step_size=None,
+        step_index: Optional[int] = None,
+    ) -> None:
+        """One joint step: read the (already assigned) external member input
+        ports, advance the joint state, write every member output port.
+
+        Thin port-I/O wrapper around :meth:`forward` (single source of truth).
+        The members' ``do_step`` is never called; the coupling of the
+        eliminated arcs happens inside the joint matrices.  Their receiving
+        ports are still written from the senders' outputs afterwards, so a
+        member's internal input (a zone's ``heatGain`` from its radiator, its
+        ``wallHeatGain`` from a wall) keeps the value and history it had
+        before fusion."""
+        inputs = {name: self._input[name].get() for name in self._ext_names}
+        for name, source in self.input_defaults().items():
+            if name in inputs:
+                inputs[name] = self._input[source].get()
+        x = self.get_state()  # (n_s, n_c, N) via the members' own states
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(step_size), self._scalar_step_size(step_size)
+        )
+        self.set_state(x_next)
+        for name, value in outs.items():
+            self._output[name]._set(value, i_t=step_index)
+        for (s, s_port, r, r_port, slot) in self._internal_arcs:
+            port = r.input[r_port]
+            value = s.output[s_port].get()
+            if isinstance(port, tps.Vector):
+                port._set(value, i_t=step_index, i_v=int(slot))
+            else:
+                port._set(value, i_t=step_index)

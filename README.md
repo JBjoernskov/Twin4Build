@@ -1,14 +1,11 @@
 
-<p align="center">
-    <img src="https://raw.githubusercontent.com/JBjoernskov/Twin4Build/main/Twin4build_logo.jpg" width="400">
-</p>
-
 [![docs](https://app.readthedocs.org/projects/twin4build/badge/?version=latest)](https://twin4build.readthedocs.io/en/latest/)
+[![docs-dev](https://app.readthedocs.org/projects/twin4build/badge/?version=dev)](https://twin4build.readthedocs.io/en/dev/)
 
 
 # twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
-Dynamic modeling and simulation of buildings, featuring fully differentiable models for parameter estimation and optimal control. Supports integration of semantic models for automatic model generation and fast implementation. 
+Dynamic modeling and simulation of buildings, featuring fully differentiable models for parameter estimation and optimal control. Supports integration of semantic models for automatic model generation and rapid implementation.
 
 
 ## Core Classes and Functionality
@@ -25,7 +22,7 @@ Twin4Build provides several top-level classes for building, simulating, translat
   Automatically generates a Model from a semantic model (ontology-based building description) and maintains a link between these. Enables ontology-driven, automated model creation.
 
 - **Estimator**:  
-  Performs parameter estimation (calibration) for your Model using measured data. Supports both least-squares and PyTorch-based optimization.
+  Performs parameter estimation (calibration) for your Model using measured data. Supports gradient-based optimization with automatic differentiation (SciPy and CasADi/IPOPT backends, single-shooting or collocation).
 
 - **Optimizer**:  
   Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
@@ -37,61 +34,91 @@ All classes are accessible via the main package import:
 import twin4build as tb
 ```
 
-A typical workflow would look like this:
-<p align="center">
-    <img src="https://raw.githubusercontent.com/JBjoernskov/Twin4Build/main/docs/source/_static/t4b_workflow.png" width="800">
-</p>
+A typical workflow is Model → Simulator → Estimator or Optimizer. Execution
+policy is selected on `Simulator`; solver settings are passed through
+`estimate(..., options=...)` or `optimize(..., options=...)`.
 
 
 ## Examples and Tutorials
-Below are some examples of how to use the package.
-More examples are coming soon.
+Notebooks live in [`twin4build/examples/`](twin4build/examples/) on **this branch** (relative links always open the files from the branch you are viewing on GitHub).
+
+GitHub READMEs cannot parameterize Colab URLs by viewing branch — absolute Colab links are fixed in the file. Prefer the version-matched Colab badges on the docs site:
+
+- [Examples (latest / `main`)](https://twin4build.readthedocs.io/en/latest/manual/examples_and_tutorials.html)
+- [Examples (`dev`)](https://twin4build.readthedocs.io/en/dev/manual/examples_and_tutorials.html)
 
 ### Basics of Twin4Build
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Connecting components, simulating a model, and visualization
+[minimal_example.ipynb](twin4build/examples/minimal_example.ipynb) — Part 1: Connecting components, simulating a model, and visualization
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration
+[space_co2_controller_example.ipynb](twin4build/examples/space_co2_controller_example.ipynb) — Part 2: Modeling and control of indoor CO2 concentration
+
+[bems_example_lecture.ipynb](twin4build/examples/bems_example_lecture.ipynb) — Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization
 
 ### Translator
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: How to use the translator to generate simulation models from semantic models.
-
+[translator_example.ipynb](twin4build/examples/translator_example.ipynb) — Part 1: How to use the translator to generate simulation models from semantic models.
 
 ### Estimator
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basic parameter estimation and calibration
-
+[estimator_example.ipynb](twin4build/examples/estimator_example.ipynb) — Part 1: Basic parameter estimation and calibration
 
 ### Optimizer
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
+[optimizer_example.ipynb](twin4build/examples/optimizer_example.ipynb) — Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
 
-<!-- ### Neural Policy Controller
+Bi-objective fronts use AUGMECON through `Optimizer.pareto_front`. The
+authoritative method matrix compares SLSQP direct shooting,
+`("scipy", "SLSQP", "ad")`, with the IPOPT solver using collocation
+transcription,
+`("casadi", "ipopt", "ad", "collocation")`. IPOPT promotes every augmented
+one-step boundary state to the decision vector, enforces dynamics as hard
+continuity defects, and keeps comfort limits as soft penalties; the epsilon
+row is the only non-dynamics hard inequality. Same-class components can be
+grouped with `model.batch_components()`; inspect the layout with
+`get_batched_component_info()` and `get_batch_id_for_component()`.
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/neural_policy_controller_example/neural_policy_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Training a neural policy controller for the space model -->
+Simulation has two independent policy dimensions. `execution_mode="object"`
+steps the components one by one through their `forward`, while
+`execution_mode="functional"` uses the functional one-step model. `execution_backend="eager"` is the default;
+`execution_backend="cuda_graph"` captures and replays fixed-shape functional
+execution on CUDA. CUDA Graph is a backend, not a mode. Functional workflows
+can also use `build_functional_model`, `record_exogenous_inputs`, and
+`rollout_functional` directly.
+
+Model layout is independent of execution policy: a model is either
+`standard` or `batched`, and either layout may use supported execution modes.
+Solver options select Hessian strategy with
+`hessian="exact"|"gauss_newton"|"limited_memory"`; the default is `exact`.
 
 ## Documentation
-The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
+- **Latest (`main`)**: https://twin4build.readthedocs.io/en/latest/
+- **Dev**: https://twin4build.readthedocs.io/en/dev/
+- **Canonical benchmarks on this branch**: [`benchmarks/`](benchmarks/)
+- **Benchmark methodology (`main`)**: https://twin4build.readthedocs.io/en/latest/manual/benchmarks.html
+- **Benchmark methodology (`dev`)**: https://twin4build.readthedocs.io/en/dev/manual/benchmarks.html
+
+The three canonical scaling notebooks use the complete translated 23-component
+`full_workflow` graph at exactly 1, 10, 50, and 100 zones. The one-zone
+rows replace the former standalone baselines. Simulation, estimation, and the
+combined optimization/Pareto notebook retain explicit device/method
+applicability, quality, safety preflights, and incremental raw checkpoints.
+
 Below is a code snippet showing the basic functionality of the package.
-```python 
+```python
+import datetime
+import pytz
 import twin4build as tb
 
 # Create a model
 model = tb.Model(id="example_model")
 
 # Define components
-damper = tb.DamperTorchSystem(id="damper")
-space = tb.BuildingSpaceTorchSystem(id="space")
+damper = tb.DamperSystem(id="damper")
+space = tb.BuildingSpaceSystem(id="space")
 
 # Add connections to the model
-model.add_connection(damper, space, 
-                    "airFlowRate", "supplyAirFlowRate")
+model.add_connection(damper, space,
+                     "airFlowRate", "supplyAirFlowRate")
 
 # Load the model
 model.load()
@@ -99,23 +126,46 @@ model.load()
 # Create a simulator instance
 simulator = tb.Simulator(model)
 
-# Simulate the model
-step_size = 600 #Seconds
-start_time = datetime.datetime(year=2025, month=1, day=10, hour=0, minute=0, second=0) # Optionally set the timezone
-end_time = datetime.datetime(year=2025, month=1, day=12, hour=0, minute=0, second=0) # Optionally set the timezone
+# Simulate the model (timezone-aware datetimes are required)
+step_size = 600  # Seconds
+start_time = datetime.datetime(year=2025, month=1, day=10, tzinfo=pytz.UTC)
+end_time = datetime.datetime(year=2025, month=1, day=12, tzinfo=pytz.UTC)
 simulator.simulate(step_size=step_size,
                    start_time=start_time,
                    end_time=end_time)
 
 # Plot the results
-plot.plot_component(simulator, 
-                    components_1axis=[("Damper", "airFlowRate")],
-                    components_2axis=[("Damper", "damperPosition")],
-                    ylabel_1axis="Air flow rate", #Optional
-                    ylabel_2axis="Damper position", #Optional
-                    show=True,
-                    nticks=11)
+tb.plot.plot(
+    simulator.date_time_steps,
+    entries=[
+        tb.plot.Entry(data=damper.output["airFlowRate"].history(), label="Air flow rate", axis=1),
+        tb.plot.Entry(data=damper.output["damperPosition"].history(), label="Damper position", axis=2),
+    ],
+    ylabel_1axis="Air flow rate [kg/s]",
+    ylabel_2axis="Damper position",
+    show=True,
+)
 ```
+
+### GPU support
+
+Models expose a torch-style `to(device, dtype)` API. After `model.load()`, a single call moves every component tensor (parameters and their bounds, states, state-space matrices, schedule tables) to the target device, and the Simulator, Estimator, and Optimizer compute there end to end - data only returns to the CPU at the scipy/IPOPT and plotting boundaries:
+
+```python
+model.to("cuda")                     # run on the GPU in float64 (the default dtype)
+model.to("cuda", torch.float32)      # opt-in single precision
+model.to("cpu", torch.float64)       # back to the defaults
+```
+
+Two things to know:
+
+- **Precision is part of the experiment.** Consumer GPUs can have very different
+  float32 and float64 throughput. The default remains `float64`; record dtype,
+  device, and hardware with every performance result.
+- **GPU speedups are workload-specific.** Kernel launch, host-side solver work,
+  batch size, model size, and compilation policy can dominate different cases.
+  Use the canonical [`benchmarks/`](benchmarks/) methodology instead of
+  generalizing from one run.
 
 ## Installation
 
@@ -125,44 +175,61 @@ The package is installed with pip:
 pip install twin4build
 ```
 
-The following python versions are supported:
+Optional extras:
 
-| Python version  | Windows  | Ubuntu |
-| :------------ |---------------:| -----:|
-| 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
-| 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
-| 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
-| 3.12 | [![windows-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml)        |    [![ubuntu-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml) |
-
-
-
-
-### Graphviz (recomended)
-
-To utilize the graph-drawing capabilities of twin4build, the drawing engine [Graphviz](https://graphviz.org/download) must be installed.
-It can be installed by downloading the install-file from the official website or by using your favorite package manager: 
-
-#### Ubuntu
 ```bat
-sudo add-apt-repository universe
-sudo apt update
-sudo apt install graphviz
+pip install twin4build[database]     # PostgreSQL connectivity
+pip install twin4build[notebooks]    # jupyter and nbformat, to run the example notebooks
+pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+pip install twin4build[all]          # Dev + notebooks + database (not CUDA torch)
 ```
 
-#### Windows
-On windows, the winget or choco package managers can be used:
+### GPU / CUDA installation
+
+`pip install twin4build` installs whatever `torch` wheel PyPI serves for the
+platform. On Windows that is the **CPU-only** build, so
+`torch.cuda.is_available()` is False even on a machine with a supported GPU,
+and GPU execution modes run on CPU or fail with an opaque torch error.
+
+Install a CUDA 12.8+ build (Blackwell needs cu128 or newer):
+
 ```bat
-winget install graphviz
-```
-```bat
-choco install graphviz
+pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
-#### MacOS
+If CPU torch is already installed, reinstall it from that index:
+
 ```bat
-brew install graphviz
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install twin4build[gpu]
 ```
 
+`[gpu]` pulls Triton on Linux. Triton ships no Windows wheels, so the compiled
+step (`compile_step`) and CUDA-graph paths need **Linux or WSL** — native
+Windows can use CUDA eager execution after the CUDA torch install, but not
+Inductor/Triton.
+
+`model.to("cuda")` now raises with this install line when the process has no
+CUDA, instead of torch's "not compiled with CUDA enabled".
+
+The following python versions are supported (Twin4Build 2.0 requires Python 3.10+; 3.9 is no longer supported):
+
+[![CI](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ci.yml)
+
+One matrix workflow runs the suite on Windows and Ubuntu against Python 3.10, 3.11 and 3.12.
+
+
+
+
+### Graphviz (included)
+
+Graph drawing uses [Graphviz](https://graphviz.org) through [pygraphviz](https://pygraphviz.github.io) 2.0+. The pygraphviz wheel bundles the Graphviz libraries, so `pip install twin4build` is enough — you do not need apt, winget, choco, or brew.
+
+The bundled Graphviz is licensed under EPL-2.0 (see pygraphviz's `LICENSE.graphviz`). Matplotlib's optional LaTeX text rendering is a separate system binary and is not included. Skip drawing with `draw_semantic_model=False` / `draw_simulation_model=False`.
+
+### PostgreSQL (optional)
+
+Reading series from a PostgreSQL database (`DatabaseSource`, `load_from_database`) needs psycopg2, which `pip install twin4build[database]` installs as the prebuilt `psycopg2-binary` wheel: no compiler or `libpq-dev` is needed. Without it everything else works, and reading a database raises an `ImportError` that names the extra.
 
 ## Publications
 <a id="1">[1]</a> 

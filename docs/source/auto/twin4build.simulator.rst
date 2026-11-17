@@ -4,8 +4,8 @@ simulator
 Modules
 -------
 
-simulator module
-----------------
+twin4build.simulator.simulator module
+-------------------------------------
 
 .. automodule:: twin4build.simulator.simulator
    :members:

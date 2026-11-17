@@ -19,6 +19,14 @@
     margin: 0 auto !important;
 }
 
+/* Allow inline badges (Colab, etc.) */
+.rst-content a img[alt="Open In Colab"],
+.rst-content .inline-badge img {
+    display: inline !important;
+    margin: 0 5px !important;
+    vertical-align: middle !important;
+}
+
 /* Center text content */
 .rst-content p,
 .rst-content ul,

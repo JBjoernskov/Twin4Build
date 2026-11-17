@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional, Union
 
 # Local application imports
-import twin4build.core as core
+from twin4build.systems.saref4syst.system import System
 
 
 class Connection:
@@ -13,30 +13,32 @@ class Connection:
 
     Args:
         connects_system: The system that the connection is part of. Defaults to None.
-        connects_system_at: The connection point that the connection is part of. Defaults to None.
-        outputPort: The name of the property that the connection sends. Defaults to None.
+        connects_system_at: A list of connection points (receiver inputs) that the
+            connection connects to. Defaults to None (empty list).
+        output_port: The name of the property that the connection sends. Defaults to None.
     """
 
     def __init__(
         self,
-        connects_system: Union[core.System, None] = None,
+        connects_system: Union[System, None] = None,
         connects_system_at: Union[list, None] = None,
-        outputPort: Optional[str] = None,
+        output_port: Optional[str] = None,
     ):
         """
         Initialize a Connection object.
 
         Args:
             connects_system: The system that the connection is part of. Defaults to None.
-            connects_system_at: The connection point that the connection is part of. Defaults to None.
-            outputPort: The name of the property that the connection sends. Defaults to None.
+            connects_system_at: A list of connection points (receiver inputs) that the
+                connection connects to. Defaults to None (empty list).
+            output_port: The name of the property that the connection sends. Defaults to None.
         """
 
-        assert isinstance(connects_system, core.System) or connects_system is None, (
+        assert isinstance(connects_system, System) or connects_system is None, (
             'Attribute "connects_system" is of type "'
             + str(type(connects_system))
             + '" but must be of type "'
-            + str(core.System)
+            + str(System)
             + '"'
         )
         assert isinstance(connects_system_at, list) or connects_system_at is None, (
@@ -46,9 +48,9 @@ class Connection:
             + str(list)
             + '"'
         )
-        assert isinstance(outputPort, str) or outputPort is None, (
-            'Attribute "outputPort" is of type "'
-            + str(type(outputPort))
+        assert isinstance(output_port, str) or output_port is None, (
+            'Attribute "output_port" is of type "'
+            + str(type(output_port))
             + '" but must be of type "'
             + str(str)
             + '"'
@@ -57,7 +59,7 @@ class Connection:
         #     connects_system_at = []
         self.connects_system = connects_system
         self.connects_system_at = connects_system_at
-        self.outputPort = outputPort
+        self.output_port = output_port
 
         if self.connects_system_at is None:
             self.connects_system_at = []

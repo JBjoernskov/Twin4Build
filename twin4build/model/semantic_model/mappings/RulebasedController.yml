@@ -12,8 +12,8 @@ operations:
   - data: |-
       bldg:{id} a s4bldg:RulebasedController .
 
-  - data: |-
-      s4bldg:RulebasedController rdfs:subClassOf s4bldg:Controller .
+#   - data: |-
+#       s4bldg:RulebasedController rdfs:subClassOf s4bldg:Controller .
 
     # Data properties
   - template: |-

@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  # Pull requests are covered by the pull_request event.  Without a branch
+  # filter here, every push to a PR branch ran the whole matrix a second
+  # time: two independent chances of hitting a transient runner failure and
+  # two conflicting statuses per job name.
+  push:
+    branches: [main, dev]
+  pull_request:
+  # publish_pypi.yml calls this workflow on the tagged commit and publishes
+  # only when every job here passes.
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A new push supersedes the run it interrupts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # Graphviz comes from the pygraphviz>=2.0 wheel.  The versions are the
+      # frozen set in constraints/ci.txt, so a pull request fails only on its
+      # own changes; ci-latest.yml tests the newest releases every week.
+      - name: Install package and development tools
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" -c constraints/ci.txt
+      - name: Check syntax and undefined names
+        run: python -m flake8 . --count --select="E9,F63,F7,F82" --show-source --statistics
+      # Every test is a unittest.TestCase; pytest runs them (pytest.ini:
+      # testpaths, verbosity).  test_test_style.py keeps it that way.
+      - name: Run test suite
+        run: python -m pytest
+
+  docs-and-package:
+    name: Documentation and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and release tools
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" build -c constraints/ci.txt
+      - name: Generate API reference
+        working-directory: docs
+        run: make buildapi
+      - name: Build documentation with warnings as errors
+        working-directory: docs
+        run: make html SPHINXOPTS="-W --keep-going"
+      - name: Build distributions
+        run: python -m build
+      - name: Validate distributions
+        run: python -m twine check dist/*

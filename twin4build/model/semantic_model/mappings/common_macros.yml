@@ -21,7 +21,7 @@ macros:
         bldg:{{ id }}_{{ property_name }} a {{ class_type }} .
         bldg:{{ id }} saref:hasPropertyValue bldg:{{ id }}_{{ property_name }}_property_value .
         bldg:{{ id }}_{{ property_name }}_property_value saref:hasValue "{{ value }}"^^xsd:float .
-        bldg:{{ id }}_{{ property_name }}_property_value saref:isValueOfProperty {{ class_type }} .
+        bldg:{{ id }}_{{ property_name }}_property_value saref:isValueOfProperty bldg:{{ id }}_{{ property_name }} .
       {% endif %}
     {% endmacro %}
 

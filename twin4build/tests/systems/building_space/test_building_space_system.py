@@ -1,0 +1,147 @@
+# Standard library imports
+import datetime
+import unittest
+
+# Third party imports
+import torch
+from dateutil import tz
+
+# Local application imports
+# Set test flag
+import twin4build
+from twin4build.systems.building_space.building_space_system import (
+    BuildingSpaceSystem,
+)
+
+twin4build._IS_TESTING = True
+
+
+class TestBuildingSpaceTorchSystem(unittest.TestCase):
+    def setUp(self):
+        self.space = BuildingSpaceSystem(
+            id="test_space",
+            thermal=dict(C_wall=1000000.0, C_air=10000.0, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass=dict(V=100.0),
+        )
+
+    def test_initialization(self):
+        """Test building space system initialization."""
+        self.assertIsNotNone(self.space)
+        self.assertEqual(self.space.id, "test_space")
+
+    def test_do_step(self):
+        """Test building space system do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        step_size = [600]
+        self.space.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
+
+        # Set inputs
+        self.space.input["outdoorTemperature"].set(torch.tensor([5.0]), i_t=0)
+        self.space.input["globalIrradiation"].set(torch.tensor([200.0]), i_t=0)
+        self.space.input["supplyAirFlowRate"].set(torch.tensor([0.05]), i_t=0)
+        self.space.input["exhaustAirFlowRate"].set(torch.tensor([0.02]), i_t=0)
+        self.space.input["supplyAirTemperature"].set(torch.tensor([22.0]), i_t=0)
+        self.space.input["numberOfPeople"].set(torch.tensor([3.0]), i_t=0)
+        self.space.input["heatGain"].set(torch.tensor([0.0]), i_t=0)
+        self.space.input["outdoorCo2Concentration"].set(torch.tensor([400.0]), i_t=0)
+
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        self.space.do_step(
+            second_time=0, date_time=datetime_val, step_size=step_size, step_index=0
+        )
+
+        # Check outputs
+        temp = self.space.output["indoorTemperature"].get()
+        co2 = self.space.output["indoorCO2"].get()
+
+        self.assertIsNotNone(temp)
+        self.assertIsNotNone(co2)
+
+    def test_do_step_batch(self):
+        """Test building space system do_step method with batch size > 1."""
+        space_batch = BuildingSpaceSystem(
+            id="test_space_batch",
+            thermal=dict(C_wall=1000000.0, C_air=10000.0, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass=dict(V=100.0),
+        )
+
+        batch_size = 2
+
+        start_time = [
+            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        ] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)] * batch_size
+        step_size = [600] * batch_size
+        space_batch.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
+
+        # Set inputs with batch size 2
+        space_batch.input["outdoorTemperature"].set(torch.tensor([5.0, 8.0]), i_t=0)
+        space_batch.input["globalIrradiation"].set(torch.tensor([200.0, 250.0]), i_t=0)
+        space_batch.input["supplyAirFlowRate"].set(torch.tensor([0.05, 0.06]), i_t=0)
+        space_batch.input["exhaustAirFlowRate"].set(torch.tensor([0.02, 0.03]), i_t=0)
+        space_batch.input["supplyAirTemperature"].set(torch.tensor([22.0, 23.0]), i_t=0)
+        space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), i_t=0)
+        space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), i_t=0)
+        space_batch.input["outdoorCo2Concentration"].set(torch.tensor([400.0, 410.0]), i_t=0)
+
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        space_batch.do_step(
+            second_time=0, date_time=datetime_val, step_size=step_size, step_index=0
+        )
+
+        # Check outputs - verify all outputs have consistent batch shape
+        temp = space_batch.output["indoorTemperature"].get()
+        co2 = space_batch.output["indoorCO2"].get()
+
+        self.assertIsNotNone(temp)
+        self.assertIsNotNone(co2)
+        self.assertEqual(temp.shape[0], batch_size)
+        self.assertEqual(co2.shape[0], batch_size)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestWallSlots(unittest.TestCase):
+    def test_the_wall_port_is_sized_by_its_slots_not_its_connections(self):
+        """A zone that reads batched walls gets one connection per wall meta (several slots) next to single walls on
+        their own slots: the port must reach the highest slot, not the number of connections (24 Oct 2026, a storey's
+        interior in the batched coupled model: an index past the port's end)."""
+        import twin4build as tb
+        from twin4build.tests.model.test_batching_vector_slots import Leaf
+
+        model = tb.Model(id="wall_slots")
+        space = BuildingSpaceSystem(id="interior")
+        for slot in (0, 2):  # slot 1 belongs to a connection the zone no longer has
+            model.add_connection(Leaf(p=1.0, id=f"wall_{slot}"), space, "v", "wallHeatGain", input_port_index=slot)
+        start = [datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)]
+        space.initialize(start_time=start, end_time=[start[0] + datetime.timedelta(hours=1)], step_size=[600])
+        self.assertEqual(space.thermal.n_walls, 3)
+        self.assertEqual(space.input["wallHeatGain"].get().shape[-1], 3)
+
+
+class TestForwardTraces(unittest.TestCase):
+    def _space(self):
+        space = BuildingSpaceSystem(id="interior")
+        start = [datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)]
+        space.initialize(start_time=start, end_time=[start[0] + datetime.timedelta(hours=1)], step_size=[600])
+        inputs = {k: v.get() for k, v in space.input.items()}
+        return space, space.get_state(), inputs, space._forward_params()
+
+    def test_the_forward_traces_whole_after_initialize(self):
+        """A zone's forward splits its state by the thermal width; ``initialize`` caches it, so Dynamo traces the
+        forward whole (24 Oct 2026: an unfused storey interior in the coupled model's compiled step walked
+        ``vars(...)`` on its first call)."""
+        space, x, inputs, params = self._space()
+        torch._dynamo.reset()
+        step = torch.compile(lambda x, u: space.forward(x, u, params, 600.0), backend="eager", fullgraph=True)
+        x_next, out = step(x, inputs)
+        self.assertEqual(tuple(x_next.shape), tuple(x.shape))

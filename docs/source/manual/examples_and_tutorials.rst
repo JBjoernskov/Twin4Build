@@ -1,225 +1,143 @@
 Examples and Tutorials
-=====================
+======================
 
-.. .. include:: ../../../README.md
-..    :parser: myst_parser.sphinx_
-..    :start-after: ## Examples and Tutorials
-..    :end-before: ## Documentation
+All hands-on guides live in the example notebooks under
+``twin4build/examples/`` -- each is a self-contained, runnable tutorial that
+combines explanation with executable code. The theory and API reference live
+in the class docstrings (see the :doc:`API documentation </auto/twin4build>`,
+in particular :class:`~twin4build.simulator.simulator.Simulator`,
+:class:`~twin4build.estimator.estimator.Estimator`,
+:class:`~twin4build.optimizer.optimizer.Optimizer`, and
+:class:`~twin4build.translator.translator.Translator`).
 
+Every notebook can be opened directly in Google Colab (badge links below) or
+run locally in Jupyter. Colab badges are rewritten at docs build time to the
+git branch/tag for this documentation version (e.g. ``dev`` docs open
+``blob/dev/...``, ``latest`` opens ``blob/main/...``).
 
-This guide provides an overview of the available examples and tutorials for Twin4Build.
+Signature patterns are user-defined. The translator takes them as an
+explicit input, ``Translator().translate(semantic_model, patterns=[...])``,
+each pattern bound to the ``System`` class it models. There is no pattern to
+rule them all: how a BMS names and links its points differs per vendor, per
+integrator and per building, so a real deployment writes its own patterns.
+``twin4build.examples.patterns`` is the *public example set*: the translator example
+defines and explains a few patterns inline and imports the rest from it.
+Compose that set with your own, or replace it.
+
+For performance studies -- CPU vs GPU, solver boundaries, and batched model
+scaling -- see :doc:`benchmarks`. The canonical notebooks are in the
+repository-level ``benchmarks/`` directory, not ``twin4build/examples/``.
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://github.com/JBjoernskov/Twin4Build/tree/GITHUB_NOTEBOOK_BRANCH/benchmarks/">Browse the canonical benchmark notebooks for this documentation version</a></p>
 
 Basics of Twin4Build
 --------------------
 
-**Minimal Example** (`minimal_example.ipynb`)
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/minimal_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Minimal example</b>: Connecting components, simulating a model, and visualizing results &mdash; the core mechanics every other example builds on</p>
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: Connecting components, simulating a model, and visualization
-
-.. code-block:: python
-
-    import twin4build as tb
-    import twin4build.utils.plot.plot as plot
-    
-    # Create a model
-    model = tb.Model(id="example_model")
-    
-    # Add components and connections
-    # Run simulation
-    # Visualize results
-
-**Space CO2 Controller Example** (`space_co2_controller_example.ipynb`)
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/building_space_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation, plus two zones coupled by an energy-conserving partition wall component</p>
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: Modeling and control of indoor CO2 concentration
-
-Translator Examples
--------------------
-
-**Translator Example** (`translator_example.ipynb`)
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_heater_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Space heater</b>: A discretized space heater (radiator) model coupled to a building space and a PID temperature controller</p>
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: How to use the translator to generate simulation models from semantic models
-- **Topics**: Ontology-driven modeling, automated model creation
-
-.. code-block:: python
-
-    from twin4build import Translator
-    
-    # Create translator
-    translator = Translator()
-    
-    # Load semantic model
-    # Generate simulation model
-    # Validate translation
-
-Estimator Examples
-------------------
-
-**Estimator Example** (`estimator_example.ipynb`)
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_co2_controller_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CO2 control</b>: Modeling and closed-loop control of indoor CO2 concentration with dampers and a PID controller</p>
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/bems_example_lecture.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Custom components (lecture)</b>: Adding a custom System component &mdash; RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
 
-- **Purpose**: Basic parameter estimation and calibration
-- **Topics**: Least-squares optimization, PyTorch-based calibration
-
-.. code-block:: python
-
-    from twin4build import Estimator
-    
-    # Create estimator
-    estimator = Estimator()
-    
-    # Load measured data
-    # Define parameters to estimate
-    # Run calibration
-    # Analyze results
-
-Optimizer Examples
-------------------
-
-**Optimizer Example** (`optimizer_example.ipynb`)
+Translator
+----------
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/translator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Translator</b>: Generating simulation models automatically from semantic (ontology-based) building descriptions via signature pattern matching</p>
 
-- **Purpose**: Optimization of space heater power consumption, constrained by heating and cooling setpoints
-- **Topics**: Gradient-based optimization, constraint handling
+Estimator
+---------
 
-.. code-block:: python
+.. raw:: html
 
-    from twin4Build import Optimizer
-    
-    # Create optimizer
-    optimizer = Optimizer()
-    
-    # Define objective function
-    # Set constraints
-    # Run optimization
-    # Analyze optimal solutions
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/estimator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Estimator</b>: Parameter estimation and calibration against measured data &mdash; single-shooting and collocation transcriptions, SciPy and CasADi/IPOPT backends, and result interpretation</p>
+
+Optimizer
+---------
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/optimizer_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Optimizer</b>: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
+
+Full Workflow
+-------------
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/full_workflow_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Full workflow</b>: End-to-end pipeline &mdash; translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
 
 Running Examples
----------------
+----------------
 
 Prerequisites
 ~~~~~~~~~~~~~
 
 Before running examples, ensure you have:
 
-1. **Twin4Build installed**: See [Installation Guide](installation.rst)
-2. **Jupyter Notebook**: `pip install jupyter`
-3. **Required data files**: Some examples require specific data files
+1. **Twin4Build installed**: See the :doc:`installation` guide
+2. **Jupyter Notebook**: ``pip install jupyter``
 
 Running in Jupyter
 ~~~~~~~~~~~~~~~~~~
 
 1. **Start Jupyter**:
+
    .. code-block:: bash
 
        jupyter notebook
 
-2. **Navigate** to the examples directory:
-   .. code-block:: bash
-
-       cd twin4build/examples
+2. **Navigate** to the ``twin4build/examples`` directory
 
 3. **Open** the desired notebook and run cells sequentially
 
-Running as Python Scripts
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Some examples are also available as Python scripts:
-
-.. code-block:: bash
-
-    python twin4build/examples/translator_example.py
-    python twin4build/examples/optimizer_doc.py
-
-Example Structure
------------------
-
-Each example typically follows this structure:
-
-1. **Setup and Imports**
-   - Import required modules
-   - Configure logging and settings
-
-2. **Model Creation**
-   - Define building components
-   - Establish connections
-   - Set initial conditions
-
-3. **Simulation/Processing**
-   - Run simulations or analysis
-   - Handle data processing
-
-4. **Results and Visualization**
-   - Plot results
-   - Generate reports
-   - Export data
-
-5. **Analysis and Discussion**
-   - Interpret results
-   - Compare with expectations
-
 Troubleshooting Examples
------------------------
-
-Common Issues
-~~~~~~~~~~~~~
+------------------------
 
 **Import Errors**
+
 - Ensure Twin4Build is installed correctly
-- Check that all dependencies are available
-- Verify Python environment
+- Verify the Python environment
 
 **Data File Errors**
-- Download required data files
-- Check file paths and permissions
-- Verify data format compatibility
+
+- The notebooks download or ship their data files alongside the notebook;
+  run them from the ``twin4build/examples`` directory so relative paths resolve
 
 **Memory Issues**
-- Reduce simulation duration
+
+- Reduce the simulation duration or step count
 - Simplify model complexity
-- Increase system memory
 
 Getting Help
------------
+------------
 
 If you encounter issues with examples:
 
-1. **Check the documentation**: Review relevant sections in the developer reference
+1. **Check the documentation**: Review relevant sections in the :doc:`developer_reference`
 2. **Examine the code**: Look at the example source code for implementation details
-3. **Search issues**: Check GitHub Issues for similar problems
+3. **Search issues**: Check `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for similar problems
 4. **Ask questions**: Create a new issue with specific error information
 
 Additional Resources
--------------------
+--------------------
 
-- **API Documentation**: [Auto-generated API docs](../auto/index.html)
-- **Developer Reference**: [Comprehensive developer guide](developer_reference.rst)
-- **GitHub Repository**: [Source code and issues](https://github.com/JBjoernskov/Twin4Build/)
-- **Online Documentation**: [Read the Docs](https://twin4build.readthedocs.io/)
+- :doc:`API documentation </auto/twin4build>`
+- :doc:`developer_reference`
+- `GitHub Repository <https://github.com/JBjoernskov/Twin4Build/>`_

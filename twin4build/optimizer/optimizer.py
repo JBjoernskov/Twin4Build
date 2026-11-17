@@ -1,6 +1,8 @@
 # import pygad
 # Standard library imports
 import datetime
+import time as time_module
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple, Union
 
 # Third party imports
@@ -12,7 +14,21 @@ from scipy.optimize import Bounds, least_squares, minimize
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
-from twin4build.utils.deprecation import deprecate_args
+import twin4build.utils.types as tps
+from twin4build import settings as _settings
+from twin4build.utils.deprecation import reject_unexpected_kwargs
+from twin4build.utils.logger import LOGGER
+from twin4build.solvers.registry import find_pareto_route
+from twin4build.utils.method_spec import parse_method
+from twin4build.utils.problem_variables import optimizer_variables
+from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.result import ResultDict
+from twin4build.utils.validate_period import validate_period
+from twin4build.optimizer._pareto import pareto_front as _pareto_front
+from twin4build.optimizer._single_shooting import (
+    CapturedControlObjective,
+    FunctionalControlObjective,
+)
 
 
 def _min_max_normalize(x, min_val=None, max_val=None):
@@ -23,6 +39,23 @@ def _min_max_normalize(x, min_val=None, max_val=None):
     return (x - min_val) / (max_val - min_val)
 
 
+def _resolve_port_names(entries):
+    """The ``(component, port, ...)`` tuples with a deprecated output port
+    name (``System.OUTPUT_PORT_ALIASES``) replaced by the name that replaced
+    it, with a ``DeprecationWarning`` pointing at the caller of the
+    ``Optimizer`` method.  The optimizer and its functional objective then
+    see one name per port (a fused radiator publishes ``toRoomPower`` only)."""
+    out = []
+    for entry in entries:
+        entry = tuple(entry)
+        resolve = getattr(entry[0], "resolve_output_port", None) if entry else None
+        if resolve is not None and len(entry) >= 2:
+            # 2 = this function, 3 = the Optimizer method, 4 = its caller
+            entry = (entry[0], resolve(entry[1], stacklevel=4), *entry[2:])
+        out.append(entry)
+    return out
+
+
 class Optimizer:
     r"""
     A class for optimizing building operation in the twin4build framework.
@@ -30,11 +63,17 @@ class Optimizer:
     This class optimizes model inputs (variables) (e.g., setpoints) by minimizing a loss function, using gradient-based or other optimization algorithms.
     The optimizer implements soft constraints on model outputs (embedded in the loss function) and hard constraints on variables.
 
+    For composable torch models, select
+    ``Simulator(model, execution_mode="functional")`` to evaluate the loss with a
+    pure one-step map. Exogenous inputs are captured once and each evaluation
+    becomes a sequential torch rollout with one autograd pass. Models the
+    functional model cannot express fall back to the object objective.
+
     Args:
         simulator: The simulator instance for running simulations.
 
     Mathematical Formulation
-    =======================
+    ------------------------
 
     The general optimization problem is formulated as:
 
@@ -49,7 +88,7 @@ class Optimizer:
         - :math:`\mathcal{L}(\boldsymbol{U})` is the loss function
 
     Dimensions
-    ----------
+    ~~~~~~~~~~
 
     - :math:`n_t`: Number of time steps in the simulation period
     - :math:`n_u`: Number of control inputs (actuators)
@@ -57,7 +96,7 @@ class Optimizer:
     - :math:`n_y`: Number of system outputs (sensors, performance metrics)
 
     Model Structure
-    ---------------
+    ~~~~~~~~~~~~~~~
 
     The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components
     and edges represent input/output connections as shown in a simple example below.
@@ -85,11 +124,12 @@ class Optimizer:
     for detailed explanation of the simulation process.
 
     Loss Function
-    -------------
+    ~~~~~~~~~~~~~
 
     The loss function :math:`\mathcal{L}(\boldsymbol{U})` is composed of the following terms:
 
-    **Equality Constraints**
+    Equality Constraints
+    ^^^^^^^^^^^^^^^^^^^^
 
         .. math::
 
@@ -97,7 +137,8 @@ class Optimizer:
 
         where :math:`\mathcal{C}_{eq}` is the set of equality constraints, each element is (output index :math:`j`, desired value :math:`\boldsymbol{y}_{t}`).
 
-    **Inequality Constraints**
+    Inequality Constraints
+    ^^^^^^^^^^^^^^^^^^^^^^
 
         Upper constraints:
 
@@ -119,7 +160,8 @@ class Optimizer:
 
             \mathcal{L}_{ineq} = \mathcal{L}_{ineq}^{upper} + \mathcal{L}_{ineq}^{lower}
 
-    **Objective Terms**
+    Objective Terms
+    ^^^^^^^^^^^^^^^
 
         .. math::
 
@@ -127,7 +169,8 @@ class Optimizer:
 
         where :math:`\mathcal{O}_{obj}` is the set of outputs to minimize or maximize, and :math:`w` is a weight (+1 for minimization, -1 for maximization).
 
-    **Total Loss**
+    Total Loss
+    ^^^^^^^^^^
 
         .. math::
 
@@ -137,7 +180,7 @@ class Optimizer:
 
     Examples
     --------
-    Basic optimization with PyTorch method:
+    Basic optimization:
 
     >>> import twin4build as tb
     >>> import datetime
@@ -148,7 +191,7 @@ class Optimizer:
     >>> simulator = tb.Simulator(model)
     >>> optimizer = tb.Optimizer(simulator)
     >>>
-    >>> # Define decision variables (actuators to optimize)
+    >>> # Define decision variables (actuators to optimize) with bounds
     >>> variables = [
     ...     (heater_component, "setpointValue", 18.0, 25.0),  # Temperature setpoint bounds
     ...     (ventilation_component, "flowRate", 0.1, 1.0)    # Ventilation flow rate bounds
@@ -165,33 +208,14 @@ class Optimizer:
     >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
     >>> step = 3600
     >>>
-    >>> # Run optimization with PyTorch (default SGD)
+    >>> # Run optimization (SLSQP with automatic differentiation, the default)
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method="torch",
-    ...     options={"lr": 0.1, "iterations": 100}
-    ... )
-
-    Advanced PyTorch optimization with scheduler:
-
-    >>> # Use Adam optimizer with cosine annealing scheduler
-    >>> optimizer.optimize(
-    ...     variables=variables,
-    ...     objectives=objectives,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method=("torch", "Adam", "ad"),
-    ...     options={
-    ...         "lr": 0.01,
-    ...         "iterations": 200,
-    ...         "scheduler_type": "cosine",
-    ...         "scheduler_params": {"T_max": 200, "eta_min": 1e-6}
-    ...     }
+    ...     method=("scipy", "SLSQP", "ad")
     ... )
 
     SciPy optimization with constraints:
@@ -311,16 +335,6 @@ class Optimizer:
     ...     step_size=step,
     ...     method="scipy"  # Defaults to ("scipy", "SLSQP", "ad")
     ... )
-
-    >>> # PyTorch method with defaults
-    >>> optimizer.optimize(
-    ...     variables=variables,
-    ...     objectives=objectives,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method="torch"  # Defaults to ("torch", "SGD", "ad")
-    ... )
     """
 
     def __init__(self, simulator: core.Simulator):
@@ -328,215 +342,234 @@ class Optimizer:
             simulator, core.Simulator
         ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
+        self._functional_objective = None
 
-    def _closure(self):
-        self.optimizer.zero_grad()
+    @property
+    def _device(self) -> torch.device:
+        """The model's device.  Solver-facing numpy boundaries convert inbound
+        theta vectors to this device and outbound values via .cpu().numpy();
+        scipy/IPOPT itself always runs on the CPU."""
+        return self.simulator.model.device
 
-        # Apply bounds to decision variables
-        with torch.no_grad():
-            for component, output_name, *bounds in self._variables:
-                if len(bounds) > 0:
-                    lower_bound = bounds[0] if len(bounds) > 0 else float("-inf")
-                    upper_bound = bounds[1] if len(bounds) > 1 else float("inf")
-                    if component.output[output_name].do_normalization:
-                        lower_bound_ = component.output[output_name].normalize(
-                            lower_bound
-                        )
-                        upper_bound_ = component.output[output_name].normalize(
-                            upper_bound
-                        )
-                        # print("==========================")
-                        # print(f"CLAMPED BEFORE: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
-                        component.output[output_name].normalized_history.clamp_(
-                            min=lower_bound_, max=upper_bound_
-                        )
-
-                        # print("==========================")
-                        # print(f"CLAMPED AFTER: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
-                    else:
-                        component.output[output_name].history.clamp_(
-                            min=lower_bound, max=upper_bound
-                        )
-
-        # Run simulation
-        self.simulator.simulate(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-            show_progress_bar=False,
-        )
-
-        self.loss = 0
-        k = 100
-
-        # Handle equality constraints
-        if self._eq_cons is not None:
-            eq_term = 0
-            for constraint in self._eq_cons:
-                component, output_name, desired_value = constraint
-                y = component.output[output_name].history
-                desired_tensor = self.equality_constraint_values[component, output_name]
-                y = component.output[output_name].normalize(y)
-                desired_tensor = component.output[output_name].normalize(desired_tensor)
-
-                eq_term += torch.mean(torch.abs(y - desired_tensor))
-            self.loss += eq_term
-
-        # Handle inequality constraints
-        if self._ineq_cons is not None:
-            ineq_upper_term = 0
-            ineq_lower_term = 0
-            for constraint in self._ineq_cons:
-                component, output_name, constraint_type, desired_value = constraint
-                y = component.output[output_name].history
-                desired_tensor = self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ]
-                y_norm = component.output[output_name].normalize(y)
-                desired_tensor_norm = component.output[output_name].normalize(
-                    desired_tensor
-                )
-
-                if constraint_type == "upper":
-                    # Penalize when y > desired_value
-                    constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    constraint_term = torch.mean(k * constraint_violations)
-                    ineq_upper_term += constraint_term
-
-                elif constraint_type == "lower":
-                    # Penalize when y < desired_value
-                    constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    constraint_term = torch.mean(k * constraint_violations)
-                    ineq_lower_term += constraint_term
-
-            self.loss += ineq_upper_term + ineq_lower_term
-
-        # Handle minimization objectives
-        if self._objectives is not None:
-            min_term = 0
-            for minimize_obj in self._objectives:
-                component, output_name = minimize_obj
-                y = component.output[output_name].history
-                y_norm = component.output[output_name].normalize(y)
-                # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
-
-                min_term += torch.mean(y_norm)
-            self.loss += min_term  # Minimize the mean value
-
-        # Compute gradients
-        self.loss.backward()
-        return self.loss
+    # def _closure(self):
+    #     self.optimizer.zero_grad()
+    #
+    #     # Apply bounds to decision variables
+    #     with torch.no_grad():
+    #         for component, output_name, *bounds in self._variables:
+    #             if len(bounds) > 0:
+    #                 lower_bound = bounds[0] if len(bounds) > 0 else float("-inf")
+    #                 upper_bound = bounds[1] if len(bounds) > 1 else float("inf")
+    #                 if component.output[output_name].do_normalization:
+    #                     lower_bound_ = component.output[output_name].normalize(
+    #                         lower_bound
+    #                     )
+    #                     upper_bound_ = component.output[output_name].normalize(
+    #                         upper_bound
+    #                     )
+    #                     # print("==========================")
+    #                     # print(f"CLAMPED BEFORE: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+    #                     component.output[output_name].normalized_history.clamp_(
+    #                         min=lower_bound_, max=upper_bound_
+    #                     )
+    #
+    #                     # print("==========================")
+    #                     # print(f"CLAMPED AFTER: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+    #                 else:
+    #                     component.output[output_name].history.clamp_(
+    #                         min=lower_bound, max=upper_bound
+    #                     )
+    #
+    #     # Run simulation
+    #     self.simulator.simulate(
+    #         start_time=self._start_time,
+    #         end_time=self._end_time,
+    #         step_size=self._stepSize,
+    #         show_progress_bar=False,
+    #     )
+    #
+    #     self.loss = 0
+    #     k = 100
+    #
+    #     # Handle equality constraints
+    #     if self._eq_cons is not None:
+    #         eq_term = 0
+    #         for constraint in self._eq_cons:
+    #             component, output_name, desired_value = constraint
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             desired_tensor = self.equality_constraint_values[component, output_name]
+    #             y = component.output[output_name].normalize(y)
+    #             desired_tensor = component.output[output_name].normalize(desired_tensor)
+    #
+    #             # Aggregate loss across all periods
+    #             eq_term += torch.nanmean(torch.abs(y - desired_tensor))
+    #         self.loss += eq_term
+    #
+    #     # Handle inequality constraints
+    #     if self._ineq_cons is not None:
+    #         ineq_upper_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+    #         ineq_lower_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+    #         for constraint in self._ineq_cons:
+    #             component, output_name, constraint_type, desired_value = constraint
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             desired_tensor = self.inequality_constraint_values[
+    #                 (component, output_name, constraint_type)
+    #             ]
+    #             y_norm = component.output[output_name].normalize(y)
+    #             desired_tensor_norm = component.output[output_name].normalize(
+    #                 desired_tensor
+    #             )
+    #
+    #             if constraint_type == "upper":
+    #                 # Penalize when y > desired_value
+    #                 constraint_violations = torch.relu(y_norm - desired_tensor_norm)
+    #                 constraint_term = torch.nanmean(k * constraint_violations)
+    #                 ineq_upper_term += constraint_term
+    #
+    #             elif constraint_type == "lower":
+    #                 # Penalize when y < desired_value
+    #                 constraint_violations = torch.relu(desired_tensor_norm - y_norm)
+    #                 constraint_term = torch.nanmean(k * constraint_violations)
+    #                 ineq_lower_term += constraint_term
+    #
+    #         self.loss += ineq_upper_term + ineq_lower_term
+    #
+    #     # Handle minimization objectives
+    #     if self._objectives is not None:
+    #         min_term = 0
+    #         for minimize_obj in self._objectives:
+    #             component, output_name = minimize_obj
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             y_norm = component.output[output_name].normalize(y)
+    #             # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
+    #
+    #             # Aggregate loss across all periods
+    #             min_term += torch.nanmean(y_norm)
+    #         self.loss += min_term  # Minimize the mean value
+    #
+    #     # Compute gradients
+    #     self.loss.backward()
+    #     return self.loss
 
     def optimize(
         self,
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
-        step_size: Union[float, List[float]] = None,
+        step_size: Union[int, List[int]] = None,
         variables: List[Tuple[Any, str, float, float]] = None,
         objectives: List[Tuple[Any, str, str]] = None,
         eq_cons: List[Tuple[Any, str, Any]] = None,
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
+        n_warmup: int = 0,
         **kwargs,
     ):
         """
-        Optimize the model using various optimization methods.
+        Optimize the model control inputs using the specified optimization method.
+
+        The decision variables are the full time series of the given actuator
+        outputs (one value per timestep per variable), bounded by the supplied
+        lower/upper bounds. Output constraints are handled as soft penalties in
+        the loss function (see the class docstring's Loss Function section).
 
         Args:
-            start_time: Start time for simulation
-            end_time: End time for simulation
-            step_size: Step size for simulation
-            variables: List of tuples (component, output_name, lower_bound, upper_bound)
+            start_time: Start time(s) for simulation (timezone-aware). A single
+                datetime or a list of datetimes for multiple periods.
+            end_time: End time(s) for simulation. Same form as ``start_time``.
+            step_size: Step size(s) for simulation in seconds.
+            variables: List of tuples (component, output_name, lower_bound, upper_bound).
+                The decision variables (actuator trajectories) to optimize.
+                An entry may also be a :class:`tb.Variable
+                <twin4build.utils.types.Variable>`: an output port (a
+                trajectory, ``lb`` and ``ub`` required) or a parameter (bounds
+                default to the ones its component declares), or a bare
+                ``tb.Parameter``; the Optimizer starts from the parameter's
+                current value.
             objectives: List of tuples (component, output_name, objective_type)
-                where objective_type is "min" or "max"
-            eq_cons: List of tuples (component, output_name, desired_value)
+                where objective_type is "min" or "max".
+            eq_cons: List of tuples (component, output_name, desired_value) where
+                desired_value is a constant or a schedule component providing the
+                time-varying target.
             ineq_cons: List of tuples (component, output_name, constraint_type, desired_value)
-                where constraint_type is "upper" or "lower"
+                where constraint_type is "upper" or "lower".
 
-            method: Optimization method specification. Can be specified in two formats:
+            method: Optimization method specification. Either the legacy
+                string ``"scipy"`` (defaults to SLSQP with automatic
+                differentiation) or, recommended, a tuple
+                ``(library, optimizer, mode)`` where ``library`` is
+                ``"scipy"`` (currently the only supported library),
+                ``optimizer`` is the algorithm name, and ``mode`` is ``"ad"``
+                (automatic differentiation).
 
-                1. String format (legacy):
-                   - "torch": Uses PyTorch-based gradient optimization
-                   - "scipy": Uses SciPy's SLSQP solver with automatic differentiation
+                Supported SciPy optimizers:
 
-                2. Tuple format (recommended):
-                   - (library, optimizer, mode) where:
-                     - library: "torch" or "scipy"
-                     - optimizer: The specific optimization algorithm
-                     - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+                - "L-BFGS-B": Limited-memory BFGS with bounds
+                - "TNC": Truncated Newton algorithm with bounds
+                - "trust-constr": Trust-region constrained optimization
 
-                Supported optimizers by library:
+                Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
+                constrained optimization problems.
 
-                PyTorch-based methods (library="torch"):
-                   - "SGD": Stochastic Gradient Descent (default)
-                   - "Adam": Adam optimizer
-                   - "LBFGS": Limited-memory BFGS
-                   - Mode: Always "ad" (automatic differentiation)
-
-                SciPy-based methods (library="scipy"):
-                   - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                   - "L-BFGS-B": Limited-memory BFGS with bounds
-                   - "TNC": Truncated Newton algorithm with bounds
-                   - "trust-constr": Trust-region constrained optimization
-                   - "trf": Trust Region Reflective (for least-squares problems)
-                   - "dogbox": Dogleg algorithm (for least-squares problems)
-                   - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
-
-                Method selection guidelines:
-                   - PyTorch methods: Good for simple optimization problems, easy to configure
-                   - SciPy SLSQP with AD: Preferred for most constrained optimization problems
-                   - SciPy with FD: Use for non-PyTorch models or when AD is not available
-
-                Examples:
-                   - ("scipy", "SLSQP", "ad"): Preferred for most constrained optimization problems
-                   - ("torch", "Adam", "ad"): Good for simple unconstrained problems
-                   - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                   - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
-
+            n_warmup: Steps at the start of every period that are simulated
+                but kept out of the objectives and constraints, as the
+                Estimator's ``n_warmup``.  Every period starts from defined
+                states (the model's set state for that period start, e.g. an
+                estimation result's via ``load_estimation_result``, else the
+                components' own initial conditions); states are never decision
+                variables.  Needs the functional objective.
             options: Additional options for the chosen method:
-                For PyTorch methods (library="torch"):
-                    - "lr": Learning rate for optimizer (default: 1.0)
-                    - "iterations": Number of optimization iterations (default: 100)
-                    - "optimizer_type": Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
-                    - "scheduler_type": Type of learning rate scheduler ("step", "exponential", "cosine", "reduce_on_plateau", None)
-                    - "scheduler_params": Parameters for learning rate scheduler
-                        - For "step": step_size (default: 30), gamma (default: 0.1)
-                        - For "exponential": gamma (default: 0.95)
-                        - For "cosine": T_max (default: 100), eta_min (default: 0)
-                        - For "reduce_on_plateau": mode (default: "min"), factor (default: 0.9), patience (default: 10), threshold (default: 1e-4)
 
-                For SciPy methods (library="scipy"):
-                    - "verbose": Verbosity level (0-3)
-                    - "maxiter": Maximum iterations
-                    - "gtol": Gradient tolerance
-                    - "xtol": Parameter tolerance
-                    - "barrier_tol": Barrier tolerance
-                    - "initial_tr_radius": Initial trust region radius
-                    - "initial_constr_penalty": Initial constraint penalty
-                    - Additional method-specific options as supported by SciPy optimizers
+                - "verbose": Verbosity level (0-3)
+                - "maxiter": Maximum iterations
+                - "gtol": Gradient tolerance
+                - "xtol": Parameter tolerance
+                - "barrier_tol": Barrier tolerance
+                - "initial_tr_radius": Initial trust region radius
+                - "initial_constr_penalty": Initial constraint penalty
+                - "constraint_penalty": Weight of the soft constraint penalty
+                  terms in the loss (default 100)
+                - Additional method-specific options as supported by SciPy optimizers
+
+                Functional execution and CUDA graph capture are selected on
+                ``Simulator`` via ``execution_mode`` and
+                ``execution_backend``, not through these options.
+
+        Returns:
+            OptimizationResult: A dict-like result with SciPy-compatible
+            mapping and attribute access. The optimized actuator
+            trajectories are also applied to the model, so a subsequent
+            ``simulator.simulate(...)`` runs with the optimal inputs.
         """
 
-        deprecated_args = [
-            "startTime",
-            "endTime",
-            "stepSize",
-            "variables",
-            "objectives",
-        ]
-        new_args = ["start_time", "end_time", "step_size", "variables", "objectives"]
-        position = [1, 2, 3, 4, 5]
-        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
-        start_time = value_map.get("start_time", start_time)
-        end_time = value_map.get("end_time", end_time)
-        step_size = value_map.get("step_size", step_size)
-        variables = value_map.get("variables", variables)
-        objectives = value_map.get("objectives", objectives)
+        for legacy_key, new_key in (
+            ("startTime", "start_time"),
+            ("endTime", "end_time"),
+            ("stepSize", "step_size"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
+        reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
-        self._variables = variables or []
-        self._objectives = objectives or []
-        self._eq_cons = eq_cons or []
-        self._ineq_cons = ineq_cons or []
+        # tb.Variable / bare parameters -> (component, name, lb, ub) (#235)
+        self._variables = _resolve_port_names(optimizer_variables(variables or [], self.simulator.model))
+        self._objectives = _resolve_port_names(objectives or [])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
+
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+
         self._start_time = start_time
         self._end_time = end_time
         self._stepSize = step_size
@@ -548,10 +581,34 @@ class Optimizer:
         assert end_time is not None, "end_time must be provided"
         assert step_size is not None, "step_size must be provided"
 
+        (
+            self._second_time_steps,
+            self._date_time_steps,
+            self._max_timesteps,
+            self._n_timesteps,
+        ) = core.Simulator.get_simulation_timesteps(
+            self._start_time, self._end_time, self._stepSize
+        )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
+
+        timestep_mask = torch.ones(
+            self._max_timesteps, len(self._start_time), dtype=torch.bool
+        )
+        for i_s, n_timesteps in enumerate(self._n_timesteps):
+            timestep_mask[n_timesteps:, i_s] = False
+        self._timestep_mask = timestep_mask  # .bool()
+
         # Check that we have something to optimize
         assert (
             len(self._variables) > 0
         ), "No decision variables specified for optimization"
+
+        for obj in self._objectives:
+            component, output_name, objective_type = obj
+            assert objective_type in [
+                "min",
+                "max",
+            ], f"Objective type must be 'min' or 'max', got '{objective_type}'"
 
         # Check that we have at least one objective (minimize or constraints)
         has_objective = (
@@ -566,84 +623,27 @@ class Optimizer:
         # Validate method
         # Define allowed optimization methods
         allowed_methods = [
-            ("torch", "SGD", "ad"),
-            ("torch", "Adam", "ad"),
-            ("torch", "LBFGS", "ad"),
+            # ("torch", "SGD", "ad"),
+            # ("torch", "Adam", "ad"),
+            # ("torch", "LBFGS", "ad"),
             ("scipy", "SLSQP", "ad"),
             ("scipy", "L-BFGS-B", "ad"),
             ("scipy", "TNC", "ad"),
             ("scipy", "trust-constr", "ad"),
-            ("scipy", "trf", "ad"),
-            ("scipy", "dogbox", "ad"),
-            ("scipy", "trf", "fd"),
-            ("scipy", "dogbox", "fd"),
         ]
         default_methods = [("scipy", "SLSQP", "ad")]
         default_mode = (
             "ad"  # Always choose automatic differentiation mode when ambiguous
         )
 
-        # Process method specification
-        if isinstance(method, str):
-            valid_methods = list(
-                set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
-            )
-            assert (
-                method in valid_methods
-            ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
-
-            # Try to match with default methods first
-            matched = False
-            for t in default_methods:
-                if t[0] == method:
-                    method = t
-                    matched = True
-                    break
-
-            # If no match found, look for candidates
-            if not matched:
-                candidates = []
-                for m in allowed_methods:
-                    if m[1] == method:
-                        candidates.append(m)
-
-                if len(candidates) == 1:
-                    method = candidates[0]
-                elif len(candidates) > 1:
-                    # Choose the one with default mode
-                    for c in candidates:
-                        if c[2] == default_mode:
-                            method = c
-                            break
-
-        elif isinstance(method, tuple):
-            assert (
-                len(method) == 3
-            ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
-            assert method[0] in [
-                l[0] for l in allowed_methods
-            ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[1] in [
-                l[1] for l in allowed_methods
-            ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[2] in [
-                l[2] for l in allowed_methods
-            ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
-
-            # Validate the method tuple
-            method_ = None
-            for t in allowed_methods:
-                if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
-                    method_ = t
-                    break
-            assert (
-                method_ is not None
-            ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
-            method = method_
-        else:
-            raise ValueError(
-                f'The "method" argument must be a string or a tuple - "{method}" was provided.'
-            )
+        method, _transcription = parse_method(
+            method,
+            allowed_methods=allowed_methods,
+            default_methods=default_methods,
+            default_mode=default_mode,
+            default_none_method=default_methods[0],
+            allow_transcription=False,
+        )
 
         # Validate format of decision variables
         for i, decision_var in enumerate(self._variables):
@@ -654,9 +654,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
             if len(bounds) >= 2:
                 lower, upper = bounds[0], bounds[1]
                 assert (
@@ -672,9 +679,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
 
         # Validate format of equality constraints
         for i, eq_constraint in enumerate(self._eq_cons):
@@ -685,9 +699,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
 
         # Validate format of inequality constraints
         for i, ineq_constraint in enumerate(self._ineq_cons):
@@ -698,9 +719,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
             assert constraint_type in [
                 "upper",
                 "lower",
@@ -709,7 +737,8 @@ class Optimizer:
         # Check for conflicting constraints: can't minimize and have equality constraint on same output
         if self._objectives and self._eq_cons:
             minimize_pairs = {
-                (component, output_name) for component, output_name in self._objectives
+                (component, output_name)
+                for component, output_name, _ in self._objectives
             }
             equality_pairs = {
                 (component, output_name) for component, output_name, _ in self._eq_cons
@@ -722,6 +751,37 @@ class Optimizer:
                     f"Cannot simultaneously minimize and apply equality constraints to the same outputs: {', '.join(conflict_info)}. "
                     f"These objectives conflict with each other."
                 )
+
+        _settings.log_active("optimize")
+        LOGGER.task("Running optimization")
+        LOGGER.add_level()
+        LOGGER.config("Method: %s", method)
+        LOGGER.config("Variables: %d", len(self._variables))
+        LOGGER.add_level()
+        for component, output_name, *bounds in self._variables:
+            bounds_str = (
+                f" (lb={bounds[0]}, ub={bounds[1]})" if len(bounds) >= 2 else ""
+            )
+            LOGGER.debug("%s.%s%s", component.id, output_name, bounds_str)
+        LOGGER.remove_level()
+        LOGGER.config("Objectives: %d", len(self._objectives))
+        LOGGER.add_level()
+        for component, output_name, obj_type in self._objectives:
+            LOGGER.debug("%s: %s.%s", obj_type, component.id, output_name)
+        LOGGER.remove_level()
+        if self._eq_cons:
+            LOGGER.config("Equality constraints: %d", len(self._eq_cons))
+        if self._ineq_cons:
+            LOGGER.config("Inequality constraints: %d", len(self._ineq_cons))
+
+        n_periods = len(self._start_time)
+        LOGGER.config("Time periods: %d", n_periods)
+        LOGGER.add_level()
+        for i, (s, e, ss) in enumerate(
+            zip(self._start_time, self._end_time, self._stepSize)
+        ):
+            LOGGER.config("Period %d: %s -> %s (step=%ss)", i + 1, s, e, ss)
+        LOGGER.remove_level()
 
         # Check for decision variables that are also in equality constraints
         if self._variables and self._eq_cons:
@@ -736,14 +796,14 @@ class Optimizer:
             conflicting_pairs = decision_pairs.intersection(equality_pairs)
             if conflicting_pairs:
                 conflict_info = [f"({c.id}, {o})" for c, o in conflicting_pairs]
+                LOGGER.remove_level()
+                LOGGER.error("Running optimization", change_status=True)
                 raise ValueError(
                     f"Cannot optimize and apply equality constraints to the same outputs: {', '.join(conflict_info)}. "
                     f"These objectives conflict with each other."
                 )
 
-        # allowed_methods = [("scipy", "trf", "fd"),
-        #                     ("scipy", "dogbox", "fd"),
-        #                     ("scipy", "trf", "ad"),
+        # allowed_methods = [("scipy", "trf", "ad"),
         #                     ("scipy", "dogbox", "ad"),
         #                     ("scipy", "L-BFGS-B", "ad"),
         #                     ("scipy", "TNC", "ad"),
@@ -769,233 +829,374 @@ class Optimizer:
         # default_mode = "ad" # Always choose automatic differentiation mode when ambiguous
 
         # Call the appropriate optimization method
-        if method[0] == "torch":
+        # if method[0] == "torch":
+        #     if options is None:
+        #         options = {}
+        #     # Extract optimizer type from method tuple
+        #     optimizer_type = method[1]
+        #     options["optimizer_type"] = optimizer_type
+        #     return self._torch_solver(**options)
+        if method[0] == "scipy":
             if options is None:
                 options = {}
-            # Extract optimizer type from method tuple
-            optimizer_type = method[1]
-            options["optimizer_type"] = optimizer_type
-            return self._torch_solver(**options)
-        elif method[0] == "scipy":
-            if options is None:
-                options = {}
-            return self._scipy_solver(method=method, **options)
+            # Fast-path for notebook example tests: keep the cell exercising
+            # the full Optimizer API (so we still catch wiring / API
+            # regressions) but stop the solver after a single iteration.
+            # Honors the ``testing`` setting, which ``utils.test_notebook``
+            # turns on (``TWIN4BUILD_TESTING=1``); callers in the regular
+            # test suite already pass small ``maxiter`` values explicitly,
+            # so this is a no-op for them.
+            if _settings.value("testing"):
+                options["maxiter"] = 1
+            result = self._solve_scipy(method=method, **options)
+        else:
+            LOGGER.remove_level()
+            LOGGER.error("Running optimization", change_status=True)
+            raise ValueError("Unsupported optimization method: %s" % method[0])
 
-    def _torch_solver(
+        LOGGER.remove_level()
+        LOGGER.ok("Running optimization", change_status=True)
+        result = OptimizationResult.from_scipy(result)
+        result["settings"] = _settings.snapshot()
+        return result
+
+    def pareto_front(
         self,
-        lr: float = 1.0,
-        iterations: int = 100,
-        optimizer_type: str = "SGD",
-        scheduler_type: str = "step",
-        scheduler_params: Dict = None,
+        start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        step_size: Union[int, List[int]] = None,
+        variables: List[Tuple[Any, str, float, float]] = None,
+        objective1: Tuple[Any, str, str] = None,
+        objective2: Tuple[Any, str, str] = None,
+        eq_cons: List[Tuple[Any, str, Any]] = None,
+        ineq_cons: List[Tuple[Any, str, str, Any]] = None,
+        n_points: int = 11,
+        delta: float = 1e-3,
+        method: tuple = ("scipy", "SLSQP", "ad"),
+        batched_prepass: bool = True,
+        prepass_options: Dict = None,
+        options: Dict = None,
+        n_warmup: int = 0,
     ):
+        """Trace a bi-objective front with the augmented epsilon-constraint method.
+
+        Functional execution, including the optional batched prepass, is selected
+        by constructing ``Simulator(model, execution_mode="functional")``.
+        Optimizer options do not select execution mode.  Supported methods are
+        ``("scipy", "SLSQP", "ad")`` and
+        ``("casadi", "ipopt", "ad", "collocation")``.
+        SLSQP and IPOPT remain host solvers; the CUDA Graph backend can capture
+        and replay fixed-shape device derivatives. IPOPT receives the exact
+        sparse Hessian of the collocation Lagrangian. The old three-element
+        IPOPT spelling is rejected because it ambiguously implied direct shooting.
+
+        A Pareto route registered through
+        :func:`twin4build.solvers.registry.register_pareto_route` is accepted
+        under its own method tuple; it replaces both the anchor solves and
+        the epsilon sweep and receives ``options`` unchanged.
+
+        Several periods (``start_time`` / ``end_time`` lists) of equal length
+        roll out side by side; ``n_warmup`` steps at the start of every period
+        are simulated but kept out of the objectives and constraints (see
+        :meth:`optimize`).
         """
-        Perform optimization using PyTorch-based gradient optimization.
+        built_in = (
+            ("scipy", "SLSQP", "ad"),
+            ("casadi", "ipopt", "ad", "collocation"),
+        )
+        if tuple(method) not in built_in and find_pareto_route(method) is None:
+            raise ValueError(
+                "pareto_front requires exact AD derivatives with "
+                '("scipy", "SLSQP", "ad"), '
+                '("casadi", "ipopt", "ad", "collocation") or a registered '
+                f"Pareto route; got {method}."
+            )
+        for name, obj in (("objective1", objective1), ("objective2", objective2)):
+            if obj is None or len(obj) != 3:
+                raise ValueError(
+                    f"{name} must be a (component, output_name, 'min'|'max') tuple"
+                )
+            component, output_name, objective_type = obj
+            if not hasattr(component, "output") or output_name not in component.output:
+                raise ValueError(f"{name}: output '{output_name}' is not available")
+            if objective_type not in ("min", "max"):
+                raise ValueError(
+                    f"{name}: objective type must be 'min' or 'max', got "
+                    f"'{objective_type}'"
+                )
+        if n_points < 2:
+            raise ValueError("n_points must be at least 2")
+        if not variables:
+            raise ValueError("No decision variables specified for optimization")
 
-        This method uses PyTorch's automatic differentiation to compute gradients and
-        applies gradient-based optimization algorithms to minimize the objective function.
-        It supports various optimizers and learning rate schedulers for fine-tuning
-        the optimization process.
-
-        Args:
-            lr: Learning rate for optimizer. Controls the step size in gradient descent.
-                Higher values may converge faster but risk overshooting, while lower
-                values are more stable but may converge slowly.
-            iterations: Number of optimization iterations. More iterations generally
-                lead to better convergence but take longer to compute.
-            optimizer_type: Type of PyTorch optimizer:
-                - "SGD": Stochastic Gradient Descent - simple, robust, good for most problems
-                - "Adam": Adaptive learning rate optimizer - often faster convergence
-                - "LBFGS": Limited-memory BFGS - good for smooth, well-behaved functions
-            scheduler_type: Type of learning rate scheduler to adjust learning rate during optimization:
-                - "step": Decreases learning rate by gamma every step_size iterations
-                - "exponential": Decreases learning rate exponentially
-                - "cosine": Uses cosine annealing schedule
-                - "reduce_on_plateau": Reduces learning rate when loss stops improving
-                - None: No scheduler, constant learning rate
-            scheduler_params: Dictionary of parameters for the chosen scheduler:
-                - For "step": {"step_size": int, "gamma": float}
-                - For "exponential": {"gamma": float}
-                - For "cosine": {"T_max": int, "eta_min": float}
-                - For "reduce_on_plateau": {"mode": str, "factor": float, "patience": int, "threshold": float}
-
-        Note:
-            This method automatically handles gradient computation and parameter updates.
-            It disables gradients for model parameters and only optimizes the decision variables.
-            The optimization process is logged with current learning rate and loss values.
-        """
-        # Validate optimization parameters
-        assert lr > 0, f"Learning rate must be positive, got {lr}"
-        assert (
-            iterations > 0
-        ), f"Number of iterations must be positive, got {iterations}"
-
-        # Validate scheduler type
-        valid_scheduler_types = [
-            "step",
-            "exponential",
-            "cosine",
-            "reduce_on_plateau",
-            None,
-        ]
-        assert (
-            scheduler_type in valid_scheduler_types
-        ), f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
-
-        # Disable gradients for all parameters since we're optimizing inputs.
-        # It is VERY important to do this before initializing the model.
-        # Otherwise, the model parameters and state space matrices will have requires_grad=True
-        # and the backpropagate() call will fail.
-        for component in self.simulator.model.components.values():
-            if isinstance(component, nn.Module):
-                for parameter in component.parameters():
-                    parameter.requires_grad_(False)
-
-        # Set before initializing the model
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].do_normalization = True
-
-        self.simulator.get_simulation_timesteps(
+        self._variables = _resolve_port_names(optimizer_variables(variables, self.simulator.model))  # (#235)
+        self._objectives = _resolve_port_names([objective1, objective2])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
+        self._start_time, self._end_time, self._stepSize = validate_period(
+            start_time, end_time, step_size
+        )
+        self._max_values = {}
+        (
+            self._second_time_steps,
+            self._date_time_steps,
+            self._max_timesteps,
+            self._n_timesteps,
+        ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
-        self.simulator.model.initialize(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-            simulator=self.simulator,
+        self._n_warmup = self._checked_warmup(n_warmup, method)
+        self._timestep_mask = torch.ones(
+            self._max_timesteps, len(self._start_time), dtype=torch.bool
         )
+        for i_s, n_timesteps in enumerate(self._n_timesteps):
+            self._timestep_mask[n_timesteps:, i_s] = False
 
-        # Enable gradients only for the inputs we want to optimize
-        opt_list = []
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].set_requires_grad(True)
-            if component.output[output_name].do_normalization:
-                opt_list.append(component.output[output_name].normalized_history)
-            else:
-                opt_list.append(component.output[output_name].history)
+        options = dict(options or {})
+        prepass_options = dict(prepass_options or {})
+        if _settings.value("testing"):
+            options["maxiter"] = 1
+            n_points = min(n_points, 3)
+            prepass_options.setdefault("max_iter", 3)
 
-        if optimizer_type == "SGD":
-            # Initialize optimizer
-            self.optimizer = torch.optim.SGD(opt_list, lr=lr)
-        elif optimizer_type == "Adam":
-            self.optimizer = torch.optim.Adam(opt_list, lr=lr)
-        elif optimizer_type == "LBFGS":
-            self.optimizer = torch.optim.LBFGS(
-                opt_list, lr=lr, line_search_fn=None, history_size=100
+        _settings.log_active("pareto_front")
+        LOGGER.task("Generating Pareto front")
+        LOGGER.add_level()
+        try:
+            result = _pareto_front(
+                self,
+                n_points=n_points,
+                delta=delta,
+                method=method,
+                use_prepass=batched_prepass,
+                prepass_options=prepass_options,
+                options=options,
             )
-        else:
-            raise ValueError(
-                f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}"
-            )
+        except Exception:
+            LOGGER.remove_level()
+            LOGGER.error("Generating Pareto front", change_status=True)
+            raise
+        LOGGER.remove_level()
+        LOGGER.ok("Generating Pareto front", change_status=True)
+        result.settings = _settings.snapshot()
+        return result
 
-        # Initialize scheduler
-        if scheduler_params is None:
-            scheduler_params = {}
+    # def _torch_solver(
+    #     self,
+    #     lr: float = 1.0,
+    #     iterations: int = 100,
+    #     optimizer_type: str = "SGD",
+    #     scheduler_type: str = "step",
+    #     scheduler_params: Dict = None,
+    # ):
+    #     """
+    #     Perform optimization using PyTorch-based gradient optimization.
 
-        if scheduler_type == "step":
-            # StepLR decreases learning rate by gamma every step_size epochs
-            step_size = scheduler_params.get("step_size", 30)
-            gamma = scheduler_params.get("gamma", 0.1)
-            self.scheduler = torch.optim.lr_scheduler.StepLR(
-                self.optimizer, step_size=step_size, gamma=gamma
-            )
-        elif scheduler_type == "exponential":
-            # ExponentialLR decreases learning rate by gamma every epoch
-            gamma = scheduler_params.get("gamma", 0.95)
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
-                self.optimizer, gamma=gamma
-            )
-        elif scheduler_type == "cosine":
-            # CosineAnnealingLR uses a cosine schedule to decrease learning rate
-            T_max = scheduler_params.get("T_max", 100)
-            eta_min = scheduler_params.get("eta_min", 0)
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=T_max, eta_min=eta_min
-            )
-        elif scheduler_type == "reduce_on_plateau":
-            # ReduceLROnPlateau reduces learning rate when a metric has stopped improving
-            mode = scheduler_params.get("mode", "min")
-            factor = scheduler_params.get("factor", 0.9)
-            patience = scheduler_params.get("patience", 10)
-            threshold = scheduler_params.get("threshold", 1e-4)
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer,
-                mode=mode,
-                factor=factor,
-                patience=patience,
-                threshold=threshold,
-            )
-        else:
-            # Default: no scheduler
-            self.scheduler = None
+    #     This method uses PyTorch's automatic differentiation to compute gradients and
+    #     applies gradient-based optimization algorithms to minimize the objective function.
+    #     It supports various optimizers and learning rate schedulers for fine-tuning
+    #     the optimization process.
 
-        def _get_constraint_value(component_or_value):
-            """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
-            if isinstance(component_or_value, (int, float)):
-                return torch.tensor(component_or_value)
-            elif isinstance(component_or_value, systems.ScheduleSystem):
-                component_or_value.initialize(
-                    start_time=self._start_time,
-                    end_time=self._end_time,
-                    step_size=self._stepSize,
-                    simulator=self.simulator,
-                )
-                return component_or_value.output["scheduleValue"].history
-            elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value
-            else:
-                raise ValueError(
-                    f"Invalid constraint value type: {type(component_or_value)}"
-                )
+    #     Args:
+    #         lr: Learning rate for optimizer. Controls the step size in gradient descent.
+    #             Higher values may converge faster but risk overshooting, while lower
+    #             values are more stable but may converge slowly.
+    #         iterations: Number of optimization iterations. More iterations generally
+    #             lead to better convergence but take longer to compute.
+    #         optimizer_type: Type of PyTorch optimizer:
+    #             - "SGD": Stochastic Gradient Descent - simple, robust, good for most problems
+    #             - "Adam": Adaptive learning rate optimizer - often faster convergence
+    #             - "LBFGS": Limited-memory BFGS - good for smooth, well-behaved functions
+    #         scheduler_type: Type of learning rate scheduler to adjust learning rate during optimization:
+    #             - "step": Decreases learning rate by gamma every step_size iterations
+    #             - "exponential": Decreases learning rate exponentially
+    #             - "cosine": Uses cosine annealing schedule
+    #             - "reduce_on_plateau": Reduces learning rate when loss stops improving
+    #             - None: No scheduler, constant learning rate
+    #         scheduler_params: Dictionary of parameters for the chosen scheduler:
+    #             - For "step": {"step_size": int, "gamma": float}
+    #             - For "exponential": {"gamma": float}
+    #             - For "cosine": {"T_max": int, "eta_min": float}
+    #             - For "reduce_on_plateau": {"mode": str, "factor": float, "patience": int, "threshold": float}
 
-        # Pre-compute all constraint values
-        self.equality_constraint_values = {}
-        if self._eq_cons is not None:
-            for component, output_name, desired_value in self._eq_cons:
-                self.equality_constraint_values[component, output_name] = (
-                    _get_constraint_value(desired_value)
-                )
+    #     Note:
+    #         This method automatically handles gradient computation and parameter updates.
+    #         It disables gradients for model parameters and only optimizes the decision variables.
+    #         The optimization process is logged with current learning rate and loss values.
+    #     """
+    #     # Validate optimization parameters
+    #     assert lr > 0, f"Learning rate must be positive, got {lr}"
+    #     assert (
+    #         iterations > 0
+    #     ), f"Number of iterations must be positive, got {iterations}"
 
-        self.inequality_constraint_values = {}
-        if self._ineq_cons is not None:
-            for (
-                component,
-                output_name,
-                constraint_type,
-                desired_value,
-            ) in self._ineq_cons:
-                self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ] = _get_constraint_value(desired_value)
+    #     # Validate scheduler type
+    #     valid_scheduler_types = [
+    #         "step",
+    #         "exponential",
+    #         "cosine",
+    #         "reduce_on_plateau",
+    #         None,
+    #     ]
+    #     assert (
+    #         scheduler_type in valid_scheduler_types
+    #     ), f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
 
-        for i in range(iterations):
-            # Perform optimization step
-            self.optimizer.step(self._closure)
+    #     # Disable gradients for all parameters since we're optimizing inputs.
+    #     # It is VERY important to do this before initializing the model.
+    #     # Otherwise, the model parameters and state space matrices will have requires_grad=True
+    #     # and the backpropagate() call will fail.
+    #     for component in self.simulator.model.components.values():
+    #         if isinstance(component, nn.Module):
+    #             for parameter in component.parameters():
+    #                 parameter.requires_grad_(False)
 
-            # Update learning rate with scheduler
-            if self.scheduler is not None:
-                if isinstance(
-                    self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
-                ):
-                    # ReduceLROnPlateau needs the loss value
-                    self.scheduler.step(self.loss)
-                else:
-                    # Other schedulers just need to be stepped
-                    self.scheduler.step()
+    #     # Set before initializing the model
+    #     for component, output_name, *bounds in self._variables:
+    #         component.output[output_name].do_normalization = True
 
-            # Log current learning rate
-            current_lr = self.optimizer.param_groups[0]["lr"]
-            print(f"Current learning rate: {current_lr}")
-            print(f"Loss at step {i}: {self.loss.detach().item()}")
+    #     self.simulator.model.initialize(
+    #         start_time=self._start_time,
+    #         end_time=self._end_time,
+    #         step_size=self._stepSize,
+    #         simulator=self.simulator,
+    #     )
 
-    def _scipy_solver(self, method: tuple = None, **options):
+    #     # Enable gradients only for the inputs we want to optimize
+    #     opt_list = []
+    #     for component, output_name, *bounds in self._variables:
+    #         component.output[output_name].set_requires_grad(True)
+    #         if component.output[output_name].do_normalization:
+    #             opt_list.append(component.output[output_name].normalized_history)
+    #         else:
+    #             opt_list.append(component.output[output_name].history)
+
+    #     if optimizer_type == "SGD":
+    #         # Initialize optimizer
+    #         self.optimizer = torch.optim.SGD(opt_list, lr=lr)
+    #     elif optimizer_type == "Adam":
+    #         self.optimizer = torch.optim.Adam(opt_list, lr=lr)
+    #     elif optimizer_type == "LBFGS":
+    #         self.optimizer = torch.optim.LBFGS(
+    #             opt_list, lr=lr, line_search_fn=None, history_size=100
+    #         )
+    #     else:
+    #         raise ValueError(
+    #             f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}"
+    #         )
+
+    #     # Initialize scheduler
+    #     if scheduler_params is None:
+    #         scheduler_params = {}
+
+    #     if scheduler_type == "step":
+    #         # StepLR decreases learning rate by gamma every step_size epochs
+    #         step_size = scheduler_params.get("step_size", 30)
+    #         gamma = scheduler_params.get("gamma", 0.1)
+    #         self.scheduler = torch.optim.lr_scheduler.StepLR(
+    #             self.optimizer, step_size=step_size, gamma=gamma
+    #         )
+    #     elif scheduler_type == "exponential":
+    #         # ExponentialLR decreases learning rate by gamma every epoch
+    #         gamma = scheduler_params.get("gamma", 0.95)
+    #         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+    #             self.optimizer, gamma=gamma
+    #         )
+    #     elif scheduler_type == "cosine":
+    #         # CosineAnnealingLR uses a cosine schedule to decrease learning rate
+    #         T_max = scheduler_params.get("T_max", 100)
+    #         eta_min = scheduler_params.get("eta_min", 0)
+    #         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #             self.optimizer, T_max=T_max, eta_min=eta_min
+    #         )
+    #     elif scheduler_type == "reduce_on_plateau":
+    #         # ReduceLROnPlateau reduces learning rate when a metric has stopped improving
+    #         mode = scheduler_params.get("mode", "min")
+    #         factor = scheduler_params.get("factor", 0.9)
+    #         patience = scheduler_params.get("patience", 10)
+    #         threshold = scheduler_params.get("threshold", 1e-4)
+    #         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #             self.optimizer,
+    #             mode=mode,
+    #             factor=factor,
+    #             patience=patience,
+    #             threshold=threshold,
+    #         )
+    #     else:
+    #         # Default: no scheduler
+    #         self.scheduler = None
+
+    #     def _get_constraint_value(component_or_value):
+    #         """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
+    #         if isinstance(component_or_value, (int, float)):
+    #             return torch.tensor(component_or_value)
+    #         elif isinstance(component_or_value, systems.ScheduleSystem):
+    #             component_or_value.initialize(
+    #                 start_time=self._start_time,
+    #                 end_time=self._end_time,
+    #                 step_size=self._stepSize,
+    #             )
+    #             return component_or_value.output["scheduleValue"].history
+    #         elif isinstance(component_or_value, torch.Tensor):
+    #             return component_or_value
+    #         else:
+    #             raise ValueError(
+    #                 f"Invalid constraint value type: {type(component_or_value)}"
+    #             )
+
+    #     # Pre-compute all constraint values
+    #     self.equality_constraint_values = {}
+    #     if self._eq_cons is not None:
+    #         for component, output_name, desired_value in self._eq_cons:
+    #             self.equality_constraint_values[component, output_name] = (
+    #                 _get_constraint_value(desired_value)
+    #             )
+
+    #     self.inequality_constraint_values = {}
+    #     if self._ineq_cons is not None:
+    #         for (
+    #             component,
+    #             output_name,
+    #             constraint_type,
+    #             desired_value,
+    #         ) in self._ineq_cons:
+    #             self.inequality_constraint_values[
+    #                 (component, output_name, constraint_type)
+    #             ] = _get_constraint_value(desired_value)
+
+    #     for i in range(iterations):
+    #         # Perform optimization step
+    #         self.optimizer.step(self._closure)
+
+    #         # Update learning rate with scheduler
+    #         if self.scheduler is not None:
+    #             if isinstance(
+    #                 self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+    #             ):
+    #                 # ReduceLROnPlateau needs the loss value
+    #                 self.scheduler.step(self.loss)
+    #             else:
+    #                 # Other schedulers just need to be stepped
+    #                 self.scheduler.step()
+
+    #         # Log current learning rate
+    #         current_lr = self.optimizer.param_groups[0]["lr"]
+    #         print(f"Current learning rate: {current_lr}")
+    #         print(f"Loss at step {i}: {self.loss.detach().item()}")
+
+    def _solve_scipy(
+        self,
+        method: tuple = None,
+        tol: float = None,
+        scipy_constraints: list = None,
+        **options,
+    ):
         """
         Perform optimization using SciPy's optimization algorithms.
 
         This method uses SciPy's optimization library to solve constrained and unconstrained
-        optimization problems. It supports both automatic differentiation (AD) and finite
-        difference (FD) modes for gradient computation. The method automatically handles
-        constraint formulation and bounds specification.
+        optimization problems, with the gradients by automatic differentiation (AD). The
+        method automatically handles constraint formulation and bounds specification.
 
         Args:
             method: Tuple of (library, optimizer, mode) specifying the optimization method:
@@ -1008,9 +1209,12 @@ class Optimizer:
                     - "trf": Trust Region Reflective - specialized for least-squares problems
                     - "dogbox": Dogleg algorithm - alternative for least-squares problems
                 - mode: Differentiation mode:
-                    - "ad": Automatic differentiation using PyTorch (recommended)
-                    - "fd": Finite difference (not yet implemented)
+                    - "ad": Automatic differentiation using PyTorch
             **options: Additional options passed to the SciPy optimizer:
+                - "constraint_penalty": Penalty weight for soft constraint violations.
+                  Higher values enforce constraints more strictly at the cost of slower
+                  convergence. Increase when constraints are violated in the solution.
+                  Defaults to 100.
                 - "verbose": Verbosity level (0-3) for optimization output
                 - "maxiter": Maximum number of iterations
                 - "gtol": Gradient tolerance for convergence
@@ -1019,6 +1223,9 @@ class Optimizer:
                 - "initial_tr_radius": Initial trust region radius
                 - "initial_constr_penalty": Initial constraint penalty
                 - Additional method-specific options as supported by SciPy optimizers
+            scipy_constraints: Optional SciPy constraint dictionaries or
+                constraint objects passed to ``scipy.optimize.minimize`` as
+                hard constraints.
 
         Note:
             This method automatically handles the conversion between PyTorch tensors and
@@ -1029,129 +1236,23 @@ class Optimizer:
         if method is None:
             method = ("scipy", "SLSQP", "ad")
 
-        for component in self.simulator.model.components.values():
-            if isinstance(component, nn.Module):
-                for parameter in component.parameters():
-                    parameter.requires_grad_(False)
+        LOGGER.task("Starting scipy solver: %s (%s mode)", method[1], method[2])
+        LOGGER.add_level()
 
-        # Set before initializing the model
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].do_normalization = True
-
-        self.simulator.get_simulation_timesteps(
-            self._start_time, self._end_time, self._stepSize
-        )
-        self.simulator.model.initialize(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-            simulator=self.simulator,
-        )
-
-        # Create initial guess vector
-        x0 = []
-        bounds_list = []
-
-        n_timesteps = len(self.simulator.dateTimeSteps)
-
-        # Create flattened vector of size N*M
-        for t in range(n_timesteps):
-            for component, output_name, *bounds in self._variables:
-                component.output[output_name].set_requires_grad(True)
-                if component.output[output_name].do_normalization:
-                    x0.append(
-                        component.output[output_name].normalized_history[t].item()
-                    )
-                else:
-                    x0.append(component.output[output_name].history[t].item())
-
-                # Set bounds (same for all timesteps for each actuator)
-                if len(bounds) >= 2:
-                    lower, upper = bounds[0], bounds[1]
-                    if component.output[output_name].do_normalization:
-                        lower = (
-                            component.output[output_name]
-                            .normalize(torch.tensor(lower))
-                            .item()
-                        )
-                        upper = (
-                            component.output[output_name]
-                            .normalize(torch.tensor(upper))
-                            .item()
-                        )
-                    bounds_list.append((lower, upper))
-                else:
-                    bounds_list.append((None, None))
-
-        x0 = np.array(x0)
-
-        # Create bounds object for SciPy
-        if all(b[0] is not None and b[1] is not None for b in bounds_list):
-            bounds_obj = Bounds(
-                [b[0] for b in bounds_list], [b[1] for b in bounds_list]
-            )
-        else:
-            bounds_obj = None
-
-        # Pre-compute constraint values
-        def _get_constraint_value(component_or_value):
-            """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
-            if isinstance(component_or_value, (int, float)):
-                return torch.tensor(component_or_value)
-            elif isinstance(component_or_value, systems.ScheduleSystem):
-                component_or_value.initialize(
-                    start_time=self._start_time,
-                    end_time=self._end_time,
-                    step_size=self._stepSize,
-                    simulator=self.simulator,
-                )
-                return component_or_value.output["scheduleValue"].history
-            elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value
-            else:
-                raise ValueError(
-                    f"Invalid constraint value type: {type(component_or_value)}"
-                )
-
-        self.equality_constraint_values = {}
-        if self._eq_cons is not None:
-            for component, output_name, desired_value in self._eq_cons:
-                self.equality_constraint_values[component, output_name] = (
-                    _get_constraint_value(desired_value)
-                )
-
-        self.inequality_constraint_values = {}
-        if self._ineq_cons is not None:
-            for (
-                component,
-                output_name,
-                constraint_type,
-                desired_value,
-            ) in self._ineq_cons:
-                self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ] = _get_constraint_value(desired_value)
-
-        # Initialize caching variables for AD
-        self._theta_jac = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
-        )
-        self._theta_hes = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
-        )
-        self._theta_obj = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
-        )
+        x0, bounds_obj = self._prepare_scipy_problem(method, options)
 
         # Run optimization based on method
         optimizer_name = method[1]
         mode = method[2]
 
+        LOGGER.config("Decision vector size: %d", len(x0))
+        LOGGER.task("Starting optimization")
+
         if mode == "ad":
             # Use automatic differentiation
             if optimizer_name in ["trf", "dogbox"]:
                 # These are least-squares optimizers
-                least_squares(
+                result = least_squares(
                     self._obj_ad,
                     x0,
                     jac=self._jac_ad,
@@ -1161,112 +1262,514 @@ class Optimizer:
                 )
             else:
                 # These are general optimization algorithms
-                minimize(
-                    self._obj_ad,
-                    x0,
-                    method=optimizer_name,
-                    jac=self._jac_ad,
-                    bounds=bounds_obj,
-                    options=options,
-                )
+                if (
+                    optimizer_name == "SLSQP"
+                    and self._functional_objective is not None
+                    and getattr(self.simulator, "captures_rollouts", self.simulator.execution_backend == "cuda_graph")
+                ):
+                    result = self._solve_scipy_captured_slsqp(
+                        x0,
+                        bounds_obj,
+                        tol,
+                        scipy_constraints,
+                        options,
+                    )
+                else:
+                    result = minimize(
+                        self._obj_ad,
+                        x0,
+                        method=optimizer_name,
+                        jac=self._jac_ad,
+                        bounds=bounds_obj,
+                        tol=tol,
+                        constraints=scipy_constraints if scipy_constraints else (),
+                        options=options,
+                    )
         else:
-            # Use finite difference (not implemented yet for optimizer)
+            LOGGER.remove_level()
+            LOGGER.error(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
             raise NotImplementedError(
                 "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
             )
 
-    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        """
-        Objective function for automatic differentiation.
+        # Apply the solution to the model: one object evaluation at
+        # result.x writes the optimal trajectories into the decision-variable
+        # ports and re-runs the simulation, so component histories hold the
+        # optimized signals (guaranteed -- SciPy's last internal evaluation is
+        # not necessarily at the solution, and with the functional objective no
+        # simulation ran during the solve at all).
+        self.apply_solution(result.x)
 
-        Args:
-            theta (torch.Tensor): Flattened parameter vector of size N*M where
-                                 N = number of timesteps, M = number of actuators.
+        elapsed = time_module.time() - self._solver_start_time
+        LOGGER.info(
+            "Optimization finished in %.1fs (%d function evaluations)",
+            elapsed,
+            self._eval_count,
+        )
+        opt_success = getattr(result, "success", None)
+        opt_message = getattr(result, "message", None)
+        opt_nit = getattr(result, "nit", None)
+        opt_fun = getattr(result, "fun", None)
+        if opt_success is not None:
+            if opt_success:
+                LOGGER.ok(
+                    "Solver result: success %s, iterations %s, final loss %s",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+            else:
+                LOGGER.warning(
+                    "Solver result: success %s, iterations %s, final loss %s.",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+        if opt_message:
+            LOGGER.info("Solver message: %s", opt_message)
 
-        Returns:
-            torch.Tensor: Objective value.
+        LOGGER.remove_level()
+        if opt_success is False:
+            LOGGER.warning(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+        else:
+            LOGGER.ok(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+        return result
+
+    def _solve_scipy_captured_slsqp(
+        self, x0, bounds_obj, tol, scipy_constraints, options
+    ):
+        """Serve SLSQP from one directly captured functional value/grad bundle."""
+        evaluator = CapturedControlObjective(self._functional_objective)
+        cache = {"key": None, "value": None, "gradient": None}
+
+        def bundle(x):
+            x_np = np.asarray(x, dtype=np.float64)
+            key = x_np.tobytes()
+            if key == cache["key"]:
+                return cache["value"], cache["gradient"]
+            z = torch.as_tensor(x_np, dtype=tps.float_dtype(), device=self._device)
+            value_t, gradient_t = evaluator.value_and_grad(z)
+            value = float(value_t.detach().cpu())
+            gradient = gradient_t.detach().cpu().numpy().astype(np.float64)
+            self.obj = value_t.detach().clone()
+            self.jac = gradient_t.detach().clone()
+            self._theta_obj = z.detach().clone()
+            self._theta_jac = z.detach().clone()
+            self._eval_count += 1
+            LOGGER.iter(
+                "Evaluation %d: loss %.6f (%.1fs)",
+                self._eval_count,
+                value,
+                time_module.time() - self._solver_start_time,
+            )
+            cache.update(key=key, value=value, gradient=gradient)
+            return value, gradient
+
+        try:
+            result = minimize(
+                lambda x: bundle(x)[0],
+                x0,
+                method="SLSQP",
+                jac=lambda x: bundle(x)[1],
+                bounds=bounds_obj,
+                tol=tol,
+                constraints=scipy_constraints if scipy_constraints else (),
+                options=options,
+            )
+            result.derivative_stats = {
+                "scipy_value_gradient_bundle": dict(evaluator.stats),
+                "scope": "functional objective and gradient; host SciPy callbacks",
+            }
+            return result
+        finally:
+            evaluator.close()
+
+    def apply_solution(self, theta) -> None:
+        """Write a solver decision vector into the model and re-simulate."""
+        self.__obj_ad(
+            torch.tensor(
+                np.asarray(theta), dtype=tps.float_dtype(), device=self._device
+            )
+        )
+
+    def _prepare_scipy_problem(self, method: tuple, options: dict):
+        """Initialize and build the shared SciPy NLP state.
+
+        This setup is shared by the ordinary solver and Pareto subproblems.
+        Objective-related options are consumed in place.
         """
-        # Reshape theta from flattened vector (N*M) to matrix (N, M)
-        n_timesteps = len(self.simulator.dateTimeSteps)
-        n_actuators = len(self._variables)
-        theta_matrix = theta.reshape(n_timesteps, n_actuators)
-        # Update decision variables for each timestep using proper initialization
-        for i, (component, output_name, *bounds) in enumerate(self._variables):
-            # Extract values for this actuator across all timesteps
-            values = component.output[output_name].denormalize(theta_matrix[:, i])
-            # Initialize with the new values
+        self._eval_count = 0
+        self._solver_start_time = time_module.time()
+        self._constraint_penalty = options.pop("constraint_penalty", 100)
+
+        if "fast" in options:
+            raise TypeError(
+                "Optimizer option 'fast' has been removed; construct "
+                "Simulator(model, execution_mode='functional') instead."
+            )
+
+        for component in self.simulator.model.components.values():
+            if isinstance(component, nn.Module):
+                for parameter in component.parameters():
+                    parameter.requires_grad_(False)
+
+        self._trajectory_variables, self._parameter_variables = self._split_variables()
+        for component, output_name, *bounds in self._trajectory_variables:
+            component.output[output_name].do_normalization = True
+
+        LOGGER.task("Initializing model")
+        self.simulator.model.initialize(
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
+        )
+
+        bounds_list = []
+        x0_tensors = []
+        n_periods = len(self._start_time)
+        for component, output_name, *bounds in self._trajectory_variables:
+            port = component.output[output_name]
+            active_history = (
+                port.normalized_history if port.do_normalization else port.history()
+            )
+            if not active_history.is_leaf:
+                # A previous object AD evaluation may have installed a
+                # differentiable trajectory in this leaf port. Start each NLP
+                # from a detached trajectory so requires_grad can be enabled
+                # again and repeated solves remain independent.
+                port.initialize(
+                    n_t=self._max_timesteps,
+                    n_s=n_periods,
+                    n_c=port.n_c,
+                    values=port.history().detach(),
+                    force=True,
+                )
+            port.set_requires_grad(True)
+            history_tensor = (
+                port.normalized_history.detach()
+                if port.do_normalization
+                else port.history().detach()
+            )
+            period_tensors = [
+                history_tensor[: self._n_timesteps[i_s], i_s, :]
+                for i_s in range(n_periods)
+            ]
+            flattened_history = torch.cat(period_tensors, dim=0)
+            x0_tensors.append(flattened_history)
+
+            for _ in range(flattened_history.numel()):
+                if len(bounds) >= 2:
+                    lower, upper = bounds[:2]
+                    if port.do_normalization:
+                        lower = port.normalize(torch.tensor(lower)).item()
+                        upper = port.normalize(torch.tensor(upper)).item()
+                    bounds_list.append((lower, upper))
+                else:
+                    bounds_list.append((None, None))
+
+        if x0_tensors:
+            x0 = (
+                torch.stack(x0_tensors, dim=1)
+                .flatten()
+                .detach()
+                .cpu()
+                .numpy()
+                .astype(np.float64)
+            )
+        else:
+            x0 = np.array([], dtype=np.float64)
+
+        # Parameter decision variables follow the trajectories in theta, one
+        # entry per element, normalized to [0, 1] by their bounds.
+        self._n_trajectory_theta = int(len(x0))
+        for component, name, lower, upper, n in self._parameter_variables:
+            value = rgetattr(component, name).get().detach().reshape(-1).cpu().numpy().astype(np.float64)
+            x0 = np.concatenate([x0, np.clip((value - lower) / (upper - lower), 0.0, 1.0)])
+            bounds_list.extend([(0.0, 1.0)] * n)
+        bounds_obj = None
+        if bounds_list and all(
+            lower is not None and upper is not None for lower, upper in bounds_list
+        ):
+            bounds_obj = Bounds(
+                [lower for lower, _ in bounds_list],
+                [upper for _, upper in bounds_list],
+            )
+
+        def _get_constraint_value(component, output_name, component_or_value):
+            n_s = len(self._start_time)
+            n_t = max(self._n_timesteps)
+            port = component.output[output_name]
+            if isinstance(port, tps.Scalar):
+                desired_shape = (n_t, n_s, port.n_c)
+            elif isinstance(port, tps.Vector):
+                desired_shape = (n_t, n_s, port.n_c, port.n_v)
+            else:
+                raise ValueError(f"Invalid constraint value type: {type(port)}")
+
+            if isinstance(component_or_value, (int, float)):
+                return torch.full(
+                    desired_shape,
+                    component_or_value,
+                    dtype=tps.float_dtype(),
+                    device=self._device,
+                )
+            if isinstance(component_or_value, systems.ScheduleSystem):
+                component_or_value.initialize(
+                    start_time=self._start_time,
+                    end_time=self._end_time,
+                    step_size=self._stepSize,
+                )
+                return (
+                    component_or_value.output["scheduleValue"]
+                    .history()
+                    .to(device=self._device, dtype=tps.float_dtype())
+                )
+            if isinstance(component_or_value, torch.Tensor):
+                return component_or_value.to(
+                    device=self._device, dtype=tps.float_dtype()
+                )
+            raise ValueError(
+                f"Invalid constraint value type: {type(component_or_value)}"
+            )
+
+        self.equality_constraint_values = {
+            (component, output_name): _get_constraint_value(
+                component, output_name, desired_value
+            )
+            for component, output_name, desired_value in self._eq_cons
+        }
+        self.inequality_constraint_values = {
+            (component, output_name, constraint_type): _get_constraint_value(
+                component, output_name, desired_value
+            )
+            for component, output_name, constraint_type, desired_value in self._ineq_cons
+        }
+
+        theta0 = torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
+        self._theta_jac = 1000000 * torch.ones_like(theta0)
+        self._theta_hes = torch.nan * torch.ones_like(theta0)
+        self._theta_obj = 1000000 * torch.ones_like(theta0)
+
+        self._functional_objective = None
+        removed = {"fast", "fast_validate"}.intersection(options)
+        if removed:
+            raise TypeError(
+                f"Removed optimizer option(s): {', '.join(sorted(removed))}. "
+                "Select functional execution on Simulator."
+            )
+        if self.simulator.execution_mode == "functional" and method[2] == "ad":
+            self._setup_functional_objective(x0)
+        if getattr(self, "_n_warmup", 0) and self._functional_objective is None:
+            raise RuntimeError(
+                "n_warmup needs the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
+        if self._parameter_variables and self._functional_objective is None:
+            raise RuntimeError(
+                "Parameter decision variables need the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
+        return x0, bounds_obj
+
+    def _checked_warmup(self, n_warmup, method) -> int:
+        """``n_warmup`` checked before anything is simulated: at least 0,
+        fewer than the steps of the shortest period, and not with the
+        collocation transcription (whose objective has no warm-up mask)."""
+        n = int(n_warmup)
+        if n < 0:
+            raise ValueError(f"n_warmup must be >= 0, got {n}")
+        if n and n >= min(self._n_timesteps):
+            raise ValueError(f"n_warmup={n} leaves no step of the shortest period ({min(self._n_timesteps)} steps)")
+        if n and isinstance(method, (tuple, list)) and len(method) > 3 and method[3] == "collocation":
+            raise ValueError("n_warmup is not supported with the collocation transcription")
+        return n
+
+    def _split_variables(self):
+        """``(trajectories, parameters)``: a decision variable naming an output
+        port is a trajectory (one value per timestep, as before); one naming a
+        ``tps.Parameter`` of the component is a parameter, entered once per
+        element as ``(component, name, lb, ub, n_elements)``."""
+        trajectories, parameters = [], []
+        for component, name, *bounds in self._variables:
+            if name in component.output:
+                trajectories.append((component, name, *bounds))
+            else:
+                n = int(rgetattr(component, name).get().reshape(-1).numel())
+                parameters.append((component, name, float(bounds[0]), float(bounds[1]), n))
+        return trajectories, parameters
+
+    def _setup_functional_objective(self, x0) -> None:
+        """Build the functional single-shooting objective.
+
+        On success sets ``self._functional_objective`` (consumed by
+        :meth:`_obj_ad` /
+        :meth:`_jac_ad`); on any structural incompatibility leaves it ``None``
+        and the exact object objective is used. With ``validate=True``
+        Structural incompatibilities leave the functional objective unset and
+        use the object execution path.
+        """
+        t0 = time_module.time()
+        try:
+            functional = FunctionalControlObjective(self)
+        except Exception as exc:
+            LOGGER.config(
+                "Functional objective unavailable (%s); using object objective",
+                exc,
+            )
+            return
+
+        self._functional_objective = functional
+        LOGGER.config(
+            "Functional objective enabled (built in %.1fs)", time_module.time() - t0
+        )
+
+    def _write_variables(self, theta: torch.Tensor) -> None:
+        """Write a normalized decision vector into the model: the interleaved
+        trajectories to their output ports, the parameters to their
+        ``tps.Parameter``s."""
+        offset = self._n_trajectory_theta
+        with torch.no_grad():
+            for component, name, lower, upper, n in self._parameter_variables:
+                values = theta[offset : offset + n] * (upper - lower) + lower
+                rgetattr(component, name).set(values.detach(), normalized=False)
+                offset += n
+        n_actuators = len(self._trajectory_variables)
+        if n_actuators == 0:
+            return
+        theta = theta[: self._n_trajectory_theta]
+        n_periods = len(self._start_time)
+        total_actual_timesteps = int(len(theta) / n_actuators)
+        theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
+
+        for i, (component, output_name, *bounds) in enumerate(self._trajectory_variables):
+            actuator_values = theta_matrix[:, i]
+            n_c = component.output[output_name].n_c
+            reconstructed_tensor = torch.full(
+                (self._max_timesteps, n_periods, n_c),
+                0,
+                dtype=tps.float_dtype(),
+                device=self._device,
+            )
+
+            value_idx = 0
+            for period_idx in range(n_periods):
+                actual_timesteps = self._n_timesteps[period_idx]
+                period_values = actuator_values[
+                    value_idx : value_idx + actual_timesteps
+                ]
+                # Time-first: [t, s, c] where t=timestep, s=period, c=component
+                reconstructed_tensor[:actual_timesteps, period_idx, 0] = period_values
+                value_idx += actual_timesteps
+
+            if component.output[output_name].do_normalization:
+                values = component.output[output_name].denormalize(reconstructed_tensor)
+            else:
+                values = reconstructed_tensor
 
             component.output[output_name].initialize(
-                start_time=self._start_time,
-                end_time=self._end_time,
-                step_size=self._stepSize,
-                simulator=self.simulator,
+                n_t=self._max_timesteps,
+                n_s=len(self._start_time),
                 values=values,
                 force=True,
             )
 
-        # Run simulation
+    def _graph_parts(self, theta: torch.Tensor) -> SimpleNamespace:
+        """Evaluate and decompose the object-execution optimization loss."""
+        self._write_variables(theta)
         self.simulator.simulate(
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
             show_progress_bar=False,
+            execution_mode="object",
+            execution_backend="eager",
         )
 
-        # Compute loss
-        loss = 0
-        k = 100
+        k = self._constraint_penalty
+        mask = self._timestep_mask
 
-        # Handle equality constraints
-        if self._eq_cons is not None:
-            for constraint in self._eq_cons:
-                component, output_name, desired_value = constraint
-                y = component.output[output_name].history
-                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
-                desired_tensor = self.equality_constraint_values[component, output_name]
-                y_norm = component.output[output_name].normalize(y)
-                desired_tensor_norm = component.output[output_name].normalize(
-                    desired_tensor
-                )
-                loss += torch.mean(torch.abs(y_norm - desired_tensor_norm))
+        eq = []
+        for component, output_name, desired_value in self._eq_cons:
+            y = component.output[output_name].history()[mask]
+            desired_tensor = self.equality_constraint_values[component, output_name][
+                mask
+            ]
+            y_norm = component.output[output_name].normalize(y)
+            desired_tensor_norm = component.output[output_name].normalize(
+                desired_tensor
+            )
+            eq.append(k * torch.mean(torch.abs(y_norm - desired_tensor_norm)))
 
-        # Handle inequality constraints
-        if self._ineq_cons is not None:
-            ineq_upper_term = 0
-            ineq_lower_term = 0
-            for constraint in self._ineq_cons:
-                component, output_name, constraint_type, desired_value = constraint
-                y = component.output[output_name].history
-                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
+        ineq = None
+        if self._ineq_cons:
+            ineq_upper_term = torch.tensor(
+                0.0, dtype=tps.float_dtype(), device=self._device
+            )
+            ineq_lower_term = torch.tensor(
+                0.0, dtype=tps.float_dtype(), device=self._device
+            )
+            for (
+                component,
+                output_name,
+                constraint_type,
+                desired_value,
+            ) in self._ineq_cons:
+                y = component.output[output_name].history()[mask]
                 desired_tensor = self.inequality_constraint_values[
                     (component, output_name, constraint_type)
-                ]
+                ][mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-
                 if constraint_type == "upper":
-                    # Penalize when y > desired_value
-                    constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    ineq_upper_term += torch.mean(k * constraint_violations)
-                elif constraint_type == "lower":
-                    # Penalize when y < desired_value
-                    constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    ineq_lower_term += torch.mean(k * constraint_violations)
+                    ineq_upper_term += torch.mean(
+                        torch.relu(y_norm - desired_tensor_norm)
+                    )
+                else:
+                    ineq_lower_term += torch.mean(
+                        torch.relu(desired_tensor_norm - y_norm)
+                    )
+            ineq = k * (ineq_upper_term + ineq_lower_term)
 
-            loss += ineq_upper_term + ineq_lower_term
+        objs = []
+        phys = []
+        for component, output_name, objective_type in self._objectives:
+            y = component.output[output_name].history()[mask]
+            y_norm = component.output[output_name].normalize(y)
+            mean_norm = torch.mean(y_norm)
+            objs.append(mean_norm if objective_type == "min" else -mean_norm)
+            phys.append(torch.mean(y))
+        return SimpleNamespace(eq=eq, ineq=ineq, objs=objs, phys=phys)
 
-        # Handle minimization objectives
-        if self._objectives is not None:
-            for component, output_name, objective_type in self._objectives:
-                y = component.output[output_name].history
-                y_norm = component.output[output_name].normalize(y)
-                if objective_type == "min":
-                    loss += torch.mean(y_norm)
-                elif objective_type == "max":
-                    loss += -torch.mean(y_norm)
-
+    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """Evaluate the scalar object-execution objective."""
+        parts = self._graph_parts(theta)
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+        for term in parts.eq:
+            loss = loss + term
+        if parts.ineq is not None:
+            loss = loss + parts.ineq
+        for objective in parts.objs:
+            loss = loss + objective
         self.obj = loss
         return self.obj
 
@@ -1280,15 +1783,26 @@ class Optimizer:
         Returns:
             torch.Tensor: Objective value as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
         if torch.equal(theta, self._theta_obj):
-            return self.obj.detach().numpy()
+            # scipy (SLSQP in particular) requires float64 regardless of the
+            # model dtype, so every solver-facing exit casts explicitly.
+            return self.obj.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_obj = theta
-            self.obj = self.__obj_ad(theta)
-
-            # self._hes_ad(theta) # hes calls jac which calls obj.
-            return self.obj.detach().numpy()
+            if self._functional_objective is not None:
+                self.obj = self._functional_objective.loss(theta)
+            else:
+                self.obj = self.__obj_ad(theta)
+            self._eval_count += 1
+            elapsed = time_module.time() - self._solver_start_time
+            LOGGER.iter(
+                "Evaluation %d: loss %.6f (%.1fs)",
+                self._eval_count,
+                self.obj.detach().item(),
+                elapsed,
+            )
+            return self.obj.detach().cpu().numpy().astype(np.float64)
 
     def __jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """
@@ -1313,14 +1827,31 @@ class Optimizer:
         Returns:
             torch.Tensor: Jacobian matrix.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_jac):
-            return self.jac.detach().numpy()
+            return self.jac.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_jac = theta
-            self.jac = self.__jac_ad(theta)
-            return self.jac.detach().numpy()
+            if self._functional_objective is not None:
+                # One autograd pass yields value AND gradient: cache both so a
+                # subsequent f(theta) query is free.
+                f, g = self._functional_objective.value_and_grad(theta)
+                self.obj = f
+                self._theta_obj = theta
+                self.jac = g
+            else:
+                self.jac = self.__jac_ad(theta)
+            jac_numpy = self.jac.detach().cpu().numpy().astype(np.float64)
+
+            # Check for NaN values in Jacobian and warn
+            if np.isnan(jac_numpy).any():
+                n_nans = np.isnan(jac_numpy).sum()
+                raise ValueError(
+                    f"WARNING: Jacobian contains {n_nans} NaN values out of {jac_numpy.size} total values"
+                )
+
+            return jac_numpy
 
     def __hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """
@@ -1345,11 +1876,54 @@ class Optimizer:
         Returns:
             torch.Tensor: Hessian matrix.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_hes):
-            return self.hes.detach().numpy()
+            return self.hes.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_hes = theta
             self.hes = self.__hes_ad(theta)
-            return self.hes.detach().numpy()
+            return self.hes.detach().cpu().numpy().astype(np.float64)
+
+
+class OptimizationResult(ResultDict):
+    """Dict-like result of :meth:`Optimizer.optimize`, parallel to EstimationResult.
+
+    Wraps the SciPy ``OptimizeResult`` fields and keeps attribute access
+    (``result.x``, ``result.success``, …) for compatibility with SciPy-style code.
+    :meth:`Optimizer.optimize` adds ``settings``, the library's settings the
+    optimization ran with (:func:`twin4build.settings.snapshot`,
+    ``{name: {"value": ..., "source": ...}}``).
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    @classmethod
+    def from_scipy(cls, result) -> "OptimizationResult":
+        """Build an OptimizationResult from a SciPy OptimizeResult-like object."""
+        data = {}
+        # OptimizeResult supports dict-like access
+        try:
+            data.update(dict(result))
+        except Exception:
+            for key in (
+                "x",
+                "success",
+                "status",
+                "message",
+                "fun",
+                "jac",
+                "hess",
+                "hess_inv",
+                "nfev",
+                "njev",
+                "nhev",
+                "nit",
+                "maxcv",
+            ):
+                if hasattr(result, key):
+                    data[key] = getattr(result, key)
+        return cls(**data)
+
+    __copy__ = ResultDict.copy

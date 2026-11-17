@@ -55,9 +55,10 @@ Mathematical Formulation:
 import itertools
 import math
 import shutil
+from collections import namedtuple
+from itertools import cycle
 
 # Third party imports
-import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
@@ -73,9 +74,73 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import ScalarFormatter
 
 # Local application imports
-import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.plot.align_y_axes import alignYaxes
+
+
+class Entry:
+    """
+    A simple class for specifying plot data with named parameters (matplotlib-like API).
+
+    Args:
+        data: Data array/tensor to plot (required).
+        fmt: Plot format string combining linestyle and marker (None for automatic style selection).
+        axis: Which y-axis to plot on (1, 2, or 3, defaults to 1).
+        **kwargs: Additional matplotlib line properties, passed through to the
+            plot call and set as attributes on the entry. ``label`` (display
+            label for the plot line) is required; common optional keys include
+            ``color`` (None for automatic color selection) and ``linewidth``
+            (None for automatic width selection).
+
+    Examples:
+        Basic usage::
+
+            # Simple data plot on axis 1
+            Entry(data=temperature_array, label="Room Temperature")
+
+            # Data plot with custom styling on axis 2
+            Entry(data=power_array, label="Power Consumption",
+                  color="red", fmt="--", axis=2)
+
+            # Data plot on axis 3 with markers
+            Entry(data=flow_array, label="Flow Rate",
+                  color="blue", fmt="o-", axis=3)
+    """
+
+    def __init__(
+        self,
+        data=None,
+        fmt=None,
+        axis=1,
+        **kwargs,
+    ):
+        # Check for common mistake: passing a method instead of calling it
+        if callable(data):
+            raise TypeError(
+                "The 'data' parameter appears to be a callable (method/function). "
+                "Did you forget to call .history()? "
+                "Use .history() instead of .history to get the data array."
+            )
+
+        # Convert data to numpy array if necessary
+        if isinstance(data, (list, pd.Series)):
+            data = np.array(data)
+        elif isinstance(data, torch.Tensor):
+            data = data.detach().cpu().numpy()
+
+        # Set attributes
+        self.data = data
+        self.fmt = fmt
+        self.axis = axis
+        self.kwargs = kwargs
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+        # Validation
+        if data is None:
+            raise ValueError("'data' is required")
+        assert "label" in kwargs, "'label' is required"
 
 
 class Colors:
@@ -90,6 +155,7 @@ class Colors:
     grey = colors[7]
     beis = colors[8]
     sky_blue = colors[9]
+    black = "black"
 
 
 class PlotSettings:
@@ -100,9 +166,8 @@ class PlotSettings:
     right_y_second = (0.975, 0.50)
     outward = 68
 
-    @classmethod
-    @property
-    def save_folder(cls):
+    @staticmethod
+    def save_folder():
         save_folder, isfile = mkdir_in_root(["generated_files", "plots"])
         return save_folder
 
@@ -216,47 +281,50 @@ def bar_plot_line_format(label, evaluation_metric):
     return label
 
 
-def get_data(simulator, t):
-    if len(t) == 3:
-        component, attribute, io_type = t
-        if isinstance(component, core.System):
-            component = component
-        elif isinstance(component, str):
-            component = simulator.model.components[component]
-        else:
-            m = f"Wrong component type. Got {type(component)}, expected {core.System} or str"
-            raise (Exception(m))
+def get_data(t):
+    """
+    Extract data, label, color, and format from an Entry.
 
-        assert isinstance(
-            attribute, str
-        ), f"Attribute must be a string, got {type(attribute)}"
+    Args:
+        t: Entry object
 
-        if io_type == "input":
-            data = component.input[attribute].history.detach()
-        elif io_type == "output":
-            data = component.output[attribute].history.detach()
-        else:
-            m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"
-            raise (Exception(m))
-    elif len(t) == 2:
-        data, attribute = t
-        assert isinstance(
-            data, (torch.Tensor, np.ndarray, pd.Series, list)
-        ), f"If 2-tuple, first element must be a torch.Tensor or np.ndarray or pd.Series, got {type(data)}"
-        assert isinstance(
-            attribute, str
-        ), f"If 2-tuple, second element must be a string, got {type(attribute)}"
-    else:
-        m = f"Wrong input output type specification. Got {t}, expected (component, attribute) or (component, attribute, 'input' or 'output')"
-        raise (Exception(m))
-    return data, attribute
+    Returns:
+        tuple: (data, fmt, axis, kwargs)
+    """
+    if not isinstance(t, Entry):
+        raise ValueError(f"Wrong input type. Got {type(t)}, expected Entry object")
+
+    data = t.data
+    fmt = t.fmt
+    axis = t.axis
+    kwargs = t.kwargs
+
+    if isinstance(data, (list, pd.Series)):
+        data = np.array(data)
+    elif isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    # Handle 3D data - history() returns (n_t, n_s, n_c), need (n_s, n_t) for plotting
+    if isinstance(data, np.ndarray) and data.ndim == 3:
+        # History format: (n_t, n_s, n_c) - select first component and transpose to (n_s, n_t)
+        data = data[:, :, 0].T  # Select n_c=0, then transpose (n_t, n_s) -> (n_s, n_t)
+
+    if isinstance(data, np.ndarray) and data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    return data, fmt, axis, kwargs
 
 
-def plot_component(
-    simulator,
-    components_1axis,
-    components_2axis=None,
-    components_3axis=None,
+def filter_nans(time, data):
+    valid_mask = ~pd.isna(time)
+    time = time[valid_mask]
+    data = data[valid_mask]
+    return time, data
+
+
+def plot(
+    time,
+    entries,
     ylabel_1axis=None,
     ylabel_2axis=None,
     ylabel_3axis=None,
@@ -275,32 +343,67 @@ def plot_component(
     show=False,
 ):
     """
-    General plot function for components.
+    General plot function with matplotlib-like API.
 
     Args:
-        simulator: The simulator object containing the model and time steps.
-        components_1axis (list): List of tuples (component_id, attribute) for the first y-axis.
-        components_2axis (list, optional): List of tuples for the second y-axis.
-        components_3axis (list, optional): List of tuples for the third y-axis.
+        time: Time array/index for x-axis (required)
+        entries (list): List of Entry objects specifying what to plot on which axis.
+        ylabel_1axis (str, optional): Label for the first y-axis.
+        ylabel_2axis (str, optional): Label for the second y-axis.
+        ylabel_3axis (str, optional): Label for the third y-axis.
+        ylim_1axis (tuple, optional): Y-axis limits for the first axis.
+        ylim_2axis (tuple, optional): Y-axis limits for the second axis.
+        ylim_3axis (tuple, optional): Y-axis limits for the third axis.
+        title (str, optional): Plot title.
+        nticks (int): Number of y-axis ticks on each axis (default 11).
+        roundto_1axis (float, optional): Round the first axis' tick values to this resolution.
+        roundto_2axis (float, optional): Round the second axis' tick values to this resolution.
+        roundto_3axis (float, optional): Round the third axis' tick values to this resolution.
+        yoffset_1axis (float, optional): Extra headroom offset applied to the first axis' limits.
+        yoffset_2axis (float, optional): Extra headroom offset applied to the second axis' limits.
+        yoffset_3axis (float, optional): Extra headroom offset applied to the third axis' limits.
+        align_zero (bool): Align the zero (or common reference) level across the y-axes (default True).
         show (bool): Whether to display the plot.
-        firstAxisylim (tuple, optional): Y-axis limits for the first axis.
-        secondAxisylim (tuple, optional): Y-axis limits for the second axis.
-        thirdAxisylim (tuple, optional): Y-axis limits for the third axis.
 
     Returns:
         tuple: Figure and axes objects.
     """
-    assert components_1axis is not None, "components_1axis is required"
+    assert time is not None, "time parameter is required"
+    assert entries is not None, "entries parameter is required"
+
+    # Normalize time to list of arrays (batch mode) if it's a single time series
+    if isinstance(time, (pd.Index, pd.Series)):
+        time = [time]
+    elif isinstance(time, np.ndarray):
+        if time.ndim == 1 and (
+            np.issubdtype(time.dtype, np.number)
+            or np.issubdtype(time.dtype, np.datetime64)
+        ):
+            time = [time]
+    elif isinstance(time, list):
+        if len(time) > 0 and not isinstance(
+            time[0], (list, np.ndarray, pd.Series, pd.Index)
+        ):
+            time = [time]
+
+    if isinstance(entries, Entry):
+        entries = [entries]
+
+    # Separate entries by axis
+    components_1axis = [e for e in entries if e.axis == 1 or e.axis is None]
+    components_2axis = [e for e in entries if e.axis == 2]
+    components_3axis = [e for e in entries if e.axis == 3]
+
+    # Ensure we have at least some entries on axis 1
+    if not components_1axis:
+        raise ValueError("At least one entry must be specified for axis=1")
     load_params()
-    fig, ax1 = plt.subplots(figsize=(12, 6))
+    fig, ax1 = plt.subplots(figsize=(12, 6))  # 12, 6
     if title:
         fig.suptitle(title, fontsize=20)
-    # ax1.ticklabel_format(useOffset=False, style='plain')
 
     y_formatter = ScalarFormatter(useOffset=False)
     ax1.yaxis.set_major_formatter(y_formatter)
-
-    time = simulator.dateTimeSteps
 
     nticks_1axis = nticks
     nticks_2axis = nticks
@@ -311,67 +414,19 @@ def plot_component(
     roundto_list = [roundto_1axis]
     yoffset_list = [yoffset_1axis]
     graphs = {}  # Will store mapping from legend entries to plot lines
-    colors = Colors.colors.copy()
+    colors = [cycle(Colors.colors.copy()) for _ in range(len(time))]
 
-    if len(components_1axis) > 1:
-        assert (
-            ylabel_1axis is not None
-        ), "ylabel_1axis is required if multiple components are plotted on the first axis"
-    else:
-        if ylabel_1axis is None:
-            ylabel_1axis = components_1axis[0][1]
-
-    # Plot components on the first axis
-    for t in components_1axis:
-        data, attribute = get_data(simulator, t)
-        color = colors[0]
-        colors.remove(color)
-        (line,) = ax1.plot(time, data, label=attribute, color=color)
-
-    ax1.set_xlabel("Time")
-    if ylabel_1axis:
-        ax1.set_ylabel(ylabel_1axis)
-
-    if ylim_1axis:
-        ax1.set_ylim(ylim_1axis)
-
-    # Plot components on the second axis if provided
+    # Create axes upfront so entries can be plotted in original order
+    ax2 = None
+    ax3 = None
     if components_2axis:
-        if len(components_2axis) > 1:
-            assert (
-                ylabel_2axis is not None
-            ), "ylabel_2axis is required if multiple components are plotted on the second axis"
-        else:
-            if ylabel_2axis is None:
-                ylabel_2axis = components_2axis[0][1]
-
         ax2 = ax1.twinx()
         ax2.yaxis.set_major_formatter(y_formatter)
         axes.append(ax2)
         nticks_list.append(nticks_2axis)
         roundto_list.append(roundto_2axis)
         yoffset_list.append(yoffset_2axis)
-        for t in components_2axis:
-            data, attribute = get_data(simulator, t)
-            color = colors[0]
-            colors.remove(color)
-            (line,) = ax2.plot(time, data, label=attribute, color=color, linestyle="--")
-
-        if ylabel_2axis:
-            ax2.set_ylabel(ylabel_2axis)
-        if ylim_2axis:
-            ax2.set_ylim(ylim_2axis)
-
-    # Plot components on the third axis if provided
     if components_3axis:
-        if len(components_3axis) > 1:
-            assert (
-                ylabel_3axis is not None
-            ), "ylabel_3axis is required if multiple components are plotted on the third axis"
-        else:
-            if ylabel_3axis is None:
-                ylabel_3axis = components_3axis[0][1]
-
         ax3 = ax1.twinx()
         ax3.yaxis.set_major_formatter(y_formatter)
         ax3.spines["right"].set_position(("outward", PlotSettings.outward))
@@ -379,29 +434,89 @@ def plot_component(
         nticks_list.append(nticks_3axis)
         roundto_list.append(roundto_3axis)
         yoffset_list.append(yoffset_3axis)
-        for t in components_3axis:
-            data, attribute = get_data(simulator, t)
-            color = colors[0]
-            colors.remove(color)
-            (line,) = ax3.plot(time, data, label=attribute, color=color, linestyle=":")
 
+    # Axis label inference
+    if len(components_1axis) > 1:
+        assert (
+            ylabel_1axis is not None
+        ), "ylabel_1axis is required if multiple components are plotted on the first axis"
+    elif ylabel_1axis is None:
+        ylabel_1axis = components_1axis[0].label
+
+    if components_2axis:
+        if len(components_2axis) > 1:
+            assert (
+                ylabel_2axis is not None
+            ), "ylabel_2axis is required if multiple components are plotted on the second axis"
+        elif ylabel_2axis is None:
+            ylabel_2axis = components_2axis[0].label
+
+    if components_3axis:
+        if len(components_3axis) > 1:
+            assert (
+                ylabel_3axis is not None
+            ), "ylabel_3axis is required if multiple components are plotted on the third axis"
+        elif ylabel_3axis is None:
+            ylabel_3axis = components_3axis[0].label
+
+    # Map axis number to axis object
+    axis_map = {1: ax1, None: ax1}
+    if ax2 is not None:
+        axis_map[2] = ax2
+    if ax3 is not None:
+        axis_map[3] = ax3
+
+    # Plot entries in the original order so the legend matches
+    legend_lines = []
+    legend_labels = []
+    for entry in entries:
+        data, fmt, axis, kwargs = get_data(entry)
+        fmt = fmt if fmt is not None else "-"
+        target_ax = axis_map[axis]
+        assert data.shape[0] == len(
+            time
+        ), "data and time must have the same number of rows (batch size)"
+        n_s = data.shape[0]
+        for i in range(n_s):
+            kwargs_copy = kwargs.copy()
+            color = kwargs.get("color", next(colors[i]))
+            kwargs_copy["color"] = color
+            kwargs_copy["label"] = (
+                kwargs["label"] if n_s == 1 else kwargs["label"] + f" [{i}]"
+            )
+            t_i, d = filter_nans(time[i], data[i, :])
+            (line,) = target_ax.plot(t_i, d, fmt, **kwargs_copy)
+            legend_lines.append(line)
+            legend_labels.append(kwargs_copy["label"])
+
+    # Set axis labels and limits
+    ax1.set_xlabel("Time")
+    if ylabel_1axis:
+        ax1.set_ylabel(ylabel_1axis)
+    if ylim_1axis:
+        ax1.set_ylim(ylim_1axis)
+
+    if ax2 is not None:
+        if ylabel_2axis:
+            ax2.set_ylabel(ylabel_2axis)
+        if ylim_2axis:
+            ax2.set_ylim(ylim_2axis)
+
+    if ax3 is not None:
         if ylabel_3axis:
             ax3.set_ylabel(ylabel_3axis)
         if ylim_3axis:
             ax3.set_ylim(ylim_3axis)
-
         ax3.spines["right"].set_position(("outward", PlotSettings.outward))
         ax3.spines["right"].set_visible(True)
         ax3.spines["right"].set_color("black")
 
-    # Combine legends
-    lines, labels = [], []
-    for ax in axes:
-        ax_lines, ax_labels = ax.get_legend_handles_labels()
-        lines.extend(ax_lines)
-        labels.extend(ax_labels)
+    lines = legend_lines
+    labels = legend_labels
 
-    legend = fig.legend(lines, labels, loc="upper center", ncol=3)
+    legend = fig.legend(
+        lines, labels, ncol=3, bbox_to_anchor=(0.5, 0.95), loc="upper center"
+    )  # ,
 
     # Set up pick event and create mapping between legend entries and plot lines
     for legend_line, plot_line in zip(legend.get_lines(), lines):
@@ -423,34 +538,21 @@ def plot_component(
 
     alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
+    first_time = time[0][0]
+    tz = first_time.tzinfo if hasattr(first_time, "tzinfo") else None
     for ax in axes:
-        mylocator = mdates.HourLocator(interval=6, tz=None)
-        ax.xaxis.set_minor_locator(mylocator)
-        myFmt = mdates.DateFormatter("%H")
-        ax.xaxis.set_minor_formatter(myFmt)
-
-        mylocator = mdates.WeekdayLocator(
-            byweekday=[
-                mdates.MO,
-                mdates.TU,
-                mdates.WE,
-                mdates.TH,
-                mdates.FR,
-                mdates.SA,
-                mdates.SU,
-            ],
-            interval=1,
-            tz=None,
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(
+            mdates.AutoDateFormatter(locator, tz=tz)
         )
-        ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter("%a")
-        ax.xaxis.set_major_formatter(myFmt)
-        ax.tick_params(axis="x", which="major", pad=10)  # move the tick labels
 
     # Save and show plot
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
     # plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
     # fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
+
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
 
     if show:
         plt.show()
@@ -468,6 +570,22 @@ def get_fig_axes(
     ax_dim=(0.65, 0.6),
     y_offset_add_default=0.04,
 ):
+    """
+    Create a figure with a grid of manually positioned axes.
+
+    Args:
+        title_name: Figure suptitle.
+        n_plots: Number of axes to create.
+        cols: Number of columns in the grid.
+        K: Vertical scaling factor used for row offsets.
+        size_inches: Figure size ``(width, height)`` in inches.
+        offset: ``(x, y)`` offset of the first axes in figure fraction.
+        ax_dim: ``(width, height)`` of each axes in figure fraction.
+        y_offset_add_default: Extra vertical spacing between rows.
+
+    Returns:
+        tuple: Figure and list of axes (ordered top-left to bottom-right).
+    """
     fig = plt.figure()
     fig.set_size_inches(size_inches)
     rows = math.ceil(n_plots / cols)
@@ -496,3 +614,4 @@ def get_fig_axes(
     axes.reverse()
     fig.suptitle(title_name, fontsize=20)
     return fig, axes
+

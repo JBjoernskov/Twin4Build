@@ -6,25 +6,31 @@ simulation and optimization.
 
 Key Components:
     Building Spaces:
-        - BuildingSpaceTorchSystem: Basic building space model
-        - BuildingSpaceMassTorchSystem: Building space with mass effects
-        - BuildingSpaceThermalTorchSystem: Building space with thermal dynamics
+        - BuildingSpaceSystem: Combined thermal + CO2 (mass balance) building space model
+        - BuildingSpaceMassSystem: Building space CO2 mass balance model
+        - BuildingSpaceThermalSystem: Building space thermal (RC) model
+
+    Building Envelope:
+        - WallSystem: 2R1C wall between two zones (or zone and boundary)
+        - ThermalMassNodeSystem: 1C node shared by a star of walls (a building's interior mass)
 
     HVAC Components:
-        - SpaceHeaterTorchSystem: Space heating system
-        - ValveTorchSystem: Control valve system
-        - CoilTorchSystem: Heating/cooling coil system
-        - DamperTorchSystem: Air flow control damper
-        - FanTorchSystem: Air handling fan system
+        - SpaceHeaterSystem: Space heating system
+        - FanCoilUnitSystem: Fan coil unit (heating/cooling terminal unit)
+        - ValveSystem: Control valve system
+        - CoilSystem: Heating/cooling coil system
+        - DamperSystem: Air flow control damper
+        - FanSystem: Air handling fan system
         - AirToAirHeatRecoverySystem: Heat recovery system
+        - AirHandlingUnitSystem: Air handling unit system
 
     Control Systems:
-        - PIControllerFMUSystem: Proportional-Integral controller
-        - RulebasedSetpointInputControllerSystem: Rule-based setpoint control
-        - OnOffControllerSystem: Binary control system
-        - SequenceControllerSystem: Sequential control logic
-        - ClassificationAnnControllerSystem: ANN-based classification control
-        - NeuralPolicyControllerSystem: Neural network policy control
+        - PIDControllerSystem: Proportional-Integral-Derivative controller
+        - CascadeControllerSystem: Cascade (outer/inner loop) controller
+        - SATLinearRuleSystem / SATCompensatedControllerSystem: Supply air
+          temperature compensation rules
+        - ControllerIdentificationSystem / ControllerIdentificationPISystem:
+          Controller identification models
 
     Monitoring & Measurement:
         - SensorSystem: Generic sensor system
@@ -32,42 +38,58 @@ Key Components:
 
     Environmental:
         - OutdoorEnvironmentSystem: External environmental conditions
-        - ShadingDeviceSystem: Solar shading control
 
     Utility Systems:
-        - fmuSystem: FMU-based system
         - SupplyFlowJunctionSystem: Supply flow distribution
         - ReturnFlowJunctionSystem: Return flow collection
         - PiecewiseLinearSystem: Piecewise linear interpolation
         - TimeSeriesInputSystem: Time series data input
         - MaxSystem: Maximum value selection
+        - WeightedSumSystem: Weighted sum of a vector input
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
+        - ScalarProductSystem: Elementwise scalar product
+        - OccupancySystem / OccupancyDetectorSystem: Occupancy modeling and detection
+        - SigmoidGate: Smooth gating function
 
 Note:
-    Most systems are implemented using PyTorch for efficient computation and optimization.
-    Some legacy systems (marked with TODO) are still using FMU-based implementations.
+    The systems are implemented using PyTorch for efficient computation and
+    optimization.
 """
+
+import importlib
 
 # Define what gets exported with wildcard imports
 __all__ = [
     # Building Spaces
-    "BuildingSpaceTorchSystem",
-    "BuildingSpaceMassTorchSystem",
-    "BuildingSpaceThermalTorchSystem",
+    "BuildingSpaceSystem",
+    "BuildingSpaceMassSystem",
+    "BuildingSpaceThermalSystem",
+    "AirImbalanceSystem",
+    # Wall
+    "WallSystem",
+    "ThermalMassNodeSystem",
     # Space Heater
-    "SpaceHeaterTorchSystem",
+    "SpaceHeaterSystem",
     # Valves
-    "ValveTorchSystem",
+    "ValveSystem",
     # Coils
-    "CoilTorchSystem",
-    # Controllers # TODO: Convert to Torch
+    "CoilSystem",
+    # Fan Coil Unit
+    "FanCoilUnitSystem",
+    # Controllers
     "PIDControllerSystem",
-    "RulebasedSetpointInputControllerSystem",
-    "OnOffControllerSystem",
-    "SequenceControllerSystem",
-    "ClassificationAnnControllerSystem",
-    "NeuralPolicyControllerSystem",
+    "CascadeControllerSystem",
+    "SATLinearRuleSystem",
+    "SATCompensatedControllerSystem",
+    "ControllerIdentificationSystem",
+    "ControllerIdentificationPISystem",
+    "RewireReport",
+    "LoopScore",
+    "ActuatorSeeds",
+    "score_pair",
+    "derive_actuator_seeds",
+    "confidence_label",
     # Sensors
     "SensorSystem",
     # Schedules
@@ -79,103 +101,105 @@ __all__ = [
     "ReturnFlowJunctionSystem",
     # Air to Air Heat Recovery
     "AirToAirHeatRecoverySystem",
+    # Air Handling Unit
+    "AirHandlingUnitSystem",
+    "AirHandlingUnitCoreSystem",
+
     # Damper
-    "DamperTorchSystem",
+    "DamperSystem",
     # Fan
-    "FanTorchSystem",
-    # Shading
-    "ShadingDeviceSystem",
-    # Uncomment these if you want to include utility classes # TODO: Convert to Torch
-    "fmuSystem",
+    "FanSystem",
+    # Utils
     "PiecewiseLinearSystem",
     "TimeSeriesInputSystem",
     "MaxSystem",
+    "WeightedSumSystem",
     "OnOffSystem",
     "DiscreteStatespaceSystem",
+    "ScalarProductSystem",
+    "OccupancySystem",
+    "OccupancyDetectorSystem",
+    "SigmoidGate",
 ]
 
-# Local application imports
-# Air to Air Heat Recovery
-from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
-    AirToAirHeatRecoverySystem,
-)
-from twin4build.systems.building_space.building_space_mass_torch_system import (
-    BuildingSpaceMassTorchSystem,
-)
-from twin4build.systems.building_space.building_space_thermal_torch_system import (
-    BuildingSpaceThermalTorchSystem,
-)
+_MODULES = {
+    "AirHandlingUnitSystem": "air_handling_unit.air_handling_unit_system",
+    "AirHandlingUnitCoreSystem": "air_handling_unit.air_handling_unit_core_system",
 
-# Building Spaces
-from twin4build.systems.building_space.building_space_torch_system import (
-    BuildingSpaceTorchSystem,
-)
+    "AirToAirHeatRecoverySystem": "air_to_air_heat_recovery.air_to_air_heat_recovery_system",
+    "BuildingSpaceMassSystem": "building_space.building_space_mass_system",
+    "BuildingSpaceThermalSystem": "building_space.building_space_thermal_system",
+    "BuildingSpaceSystem": "building_space.building_space_system",
+    "AirImbalanceSystem": "building_space.air_imbalance_system",
+    "CoilSystem": "coil.coil_system",
+    "FanCoilUnitSystem": "fan_coil_unit.fan_coil_unit_system",
+    "ControllerIdentificationSystem": "controller.controller_identification.controller_identification_system",
+    "ControllerIdentificationPISystem": "controller.controller_identification.controller_identification_pi_system",
+    "ActuatorSeeds": "controller.controller_identification.loop_classifier",
+    "LoopScore": "controller.controller_identification.loop_classifier",
+    "confidence_label": "controller.controller_identification.loop_classifier",
+    "derive_actuator_seeds": "controller.controller_identification.loop_classifier",
+    "score_pair": "controller.controller_identification.loop_classifier",
+    "RewireReport": "controller.controller_identification.pi_loop_rewire",
+    "SATCompensatedControllerSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
+    "SATLinearRuleSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
+    "CascadeControllerSystem": "controller.setpoint_controller.cascade_controller.cascade_controller_system",
+    "PIDControllerSystem": "controller.setpoint_controller.pid_controller.pid_controller_system",
+    "DamperSystem": "damper.damper_system",
+    "FanSystem": "fan.fan_system",
+    "ReturnFlowJunctionSystem": "junction.return_flow_junction_system",
+    "SupplyFlowJunctionSystem": "junction.supply_flow_junction_system",
+    "OutdoorEnvironmentSystem": "outdoor_environment.outdoor_environment_system",
+    "ScheduleSystem": "schedule.schedule_system",
+    "SensorSystem": "sensor.sensor_system",
+    "SpaceHeaterSystem": "space_heater.space_heater_system",
+    "DiscreteStatespaceSystem": "utils.discrete_statespace_system",
+    "MaxSystem": "utils.max_system",
+    "WeightedSumSystem": "utils.weighted_sum_system",
+    "OccupancyDetectorSystem": "utils.occupancy_detector_system",
+    "SigmoidGate": "utils.sigmoid_gate",
+    "OccupancySystem": "utils.occupancy_system",
+    "OnOffSystem": "utils.on_off_system",
+    "PiecewiseLinearSystem": "utils.piecewise_linear_system",
+    "ScalarProductSystem": "utils.scalar_product_system",
+    "TimeSeriesInputSystem": "utils.time_series_input_system",
+    "ValveSystem": "valve.valve_system",
+    "WallSystem": "wall.wall_system",
+    "ThermalMassNodeSystem": "thermal_mass.thermal_mass_node_system",
+}
 
-# Coils
-from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
-from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import (
-    ClassificationAnnControllerSystem,
-)
-from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import (
-    NeuralPolicyControllerSystem,
-)
-from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
-    OnOffControllerSystem,
-)
-from twin4build.systems.controller.rulebased_controller.rulebased_setpoint_input_controller.rulebased_setpoint_input_controller_system import (
-    RulebasedSetpointInputControllerSystem,
-)
-from twin4build.systems.controller.sequence_controller.sequence_controller_system import (
-    SequenceControllerSystem,
-)
+_ALIASES = {
+    "BuildingSpaceTorchSystem": "BuildingSpaceSystem",
+    "BuildingSpaceMassTorchSystem": "BuildingSpaceMassSystem",
+    "BuildingSpaceThermalTorchSystem": "BuildingSpaceThermalSystem",
+    "WallTorchSystem": "WallSystem",
+    "DamperTorchSystem": "DamperSystem",
+    "ValveTorchSystem": "ValveSystem",
+    "CoilTorchSystem": "CoilSystem",
+    "FanTorchSystem": "FanSystem",
+    "SpaceHeaterTorchSystem": "SpaceHeaterSystem",
+    "FanCoilUnitTorchSystem": "FanCoilUnitSystem",
+    "AirHandlingUnitTorchSystem": "AirHandlingUnitSystem",
+    "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
+    "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
+    "ControllerIdentificationPITorchSystem": "ControllerIdentificationPISystem",
+}
 
-# Controllers
-from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
-    PIDControllerSystem,
-)
 
-# Damper
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+def __getattr__(name):
+    canonical_name = _ALIASES.get(name, name)
+    module_name = _MODULES.get(canonical_name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(
+        importlib.import_module(f"{__name__}.{module_name}"), canonical_name
+    )
+    globals()[name] = value
+    return value
 
-# Fan
-from twin4build.systems.fan.fan_torch_system import FanTorchSystem
-from twin4build.systems.junction.return_flow_junction_system import (
-    ReturnFlowJunctionSystem,
-)
 
-# Junction
-from twin4build.systems.junction.supply_flow_junction_system import (
-    SupplyFlowJunctionSystem,
-)
-
-# Outdoor Environment
-from twin4build.systems.outdoor_environment.outdoor_environment_system import (
-    OutdoorEnvironmentSystem,
-)
-
-# Schedules
-from twin4build.systems.schedule.schedule_system import ScheduleSystem
-
-# Sensors
-from twin4build.systems.sensor.sensor_system import SensorSystem
-
-# Shading
-from twin4build.systems.shading_device.shading_device_system import ShadingDeviceSystem
-
-# Space Heater
-from twin4build.systems.space_heater.space_heater_torch_system import (
-    SpaceHeaterTorchSystem,
-)
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-
-# Utils
-from twin4build.systems.utils.fmu_system import fmuSystem
-from twin4build.systems.utils.max_system import MaxSystem
-from twin4build.systems.utils.on_off_system import OnOffSystem
-from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
-from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-
-# Valves
-from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
-
-# Time series input
+def _load_system_classes():
+    """Load canonical system exports for translator pattern discovery."""
+    return tuple(getattr(importlib.import_module(f"{__name__}.{module}"), name)
+                 for name, module in _MODULES.items()
+                 if name.endswith("System"))

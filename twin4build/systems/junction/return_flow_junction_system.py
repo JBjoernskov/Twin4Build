@@ -1,48 +1,9 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
 # Third party imports
-import numpy as np
+import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
-    Node,
-    Optional_,
-    SignaturePattern,
-    SinglePath,
-)
-
-
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="return_flow_junction_signature_pattern",
-    )
-    sp.add_triple(
-        MultiPath(
-            subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-
-    sp.add_input("airFlowRateIn", node1, "airFlowRate")
-    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
-    # sp.add_input("inletAirTemperature", node15, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
-    sp.add_modeled_node(node0)
-    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
-    return sp
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 
 
 class ReturnFlowJunctionSystem(core.System):
@@ -84,58 +45,41 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
     """
 
-    sp = [get_signature_pattern()]
+    airFlowRateBias = Setting(0.0, doc="Added to the total flow [kg/s]")
+    airFlowRateIn = Input(size="wired", doc="The branches' flows [kg/s]")
+    airTemperatureIn = Input(size=airFlowRateIn, doc="The branches' temperatures [degC], a slot per branch")
+    airFlowRateOut = Output(doc="The total flow [kg/s]")
+    airTemperatureOut = Output(doc="The flow-weighted temperature [degC]")
 
-    def __init__(self, airFlowRateBias=None, **kwargs):
-        super().__init__(**kwargs)
-        if airFlowRateBias is not None:
-            self.airFlowRateBias = airFlowRateBias
-        else:
-            self.airFlowRateBias = 0
-
-        self.input = {
-            "airFlowRateIn": tps.Vector(),
-            "airTemperatureIn": tps.Vector(),
-        }
-        self.output = {
-            "airFlowRateOut": tps.Scalar(),
-            "airTemperatureOut": tps.Scalar(),
-        }
-        self._config = {"parameters": ["airFlowRateBias"]}
+    #: The streams' sum and their flow-weighted temperature (:mod:`twin4build.model.signal_dependencies`): every slot.
+    OUTPUT_DEPENDENCIES = {
+        "airFlowRateOut": {"inputs": ("airFlowRateIn",)},
+        "airTemperatureOut": {"inputs": ("airFlowRateIn", "airTemperatureIn")},
+    }
 
     @property
-    def config(self):
-        return self._config
+    def n_input_ports(self) -> int:
+        """The number of branches."""
+        return self.input["airFlowRateIn"]._n_v
 
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> None:
-        pass
+    @n_input_ports.setter
+    def n_input_ports(self, n: int) -> None:
+        # A junction owned by a composite has no connections: its owner sets
+        # the width.
+        self.input["airFlowRateIn"]._n_v = int(n)
 
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        with np.errstate(invalid="raise"):
-            m_dot_in = self.input["airFlowRateIn"].get().sum()
-            Q_dot_in = (
-                self.input["airTemperatureIn"].get() * self.input["airFlowRateIn"].get()
-            )
-            tol = 1e-5
-            if m_dot_in > tol:
-                self.output["airFlowRateOut"].set(
-                    m_dot_in + self.airFlowRateBias, stepIndex
-                )
-                self.output["airTemperatureOut"].set(
-                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), stepIndex
-                )
-            else:
-                self.output["airFlowRateOut"].set(0, stepIndex)
-                self.output["airTemperatureOut"].set(20, stepIndex)
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: the total flow (plus the bias) and the flow-weighted
+        temperature (20 degC without flow)."""
+        flows = inputs["airFlowRateIn"]
+        m_dot_in = flows.sum(dim=-1)
+        Q_dot_in = (inputs["airTemperatureIn"] * flows).sum(dim=-1)
+        tol = 1e-5
+        has_flow = m_dot_in > tol
+        flow_rate_out = m_dot_in + p["airFlowRateBias"]
+        temp_out_flow = Q_dot_in / torch.clamp(flow_rate_out, min=tol)
+        return x, {
+            "airFlowRateOut": torch.where(has_flow, flow_rate_out, torch.zeros_like(m_dot_in)),
+            "airTemperatureOut": torch.where(has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)),
+        }
+

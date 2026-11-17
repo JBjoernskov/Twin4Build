@@ -1,15 +1,30 @@
 # Standard library imports
+import collections
 import configparser
+import datetime
+import hashlib
+import json
 import os
+import re
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from dateutil.parser import parse
 from dateutil.tz import gettz
 
+try:  # the [database] extra: only reading a PostgreSQL database needs it
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
+
 # Local application imports
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.logger import LOGGER
 
 
 def parseDateStr(s):
@@ -22,18 +37,102 @@ def parseDateStr(s):
         return np.datetime64("NaT")
 
 
+#: The resampling methods: ``"linear"`` interpolates linearly between the two
+#: readings around a step, ``"constant"`` holds the last reading at or before
+#: it, ``"mean"`` is the time-weighted mean of the linear interpolant over the
+#: step ``[t, t + step_size)``.
+RESAMPLE_METHODS = ("constant", "linear", "mean")
+
+#: The longest stretch between two readings [s] a resampled value may bridge
+#: (six hours).  A step in a longer gap is NaN, as is a step before the first
+#: or after the last reading: nothing is extrapolated, nothing repeated.
+DEFAULT_DT_LIMIT = 6 * 3600.0
+
+
+def _seconds(index: pd.DatetimeIndex) -> np.ndarray:
+    """A DatetimeIndex as float seconds since the epoch (UTC), whatever its unit."""
+    idx = index.tz_convert("UTC").tz_localize(None) if index.tz is not None else index
+    return idx.as_unit("ns").asi8 / 1e9
+
+
+def _interval_means(t: np.ndarray, y: np.ndarray, grid: np.ndarray, step: float, limit: float):
+    """The time-weighted means of the linear interpolant of ``(t, y)`` over ``[g, g + step)`` for every ``g`` in
+    ``grid``, and where they are defined: the whole step lies within the readings and no stretch between two
+    readings that overlaps it is longer than ``limit``."""
+    n = len(t)
+    if n < 2:
+        return np.full(len(grid), np.nan), np.zeros(len(grid), dtype=bool)
+    # the integral of the interpolant from t[0] to every reading, and from there to any time inside the readings
+    cum = np.concatenate([[0.0], np.cumsum(0.5 * (y[1:] + y[:-1]) * np.diff(t))])
+
+    def integral(tau):
+        k = np.clip(np.searchsorted(t, tau, side="right") - 1, 0, n - 2)
+        frac = np.where(t[k + 1] > t[k], (tau - t[k]) / (t[k + 1] - t[k]), 0.0)
+        y_tau = y[k] + frac * (y[k + 1] - y[k])
+        return cum[k] + 0.5 * (y[k] + y_tau) * (tau - t[k])
+
+    lo, hi = grid, grid + step
+    ok = (lo >= t[0]) & (hi <= t[-1])
+    means = np.full(len(grid), np.nan)
+    means[ok] = (integral(hi[ok]) - integral(lo[ok])) / step
+    gaps = np.flatnonzero(np.diff(t) > limit)
+    for j in gaps:  # a stretch without readings longer than the limit: every step it overlaps is undefined
+        ok &= ~((lo < t[j + 1]) & (hi > t[j]))
+    return means, ok
+
+
+def sample_on_grid(df, start_time, end_time, step_size, method="linear", dt_limit=DEFAULT_DT_LIMIT) -> pd.DataFrame:
+    """Every column of ``df`` (time-indexed readings) on the steps ``start_time + k * step_size`` up to
+    ``end_time``, by ``method`` (:data:`RESAMPLE_METHODS`).
+
+    A step gets a value only from readings around it: NaN before the first reading, after the last one, and where
+    the readings that would give it are more than ``dt_limit`` seconds apart (``"linear"``: the readings on either
+    side; ``"constant"``: the last reading before it; ``"mean"``: any stretch without readings the step overlaps).
+    ``dt_limit=None`` bridges any gap inside the readings, never the edges.  Returns a DataFrame on the steps.
+    """
+    nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
+    grid = _seconds(nidx)
+    limit = np.inf if dt_limit is None else float(dt_limit)
+    out = {}
+    for col in df.columns:
+        s = df[col].dropna()
+        if len(s) == 0:
+            out[col] = np.full(len(nidx), np.nan)
+            continue
+        t, y = _seconds(pd.DatetimeIndex(s.index)), s.to_numpy(dtype=float)
+        if method == "mean":
+            values, ok = _interval_means(t, y, grid, float(step_size), limit)
+        else:
+            n = len(t)
+            prev = np.searchsorted(t, grid, side="right") - 1  # the last reading at or before each step
+            nxt = np.searchsorted(t, grid, side="left")  # the first reading at or after it
+            inside = (prev >= 0) & (nxt < n)  # never before the first or after the last reading
+            pi, ni = np.clip(prev, 0, n - 1), np.clip(nxt, 0, n - 1)
+            if method == "constant":
+                values = y[pi]
+                ok = inside & (grid - t[pi] <= limit)
+            else:  # linear
+                span = t[ni] - t[pi]
+                w = np.where(span > 0, (grid - t[pi]) / np.where(span > 0, span, 1.0), 0.0)
+                values = y[pi] + w * (y[ni] - y[pi])
+                ok = inside & (span <= limit)
+        out[col] = np.where(ok, values, np.nan)
+    return pd.DataFrame(out, index=nidx)
+
+
 def sample_from_df(
     df,
-    datecolumn=0,
-    valuecolumn=None,
+    date_column=0,
+    value_column=None,
     step_size=None,
     start_time=None,
     end_time=None,
     resample=True,
     resample_method="linear",
     clip=True,
-    tz="Europe/Copenhagen",
+    tz=datetime.timezone.utc,
     preserve_order=True,
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     r"""
     Sample and process time series data from a DataFrame with various resampling options.
@@ -42,42 +141,54 @@ def sample_from_df(
     and data clipping. It handles both constant and linear resampling methods.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
-    1. Time Series Resampling:
-       a) Constant Resampling:
-          For each time step :math:`t`:
+    **1. Time Series Resampling**
 
-          .. math::
+    Constant resampling -- for each time step :math:`t`:
 
-             y(t) = y(t_{last})
+    .. math::
 
-          where :math:`t_{last}` is the last available data point before :math:`t`
+       y(t) = y(t_{last})
 
-       b) Linear Resampling:
-          For each time step :math:`t`:
+    where :math:`t_{last}` is the last available data point at or before :math:`t`.
 
-          .. math::
+    Linear resampling -- for each time step :math:`t`:
 
-             y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
+    .. math::
 
-          where:
-          - :math:`t_1` is the last available data point before :math:`t`
-          - :math:`t_2` is the first available data point after :math:`t`
+       y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
 
-    2. Time Zone Conversion:
-       For a time :math:`t` in timezone :math:`TZ_1`:
+    where :math:`t_1` is the last available data point at or before :math:`t` and
+    :math:`t_2` is the first available data point at or after :math:`t`.
 
-       .. math::
+    Mean resampling -- for each time step :math:`t` of length :math:`\Delta t`:
 
-          t_{TZ_2} = t_{TZ_1} + \Delta TZ
+    .. math::
 
-       where:
-       - :math:`t_{TZ_2}` is the time in target timezone
-       - :math:`\Delta TZ` is the time difference between timezones
+       y(t) = \frac{1}{\Delta t} \int_t^{t + \Delta t} \hat y(\tau) \, d\tau
 
-    3. Data Clipping:
-       For a time series :math:`y(t)`:
+    where :math:`\hat y` is the linear interpolant of the readings (for rates
+    such as power or flow, whose model value at a step stands for the step).
+
+    Nothing is extrapolated: a step before the first reading or after the last
+    one is NaN, and so is a step whose readings are more than ``dt_limit``
+    seconds apart (:func:`sample_on_grid`).
+
+    **2. Time Zone Conversion**
+
+    For a time :math:`t` in timezone :math:`TZ_1`:
+
+    .. math::
+
+       t_{TZ_2} = t_{TZ_1} + \Delta TZ
+
+    where :math:`t_{TZ_2}` is the time in the target timezone and
+    :math:`\Delta TZ` is the time difference between timezones.
+
+    **3. Data Clipping**
+
+    For a time series :math:`y(t)`:
 
        .. math::
 
@@ -88,97 +199,159 @@ def sample_from_df(
 
     Args:
         df (pandas.DataFrame): Input DataFrame with time series data
-        datecolumn (int): Column index containing datetime information
+        datecolumn (int): Column index containing date_time information
         valuecolumn (int, optional): Column index containing values to process
         step_size (int, optional): Time step size in seconds for resampling
-        start_time (datetime, optional): Start time for data extraction
-        end_time (datetime, optional): End time for data extraction
+        start_time (date_time, optional): Start time for data extraction
+        end_time (date_time, optional): End time for data extraction
         resample (bool): Whether to resample data to regular intervals
-        resample_method (str): Resampling method ("linear" or "constant")
+        resample_method (str): Resampling method ("linear", "constant" or "mean")
         clip (bool): Whether to clip data to specified time range
         tz (str): Timezone for data processing
         preserve_order (bool): Whether to preserve original data order
+        dt_limit (float, optional): The longest stretch between two readings [s]
+            a resampled value may bridge; ``None`` bridges any gap inside the
+            readings (never the edges).  Defaults to :data:`DEFAULT_DT_LIMIT`.
 
     Returns:
         pandas.DataFrame: Processed DataFrame with resampled time series data
     """
-    assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
-    df = df.rename(columns={df.columns.to_list()[datecolumn]: "datetime"})
+    assert date_column != value_column, "date_column and value_column cannot be the same"
+    df = df.rename(columns={df.columns.to_list()[date_column]: "date_time"})
 
-    for i, column in enumerate(df.columns.to_list()):
-        if column != "datetime" and valuecolumn is None:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
-        elif i == valuecolumn:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
+    LOGGER.task("Starting dataframe sampling")
+    LOGGER.add_level()
+    try:
+        LOGGER.config("Start time: %s", start_time)
+        LOGGER.config("End time: %s", end_time)
+        LOGGER.config("Step size: %s", step_size)
 
-    df["datetime"] = pd.to_datetime(df["datetime"])  # ), format=format)
-    if df["datetime"].apply(lambda x: x.tzinfo is not None).any():
-        has_tz = True
-        df["datetime"] = df["datetime"].apply(lambda x: x.tz_convert("UTC"))
-    else:
-        has_tz = False
+        for i, column in enumerate(df.columns.to_list()):
+            if column != "date_time" and value_column is None:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
+            elif i == value_column:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
 
-    df = df.set_index(pd.DatetimeIndex(df["datetime"]))
-    df = df.drop(columns=["datetime"])
+        # A database session in local time returns two UTC offsets across a
+        # DST change (psycopg2 gives timestamptz in the session's time zone);
+        # pandas parses mixed offsets only as UTC, which the next lines
+        # convert every aware column to anyway.
+        # Vectorised (26 Oct 2026): the per-element apply over every
+        # timestamp (the tz test, the conversion of each Timestamp, the list
+        # of zones) was most of a series' load (a translation loads
+        # thousands).  Aware when the column's dtype is, or -- an object
+        # column (Python datetimes, strings) -- any of its values is, as before.
+        column = df["date_time"]
+        if isinstance(column.dtype, pd.DatetimeTZDtype):
+            aware = True
+        elif column.dtype == object:
+            aware = bool(column.map(lambda x: getattr(x, "tzinfo", None) is not None).any())
+        else:
+            aware = False
+        df["date_time"] = pd.to_datetime(column, utc=aware)
+        if isinstance(df["date_time"].dtype, pd.DatetimeTZDtype):
+            has_tz = True
+            df["date_time"] = df["date_time"].dt.tz_convert("UTC")
+            LOGGER.info("Dataframe has timezone information %s, converting to UTC", df["date_time"].dt.tz)
 
-    if preserve_order and has_tz == False:
-        # Detect if dates are reverse
-        diff_seconds = df.index.to_series().diff().dt.total_seconds()
-        frac_neg = np.sum(diff_seconds < 0) / diff_seconds.size
-        if frac_neg >= 0.95:
-            df = df.iloc[::-1]
-        elif frac_neg > 0.05 and frac_neg < 0.95:
-            raise Exception(
-                '"preserve_order" is true, but the datetime order cannot be determined.'
+        else:
+            has_tz = False
+            LOGGER.info("Dataframe has no timezone information")
+
+        df = df.set_index(pd.DatetimeIndex(df["date_time"]))
+        df = df.drop(columns=["date_time"])
+
+        if preserve_order and has_tz == False:
+            # Detect if dates are reverse
+            diff_seconds = df.index.to_series().diff().dt.total_seconds()
+            # Remove NaN values from the calculation
+            diff_seconds_valid = diff_seconds.dropna()
+            if len(diff_seconds_valid) > 0:
+                frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
+                if frac_neg >= 0.95:
+                    df = df.iloc[::-1]
+                elif frac_neg > 0.05 and frac_neg < 0.95:
+                    raise Exception(
+                        '"preserve_order" is true, but the date_time order cannot be determined.'
+                    )
+        else:
+            df = df.sort_index()
+
+        df = df.dropna(how="all")
+
+        if len(df.index) == 0:
+            # Every row was empty -- a text-valued BMS point (alarms, notes,
+            # override flags) whose numeric column is NULL for the whole
+            # window, or a window with no samples.  Returning the empty frame
+            # lets the caller report which sensor it was; indexing ``df.index[0]``
+            # below would raise a bare IndexError with no such context.
+            LOGGER.warning(
+                "No non-empty samples in the requested window; returning an "
+                "empty frame."
             )
-    else:
-        df = df.sort_index()
+            LOGGER.remove_level()
+            return df
 
-    df = df.dropna(how="all")
+        LOGGER.task("Enforcing timezone awareness")
+        LOGGER.add_level()
 
-    # Check if the first index is timezone aware
-    if df.index[0].tzinfo is None:
-        df = df.tz_localize(gettz(tz), ambiguous="infer", nonexistent="NaT")
-    else:
-        df = df.tz_convert(gettz(tz))
+        # Check if the first index is timezone aware
+        if df.index[0].tzinfo is None:
+            df = df.tz_localize(tz, ambiguous="infer", nonexistent="NaT")
+            LOGGER.config("Localized index timezone: %s", tz)
+        else:
+            LOGGER.info(
+                "Index has timezone %s, converting to %s",
+                df.index[0].tzinfo,
+                tz,
+            )
+            df = df.tz_convert(tz)
+        LOGGER.remove_level()
+           
 
-    # Duplicate dates can occur either due to measuring/logging malfunctions
-    # or due to change of daylight saving time where an hour occurs twice in fall.
-    df = df.groupby(level=0).mean()
+        # Duplicate dates can occur either due to measuring/logging malfunctions
+        # or due to change of daylight saving time where an hour occurs twice in fall.
+        df = df.groupby(level=0).mean(numeric_only=True)
 
-    if start_time.tzinfo is None:
-        start_time = start_time.astimezone(tz=gettz(tz))
-    if end_time.tzinfo is None:
-        end_time = end_time.astimezone(tz=gettz(tz))
+        if start_time.tzinfo is None:
+            start_time = start_time.astimezone(tz=tz)
+            LOGGER.info(
+                "Start time had no timezone, converted to %s",
+                tz,
+            )
+        if end_time.tzinfo is None:
+            end_time = end_time.astimezone(tz=tz)
+            LOGGER.info("End time had no timezone, converted to %s", tz)
 
-    if resample:
-        allowable_resample_methods = ["constant", "linear"]
-        assert (
-            resample_method in allowable_resample_methods
-        ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
-        if resample_method == "constant":
-            df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
-        elif resample_method == "linear":
-            oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
-            df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
+        if resample:
+            assert (
+                resample_method in RESAMPLE_METHODS
+            ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(RESAMPLE_METHODS)}"
+            df = sample_on_grid(df, start_time, end_time, step_size, resample_method, dt_limit)
 
-    if clip:
-        df = df[
-            (df.index >= start_time) & (df.index < end_time)
-        ]  # Exclude end time for similar behavior as normal python slicing
+        if clip:
+            df = df[
+                (df.index >= start_time) & (df.index < end_time)
+            ]  # Exclude end time for similar behavior as normal python slicing
 
+    except Exception:
+        LOGGER.remove_level()
+        LOGGER.error("Starting dataframe sampling", change_status=True)
+        raise
+
+    LOGGER.remove_level()
+    LOGGER.ok("Starting dataframe sampling", change_status=True)
     return df
 
 
 def load_from_spreadsheet(
     filename,
-    datecolumn=0,
-    valuecolumn=None,
+    date_column=0,
+    value_column=None,
     step_size=None,
     start_time=None,
     end_time=None,
@@ -186,13 +359,14 @@ def load_from_spreadsheet(
     clip=True,
     cache=True,
     cache_root=None,
-    tz="Europe/Copenhagen",
     preserve_order=True,
+    resample_method="linear",
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     """
     This function loads a spead either in .csv or .xlsx format.
-    The datetime should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
-    All data except for datetime column is converted to numeric data.
+    The date_time should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
+    All data except for date_time column is converted to numeric data.
 
     tz: can be "UTC+2", "GMT-8" (no trailing zeros) or timezone name "Europe/Copenhagen"
 
@@ -208,12 +382,44 @@ def load_from_spreadsheet(
         # Check if file is cached
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
-        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        col_suffix = f"_col({value_column})" if value_column is not None else ""
+        # The key MUST distinguish files that share a basename.  Two different
+        # CSVs with the same name -- e.g. examples/estimator_example/ and
+        # examples/full_workflow_example/ both ship a
+        # "damper_position_sensor.csv" -- otherwise collide, and the second
+        # one silently reads the first one's cached values.  That failure is
+        # invisible: no error, no warning, just wrong data (it cost a
+        # calibration debugging session -- the damper measurements loaded as
+        # all-zeros and the estimator dutifully switched the ventilation
+        # branch off to fit them).
+        #
+        # Include the resolved directory (hashed, to keep the name short and
+        # filesystem-safe) and the source file's size + mtime, so that editing
+        # or replacing a CSV in place also invalidates the entry.
+        try:
+            _stat = os.stat(filename)
+            _stamp = f"{_stat.st_size}-{int(_stat.st_mtime)}"
+        except OSError:  # unreadable/missing -- fall back to path only
+            _stamp = "nostat"
+        _dir_key = hashlib.sha1(
+            os.path.normcase(os.path.abspath(os.path.dirname(filename))).encode(
+                "utf-8", "replace"
+            )
+        ).hexdigest()[:12]
+        cached_filename = f"name({os.path.basename(name)})_dir({_dir_key})_src({_stamp})_stepSize({str(step_size)})_method({resample_method})_dtlimit({dt_limit})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
             root=cache_root,
         )
+        # Keep cache paths below the traditional Windows MAX_PATH boundary.
+        # The descriptive key can exceed it for long pytest/conda roots.
+        if len(os.path.abspath(cached_filename)) >= 240:
+            cache_dir = os.path.dirname(cached_filename)
+            short_name = hashlib.sha1(
+                os.path.basename(cached_filename).encode("utf-8")
+            ).hexdigest()
+            cached_filename = os.path.join(cache_dir, f"{short_name}.pickle")
     if cache and os.path.isfile(cached_filename):
         df = pd.read_pickle(cached_filename)
     else:
@@ -225,24 +431,29 @@ def load_from_spreadsheet(
             else:
                 raise Exception(f"Invalid file extension: {file_extension}")
 
-        if valuecolumn is not None:
-            valuename = df.columns[valuecolumn]
+        if value_column is not None:
+            valuename = df.columns[value_column]
+
         df = sample_from_df(
             df,
-            datecolumn,
+            date_column=date_column,
+            value_column=value_column,
             step_size=step_size,
             start_time=start_time,
             end_time=end_time,
             resample=resample,
+            resample_method=resample_method,
             clip=clip,
-            tz=tz,
+            tz=start_time.tzinfo,
             preserve_order=preserve_order,
+            dt_limit=dt_limit,
         )
 
-        if valuecolumn is not None:
+        if value_column is not None:
             df = df[valuename]
 
         if cache:
+            os.makedirs(os.path.dirname(cached_filename), exist_ok=True)
             df.to_pickle(cached_filename)
 
     return df
@@ -321,7 +532,11 @@ def load_database_config(config_file=None, section="timescaledb"):
                 if parser.has_option(section, "password"):
                     config["password"] = parser.get(section, "password")
         except Exception as e:
-            print(f"Warning: Could not load configuration from {config_file}: {e}")
+            LOGGER.warning(
+                "Could not load configuration from %s: %s.",
+                config_file,
+                e,
+            )
 
     # Override with environment variables
     config["host"] = os.getenv("TIMESCALEDB_HOST", config["host"])
@@ -333,53 +548,274 @@ def load_database_config(config_file=None, section="timescaledb"):
     return config
 
 
+#: An empty window is cached only once it ended this long ago: rows still
+#: arriving (an ingestion delay) must not stay cached as missing.
+EMPTY_WINDOW_CACHE_AGE = datetime.timedelta(days=2)
+
+# One open connection per process and server (a psycopg2 connection does not
+# survive a fork), keyed by a hash of the connection string, and the tables
+# already found on each.
+_CONNECTIONS = {}
+_TABLES = set()
+
+
+def _connection(conn_string):
+    """This process's connection to the server, and whether it was open
+    already."""
+    key = (os.getpid(), hashlib.sha256(conn_string.encode("utf-8")).hexdigest())
+    conn = _CONNECTIONS.get(key)
+    if conn is not None and not conn.closed:
+        return key, conn, True
+    if psycopg2 is None:
+        raise ImportError(
+            "Reading from a PostgreSQL database needs psycopg2, which twin4build installs with its database "
+            "extra: pip install 'twin4build[database]' (or pip install psycopg2-binary)"
+        )
+    conn = psycopg2.connect(conn_string)
+    conn.autocommit = True  # reads only: no transaction stays open between loads
+    _CONNECTIONS[key] = conn
+    return key, conn, False
+
+
+def _drop_connection(key):
+    conn = _CONNECTIONS.pop(key, None)
+    if conn is not None:
+        try:
+            conn.close()
+        except psycopg2.Error:
+            pass
+    _TABLES.difference_update({t for t in _TABLES if t[0] == key})
+
+
+def _fetch(conn_string, table_name, query, params):
+    """The rows of ``query``.  The table's existence is checked once per
+    connection.  A connection kept open from an earlier load that the server
+    has dropped since (an idle timeout) is opened again, once."""
+
+    def run(key, conn):
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            if (key, table_name) not in _TABLES:
+                cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = %s
+                    );
+                """,
+                    (table_name,),
+                )
+                if not cursor.fetchone()["exists"]:
+                    raise Exception(
+                        f"Table {table_name} does not exist in the database"
+                    )
+                _TABLES.add((key, table_name))
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
+    key, conn, kept = _connection(conn_string)
+    try:
+        return run(key, conn)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        _drop_connection(key)
+        if not kept:
+            raise
+    key, conn, _ = _connection(conn_string)
+    try:
+        return run(key, conn)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        _drop_connection(key)
+        raise
+
+
+#: Windows of one point closer than this are fetched together into the raw
+#: store: contiguous windows (shooting windows, a front's periods) cost one
+#: query per point, separate periods (two years) stay separate.
+RAW_SPAN_GAP = datetime.timedelta(days=1)
+
+_RAW_COVERED = b"twin4build_covered"
+_RAW_MEMO = collections.OrderedDict()  # path -> (mtime_ns, rows, covered), the last few stores read
+_RAW_MEMO_SIZE = 8
+
+
+def contiguous_spans(start_times, end_times, gap=RAW_SPAN_GAP):
+    """The windows ``[start, end)`` merged into spans where they lie at most
+    ``gap`` apart, in time order."""
+    spans = []
+    for a, b in sorted(zip(start_times, end_times)):
+        if spans and a - spans[-1][1] <= gap:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], b))
+        else:
+            spans.append((a, b))
+    return spans
+
+
+def _utc(t):
+    t = pd.Timestamp(t)
+    return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+
+
+def _merged(intervals):
+    out = []
+    for a, b in sorted(i for i in intervals if i[0] < i[1]):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def _missing(a, b, covered):
+    """The parts of ``[a, b)`` outside the ``covered`` intervals."""
+    out = []
+    for c, d in _merged(covered):
+        if d <= a or c >= b:
+            continue
+        if c > a:
+            out.append((a, c))
+        a = max(a, d)
+    if a < b:
+        out.append((a, b))
+    return out
+
+
+def _raw_store_path(cache_root, server, table_name, sensor_id):
+    """``generated_files/cached_data/raw/<table>_<server>/<point>.parquet``,
+    the server named by a hash of host, port and database."""
+    folder = f"{table_name}_{hashlib.sha256(server.encode('utf-8')).hexdigest()[:10]}"
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", sensor_id)
+    if name != sensor_id:
+        name = f"{name}_{hashlib.sha256(sensor_id.encode('utf-8')).hexdigest()[:8]}"
+    path, _ = mkdir_in_root(
+        folder_list=["generated_files", "cached_data", "raw", folder],
+        filename=f"{name}.parquet",
+        root=cache_root,
+    )
+    return path
+
+
+def _read_raw(path):
+    """The stored rows (``date_time`` in UTC, ``value``) and the intervals
+    they cover; a store read before is reused while its file is unchanged."""
+    if not os.path.isfile(path):
+        empty = pd.DataFrame({"date_time": pd.DatetimeIndex([], tz="UTC"), "value": []})
+        return empty, []
+    mtime = os.stat(path).st_mtime_ns
+    memo = _RAW_MEMO.get(path)
+    if memo is not None and memo[0] == mtime:
+        _RAW_MEMO.move_to_end(path)
+        return memo[1], memo[2]
+    table = pq.read_table(path)
+    covered = [
+        (pd.Timestamp(a), pd.Timestamp(b))
+        for a, b in json.loads((table.schema.metadata or {}).get(_RAW_COVERED, b"[]"))
+    ]
+    rows = table.to_pandas()
+    _remember(path, mtime, rows, covered)
+    return rows, covered
+
+
+def _remember(path, mtime, rows, covered):
+    _RAW_MEMO[path] = (mtime, rows, covered)
+    _RAW_MEMO.move_to_end(path)
+    while len(_RAW_MEMO) > _RAW_MEMO_SIZE:
+        _RAW_MEMO.popitem(last=False)
+
+
+def _write_raw(path, rows, covered):
+    """Rows and covered intervals in one file, replaced atomically (another
+    process may write the same point: the last write wins, and an interval
+    lost that way is fetched again later)."""
+    table = pa.Table.from_pandas(rows, preserve_index=False)
+    meta = dict(table.schema.metadata or {})
+    meta[_RAW_COVERED] = json.dumps(
+        [[a.isoformat(), b.isoformat()] for a, b in covered]
+    ).encode("utf-8")
+    table = table.replace_schema_metadata(meta)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        pq.write_table(table, tmp)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    _remember(path, os.stat(path).st_mtime_ns, rows, covered)
+
+
+def _rows_from_raw_store(path, window, span, fetch):
+    """The raw rows of ``window`` (``[start, end)``, UTC) from the point's
+    store.  Missing parts are fetched (``fetch(a, b)`` -> rows) over the
+    whole ``span`` around the window, so the span's next windows are in the
+    store already.  An interval is marked covered only up to
+    ``EMPTY_WINDOW_CACHE_AGE`` ago: later rows may still arrive."""
+    q0, q1 = window
+    rows, covered = _read_raw(path)
+    if _missing(q0, q1, covered):
+        a, b = span if span is not None and span[0] <= q0 and q1 <= span[1] else window
+        gaps = _missing(a, b, covered)
+        fetched = [fetch(c, d) for c, d in gaps]
+        for frame in fetched:  # one UTC timeline (a session returns the zone's offsets, mixed across DST)
+            frame["date_time"] = pd.to_datetime(frame["date_time"], utc=True)
+        stale = np.zeros(len(rows), dtype=bool)
+        for c, d in gaps:  # stored but uncovered rows (recent ones) come again
+            stale |= ((rows["date_time"] >= c) & (rows["date_time"] < d)).to_numpy()
+        rows = pd.concat([rows[~stale], *fetched], ignore_index=True)
+        rows = rows.sort_values("date_time", kind="stable", ignore_index=True)
+        horizon = _utc(datetime.datetime.now(datetime.timezone.utc) - EMPTY_WINDOW_CACHE_AGE)
+        covered = _merged(covered + [(c, min(d, horizon)) for c, d in gaps])
+        try:
+            _write_raw(path, rows, covered)
+        except (pa.ArrowException, OSError) as e:
+            LOGGER.warning("Raw rows of %s not stored: %s.", os.path.basename(path), e)
+    inside = (rows["date_time"] >= q0) & (rows["date_time"] < q1)
+    return rows[inside].reset_index(drop=True)
+
+
 def load_from_database(
-    building_name,
-    sensor_name=None,
-    sensor_uuid=None,
-    step_size=None,
-    start_time=None,
-    end_time=None,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    step_size: int,
     resample=True,
     resample_method="linear",
     clip=True,
     cache=True,
     cache_root=None,
-    tz="Europe/Copenhagen",
     preserve_order=True,
-    config_file=None,
-    section="timescaledb",
+    table_name=None,
+    sensor_id=None,
+    time_column="time",
+    id_column="uuid",
+    value_column="value",
     db_host=None,
     db_port=None,
     db_name=None,
     db_user=None,
     db_password=None,
+    fetch_span=None,
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     r"""
     Load time series data from TimescaleDB database for building sensor data.
 
-    This function connects to a TimescaleDB database and loads sensor data from tables
-    with the naming convention `data_{building_name}`. The database schema should have
-    columns: time (TIMESTAMPTZ), uuid (TEXT), name (TEXT), and value (FLOAT).
+    This function connects to a TimescaleDB database and loads sensor data from tables.
+    By default, the database schema should have columns: time (TIMESTAMPTZ), id (TEXT), 
+    and value (FLOAT). However, column names are fully configurable via the
+    time_column, id_column, and value_column parameters.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
     The database query is formulated as:
 
     .. math::
 
         Q(t) = \begin{cases}
-        \{y(t) : \text{name} = s_{name} \land \text{uuid} = s_{uuid}\} & \text{if } s_{name}, s_{uuid} \text{ specified} \\
-        \{y(t) : \text{name} = s_{name}\} & \text{if only } s_{name} \text{ specified} \\
-        \{y(t) : \text{uuid} = s_{uuid}\} & \text{if only } s_{uuid} \text{ specified} \\
+        \{y(t) : \text{id} = s_{id}\} & \text{if } s_{id} \text{ specified} \\
         \{y(t)\} & \text{otherwise (all sensors)}
         \end{cases}
 
     where:
        - :math:`Q(t)` is the query result at time :math:`t`
-       - :math:`s_{name}` is the sensor name filter
-       - :math:`s_{uuid}` is the sensor UUID filter
+       - :math:`s_{id}` is the sensor ID filter
        - :math:`y(t)` represents sensor values at time :math:`t`
 
     For multiple sensors, data is transformed from long to wide format:
@@ -407,18 +843,15 @@ def load_from_database(
     3. Environment variables (lowest priority)
 
     Args:
-       building_name (str): Name of the building (e.g., "bldg1", "bldg10"). The function will query
-           the table named `data_{building_name}`.
-       sensor_name (str, optional): Name of the sensor to filter by (e.g., "temperature", "humidity", "CO2").
-           If provided, only data from sensors with this name will be returned.
-           If None, data from all sensors will be returned.
-       sensor_uuid (str, optional): UUID of the sensor to filter by. If provided, only data from sensors with
-           this UUID will be returned. Can be used alone or in combination with sensor_name.
+       table_name (str): Name of the table (e.g., "bldg1", "bldg10"). The function will query
+           the table named `table_name`.
+       sensor_id (str, optional): ID of the sensor to filter by. If provided, only data from sensors with
+           this ID will be returned. If None, data from all sensors will be returned.
        step_size (int, optional): Time step size in seconds for resampling (e.g., 300 for 5-minute intervals).
            Required if resample=True. Ignored if resample=False.
-       start_time (datetime, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
+       start_time (date_time, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
            If None, no lower time bound is applied.
-       end_time (datetime, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
+       end_time (date_time, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
            If None, no upper time bound is applied.
        resample (bool, optional): Whether to resample the data to regular time intervals. If True, requires
            step_size, start_time, and end_time to be provided. Defaults to True.
@@ -429,22 +862,29 @@ def load_from_database(
        clip (bool, optional): Whether to clip data to the specified start_time and end_time range.
            If False, all available data within the time range will be returned. Defaults to True.
        cache (bool, optional): Whether to cache the results in pickle files for faster subsequent loads.
-           Cache files are stored in generated_files/cached_data/ directory. Defaults to True.
+           Cache files are stored in generated_files/cached_data/ directory. A window without rows is
+           cached too once it ended more than ``EMPTY_WINDOW_CACHE_AGE`` (two days) ago. Behind this
+           cache, the raw rows of each point are kept in generated_files/cached_data/raw/ (one parquet
+           file per point, with the intervals it covers), so another split of a stored span into windows
+           or another step needs no query. Defaults to True.
        cache_root (str, optional): Root directory for cache files. If None, uses the default Twin4Build cache location.
        tz (str, optional): Timezone for data processing. Can be timezone name (e.g., "Europe/Copenhagen"),
            UTC offset (e.g., "UTC+2", "GMT-8"), or "UTC". Defaults to "Europe/Copenhagen".
-       config_file (str, optional): Path to INI configuration file for database settings.
-           If provided, database connection parameters will be loaded from this file.
-           See load_database_config() for file format details.
-       section (str, optional): Section of the INI file to use for database settings.
+       time_column (str, optional): Name of the timestamp column in the database table. Defaults to "time".
+       id_column (str, optional): Name of the sensor ID column in the database table. Defaults to "id".
+       value_column (str, optional): Name of the value column in the database table. Defaults to "value".
        db_host (str, optional): Database host address. Overrides config file and environment variables.
        db_port (int, optional): Database port number. Overrides config file and environment variables.
        db_name (str, optional): Database name. Overrides config file and environment variables.
        db_user (str, optional): Database username. Overrides config file and environment variables.
        db_password (str, optional): Database password. Overrides config file and environment variables.
+       fetch_span (tuple of datetime, optional): The span of windows this window belongs to (see
+           ``contiguous_spans``). A window missing from the raw store fetches the whole span, so the
+           span's other windows need no query. A span that does not hold the window is ignored.
+           Defaults to the window itself.
 
     Returns:
-       pandas.DataFrame: DataFrame with time series data. The index is a DatetimeIndex with timezone
+       pandas.DataFrame: DataFrame with time series data. The index is a date_timeIndex with timezone
            information. Columns represent different sensors (if multiple sensors are
            selected) or a single column named after the sensor (if single sensor).
 
@@ -461,9 +901,9 @@ def load_from_database(
 
        .. code-block:: python
 
-          from datetime import datetime, timezone
-          start_time = datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-          end_time = datetime(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+          from date_time import datetime, timezone
+          start_time = date_time(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+          end_time = date_time(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
           df = load_from_database("bldg1", start_time=start_time, end_time=end_time, config_file="database.ini")
 
        Load specific sensor with explicit connection parameters:
@@ -471,8 +911,8 @@ def load_from_database(
        .. code-block:: python
 
           df = load_from_database(
-              building_name="bldg1",
-              sensor_name="temperature",
+              table_name="bldg1",
+              sensor_id="sensor_12345",
               start_time=start_time,
               end_time=end_time,
               step_size=300,
@@ -483,32 +923,40 @@ def load_from_database(
           )
 
     Note:
-       The function requires psycopg2 to be installed for PostgreSQL connectivity.
-       Database tables should follow the naming convention: data_{building_name}.
-       Database schema should have columns: time, uuid, name, value.
+       The function requires psycopg2, the database extra
+       (``pip install 'twin4build[database]'``); without it, it raises ImportError.
+       One connection per process and server is kept open and reused by later loads;
+       a kept connection the server has closed meanwhile is opened again.
+       Database schema should have columns: time, id, value (configurable).
        Timezone handling follows the same logic as load_from_spreadsheet.
        Caching uses the same mechanism as load_from_spreadsheet for consistency.
-       For large datasets, consider using sensor_name or sensor_uuid filters to reduce
+       For large datasets, consider using sensor_id filter to reduce
        memory usage and improve performance.
     """
     # Third party imports
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-    # Load database configuration
-    db_config = load_database_config(config_file, section)
-
-    # Override with function parameters if provided
-    if db_host is not None:
-        db_config["host"] = db_host
-    if db_port is not None:
-        db_config["port"] = db_port
-    if db_name is not None:
-        db_config["name"] = db_name
-    if db_user is not None:
-        db_config["user"] = db_user
-    if db_password is not None:
-        db_config["password"] = db_password
+    assert isinstance(
+        start_time, datetime.datetime
+    ), "start_time must be a datetime object"
+    assert isinstance(end_time, datetime.datetime), "end_time must be a datetime object"
+    assert isinstance(step_size, int), "step_size must be an integer"
+    assert isinstance(resample, bool), "resample must be a boolean"
+    assert isinstance(resample_method, str), "resample_method must be a string"
+    assert isinstance(clip, bool), "clip must be a boolean"
+    assert isinstance(cache, bool), "cache must be a boolean"
+    assert isinstance(
+        cache_root, (str, type(None))
+    ), "cache_root must be a string or None"
+    assert isinstance(preserve_order, bool), "preserve_order must be a boolean"
+    assert isinstance(table_name, str), "table_name must be a string"
+    assert isinstance(sensor_id, str), "sensor_id must be a string"
+    assert isinstance(time_column, str), "time_column must be a string"
+    assert isinstance(id_column, str), "id_column must be a string"
+    assert isinstance(value_column, str), "value_column must be a string"
+    assert isinstance(db_host, str), "db_host must be a string"
+    assert isinstance(db_port, int), "db_port must be an integer"
+    assert isinstance(db_name, str), "db_name must be a string"
+    assert isinstance(db_user, str), "db_user must be a string"
+    assert isinstance(db_password, str), "db_password must be a string"
 
     # Handle caching
     if cache:
@@ -516,12 +964,8 @@ def load_from_database(
             start_time.strftime("%d-%m-%Y %H-%M-%S") if start_time else "None"
         )
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S") if end_time else "None"
-        sensor_filter = (
-            f"sensor_{sensor_name}_{sensor_uuid}"
-            if sensor_name or sensor_uuid
-            else "all_sensors"
-        )
-        cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        sensor_filter = f"sensor_{sensor_id}" if sensor_id else "all_sensors"
+        cached_filename = f"db_{table_name}_{sensor_filter}_stepSize({str(step_size)})_method({resample_method})_dtlimit({dt_limit})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -532,119 +976,80 @@ def load_from_database(
             return pd.read_pickle(cached_filename)
 
     # Build connection string
-    if db_config["password"]:
-        conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']} password={db_config['password']}"
+    if db_password:
+        conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user} password={db_password}"
     else:
-        conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']}"
+        conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user}"
 
-    try:
-        # Connect to database
-        conn = psycopg2.connect(conn_string)
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Build query
-        table_name = f"data_{building_name}"
-
-        # Check if table exists
-        cursor.execute(
-            """
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = %s
-            );
-        """,
-            (table_name,),
-        )
-
-        if not cursor.fetchone()["exists"]:
-            raise Exception(f"Table {table_name} does not exist in the database")
-
-        # Build WHERE clause
-        where_conditions = []
-        params = []
-
-        if sensor_name:
-            where_conditions.append("name = %s")
-            params.append(sensor_name)
-
-        if sensor_uuid:
-            where_conditions.append("uuid = %s")
-            params.append(sensor_uuid)
-
-        if start_time:
-            where_conditions.append("time >= %s")
-            params.append(start_time)
-
-        if end_time:
-            where_conditions.append("time < %s")
-            params.append(end_time)
-
-        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-
-        # Execute query
-        query = f"""
-            SELECT time, uuid, name, value 
+    # Readings beyond the window's edges: +/- 3 steps, or dt_limit when longer, so a gap up to dt_limit across
+    # an edge is bridged from real readings on both sides (nothing beyond the readings is ever extrapolated)
+    buffer = datetime.timedelta(seconds=max(3 * step_size, 0.0 if dt_limit is None else float(dt_limit)))
+    query_start_time = start_time - buffer
+    query_end_time = end_time + buffer
+    where_clause = f"{id_column} = %s AND {time_column} >= %s AND {time_column} < %s"
+    params = [sensor_id, query_start_time, query_end_time]
+    query = f"""
+            SELECT {time_column}, {value_column} 
             FROM {table_name} 
             WHERE {where_clause}
-            ORDER BY time
+            ORDER BY {time_column}
         """
 
-        print(f"Executing query: {query}")
-        print(f"Query parameters: {params}")
+    def fetch(a, b):
+        a, b = (t.to_pydatetime() if isinstance(t, pd.Timestamp) else t for t in (a, b))
+        rows = _fetch(conn_string, table_name, query, [sensor_id, a, b])
+        frame = pd.DataFrame(rows, columns=[time_column, value_column])
+        return frame.rename(columns={time_column: "date_time", value_column: "value"})
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        print(f"Query returned {len(rows)} rows")
-        if len(rows) > 0:
-            print(f"Sample row: {rows[0]}")
+    try:
+        if cache and start_time.tzinfo is not None:
+            # The raw rows come from the point's store; a miss there fetches
+            # the whole span of windows around this one.  (A naive window is
+            # read in the database session's zone: fetched directly.)
+            span = None
+            if fetch_span is not None:
+                span = (_utc(fetch_span[0] - buffer), _utc(fetch_span[1] + buffer))
+            df = _rows_from_raw_store(
+                _raw_store_path(cache_root, f"{db_host}:{db_port}/{db_name}", table_name, sensor_id),
+                (_utc(query_start_time), _utc(query_end_time)),
+                span,
+                fetch,
+            )
         else:
-            print("No rows returned from query")
-            # Debug: Check what sensor names exist in the database
-            try:
-                cursor.execute(f"SELECT DISTINCT name FROM {table_name} ORDER BY name")
-                existing_sensors = cursor.fetchall()
-                print(
-                    f"Available sensors in database: {[row['name'] for row in existing_sensors]}"
-                )
-            except Exception as e:
-                print(f"Could not check existing sensors: {e}")
-
-        if "conn" in locals():
-            conn.close()
-
+            df = fetch(query_start_time, query_end_time)
     except Exception as e:
-        if "conn" in locals():
-            conn.close()
-        print(f"Error loading data from database: {e}")
+        LOGGER.error("Error loading data from database: %s.", e)
         raise
 
-    if not rows:
-        print(f"No data found for building {building_name}")
-        return pd.DataFrame()
-
-    # Convert to DataFrame
-    df = pd.DataFrame(rows)
-
-    # Make the columns the sensor names (if there are multiple sensors)
-    # This is necessary for the sample_from_df function as it expects all columns to be numeric for groupby operations
-    df = df.pivot_table(index="time", columns="name", values="value", aggfunc="mean")
-    df = df.reset_index()
+    if len(df) == 0:
+        LOGGER.warning("No rows returned from query:\n%s.", query % tuple(params))
+        LOGGER.warning("No data found for table %s.", table_name)
+        df = pd.DataFrame()
+        if cache and query_end_time <= datetime.datetime.now(
+            query_end_time.tzinfo
+        ) - EMPTY_WINDOW_CACHE_AGE:
+            # A past window without rows: the next load skips the database.
+            df.to_pickle(cached_filename)
+        return df
 
     # Use the existing sample_from_df function for consistent processing
+    # Pass valuecolumn to match the behavior of load_from_spreadsheet
     df = sample_from_df(
         df,
-        datecolumn=0,  # datetime is now the index
-        valuecolumn=3,
+        date_column=0,  # date_time column
+        value_column=1,  # value column (consistent with load_from_spreadsheet)
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
         resample=resample,
         resample_method=resample_method,
         clip=clip,
-        tz=tz,
+        tz=start_time.tzinfo,
         preserve_order=preserve_order,
+        dt_limit=dt_limit,
     )
+
+    df = df["value"]
 
     # Cache the result
     if cache:

@@ -8,14 +8,21 @@
 
 # Standard library imports
 import os
+import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = "Twin4Build"
-copyright = "2024, Jakob Bjørnskov, Andres Sebastian Cespedes Cubides"
+copyright = "2024–2026, Jakob Bjørnskov, Andres Sebastian Cespedes Cubides"
 author = "Jakob Bjørnskov, Andres Sebastian Cespedes Cubides"
+try:
+    release = version("twin4build")
+except PackageNotFoundError:
+    release = "0+unknown"
+version = release
 
 # -- General configuration ---------------------------------------------------
 
@@ -33,9 +40,11 @@ exclude_patterns = [
     "_build",
     "Thumbs.db",
     ".DS_Store",
-    "auto/twin4build.core.rst",
-    "auto/twin4build.tests.rst",
+    "auto/modules.rst",
+    "auto/twin4build.tests*.rst",
     "auto/twin4build.examples*.rst",
+    "auto/twin4build.generated_files*.rst",
+    "auto/twin4build._*.rst",
 ]
 
 # Autodoc settings
@@ -65,6 +74,14 @@ autodoc_hide_private = True
 autodoc_hide_special = True
 autodoc_class_members = True
 autodoc_docstring_signature = False
+
+# Third-party annotations in prettytable and rdflib refer to optional typing
+# helpers not installed at runtime. These warning classes are emitted by the
+# type-hints extension and do not indicate broken Twin4Build documentation.
+suppress_warnings = [
+    "sphinx_autodoc_typehints.guarded_import",
+    "sphinx_autodoc_typehints.forward_reference",
+]
 
 # Add these settings to modify how module names are displayed
 add_module_names = False  # Don't prefix member names with module names
@@ -106,52 +123,72 @@ html_css_files = [
 ]
 
 
-# Recursively crawl through source directory and shorten titles in .rst files
-def crawl_source_shorten_titles(path):
-    # List files in directory
-    for file_name in os.listdir(path):
-        # Build path to file
-        file_path = os.path.join(path, file_name)
+def _github_notebook_branch() -> str:
+    """Git ref Colab links should open for this doc build.
 
-        # Recursively crawl to next directory level
-        if os.path.isdir(file_path):
-            crawl_source_shorten_titles(file_path)
+    On Read the Docs, prefer a ref GitHub/Colab can resolve (branch, tag, or
+    commit SHA). PR preview builds use version slug ``118`` etc., which is
+    *not* a git ref — those must use the commit hash instead.
+    Locally, fall back to the current git branch, then ``dev``.
+    """
+    rtd_type = os.environ.get("READTHEDOCS_VERSION_TYPE")
+    rtd_ident = os.environ.get("READTHEDOCS_GIT_IDENTIFIER")
+    rtd_version = os.environ.get("READTHEDOCS_VERSION")
+    rtd_commit = os.environ.get("READTHEDOCS_GIT_COMMIT_HASH")
 
-        # Modify .rst source file title
-        else:
-            _, extension = os.path.splitext(file_path)
-            if extension == ".rst":
-                # Read file
-                with open(file_path, "r") as file:
-                    lines = file.readlines()
+    def _git_head():
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
 
-                # Process each line
-                modified = False
-                for i in range(len(lines)):
-                    # Look for module titles (they end with " module")
-                    if " module\n" in lines[i] and "twin4build." in lines[i]:
-                        # Get the last part of the module name
-                        module_name = lines[i].split(".")[-1].strip()
-                        lines[i] = module_name + "\n"
-                        # Update the underline
-                        if i + 1 < len(lines):
-                            lines[i + 1] = "-" * (len(module_name)) + "\n"
-                        modified = True
-                    # Handle main page title
-                    elif i == 0 and "twin4build." in lines[i]:
-                        lines[i] = lines[i].split(".")[-1]
-                        if i + 1 < len(lines):
-                            lines[i + 1] = "=" * (len(lines[i].strip())) + "\n"
-                        modified = True
+    # Pull-request / external builds: VERSION is the PR number, not a branch.
+    if rtd_type == "external":
+        return rtd_commit or _git_head() or "dev"
 
-                # Write back only if modifications were made
-                if modified:
-                    with open(file_path, "w") as file:
-                        file.writelines(lines)
+    if rtd_type in {"branch", "tag"} and rtd_ident and not str(rtd_ident).isdigit():
+        return rtd_ident
+
+    # ``latest`` tracks ``main`` on this project.
+    if rtd_version == "latest":
+        return "main"
+    if rtd_version == "stable":
+        if rtd_ident and not str(rtd_ident).isdigit():
+            return rtd_ident
+        return rtd_commit or "main"
+
+    # Named branch versions (e.g. ``dev``), never numeric PR slugs.
+    if rtd_type == "branch" and rtd_version and not str(rtd_version).isdigit():
+        return rtd_version
+
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if branch and branch != "HEAD":
+            return branch
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "dev"
 
 
-show_title_parents = False
-source_path = "../source/auto"
-# Remove parents from titles in all .rst files
-if not show_title_parents:
-    crawl_source_shorten_titles(source_path)
+github_notebook_branch = _github_notebook_branch()
+
+
+def _substitute_github_notebook_branch(app, docname, source):
+    """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources."""
+    source[0] = source[0].replace(
+        "GITHUB_NOTEBOOK_BRANCH", app.config.github_notebook_branch
+    )
+
+
+def setup(app):
+    app.add_config_value("github_notebook_branch", github_notebook_branch, "env")
+    app.connect("source-read", _substitute_github_notebook_branch)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}

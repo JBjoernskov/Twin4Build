@@ -4,10 +4,10 @@ space\_heater
 Modules
 -------
 
-space\_heater\_torch\_system module
------------------------------------
+twin4build.systems.space\_heater.space\_heater\_system module
+-------------------------------------------------------------
 
-.. automodule:: twin4build.systems.space_heater.space_heater_torch_system
+.. automodule:: twin4build.systems.space_heater.space_heater_system
    :members:
    :show-inheritance:
    :undoc-members:

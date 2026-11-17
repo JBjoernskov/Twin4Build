@@ -26,9 +26,11 @@ if errorlevel 9009 (
 if "%1" == "" goto help
 
 if "%1" == "buildapi" (
-    del /s /q source\auto
-    sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
+    if exist source\auto rmdir /s /q source\auto
+    sphinx-apidoc -f --no-toc --maxdepth=1 -o source/auto ../twin4build ../twin4build/tests ../twin4build/examples ../twin4build/generated_files ../twin4build/utils/test_notebook.py ../twin4build/utils/print_progress.py
+    if errorlevel 1 exit /b %errorlevel%
     python clean_sphinx_docs.py source/auto
+    if errorlevel 1 exit /b %errorlevel%
     echo Auto-generation of API documentation finished. The generated files are in 'source/auto/'
     goto end
 )

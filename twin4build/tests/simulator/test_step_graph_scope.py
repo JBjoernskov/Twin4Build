@@ -1,0 +1,254 @@
+"""``cuda_graph_scope="step"``: one CUDA graph per step, replayed along the
+rollout, with a manual adjoint sweep for the gradient.  The forward rollout
+must equal the eager one; the objective's per-column losses and gradients
+must equal those of the whole-rollout capture (and of plain eager autograd)."""
+import datetime
+import unittest
+
+import numpy as np
+import torch
+
+import twin4build as tb
+
+tb._IS_TESTING = True
+
+from twin4build.tests.simulator.test_fusion_batched import START, STEP, build, history, simulate
+
+
+def _has_triton() -> bool:
+    try:
+        import triton  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+class TestStepGraphScope(unittest.TestCase):
+    def test_option_is_validated(self):
+        model = build(n_pairs=1, model_id="scope_opt")
+        with self.assertRaises(ValueError):
+            tb.Simulator(model, execution_mode="functional", execution_backend="cuda_graph", cuda_graph_scope="rollouts")
+
+    def test_forward_rollout_matches_eager(self):
+        reference = build(n_pairs=3, model_id="scope_ref")
+        simulate(reference, execution_mode="functional", execution_backend="eager")
+        model = build(n_pairs=3, model_id="scope_src")
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.to(device="cuda", dtype=torch.float64)
+        simulate(batched, execution_mode="functional", execution_backend="cuda_graph", cuda_graph_scope="step")
+        for k in range(3):
+            torch.testing.assert_close(
+                history(model, f"Zone{k}", "indoorTemperature", batched),
+                history(reference, f"Zone{k}", "indoorTemperature"), rtol=1e-6, atol=1e-6,
+            )
+            torch.testing.assert_close(
+                history(model, f"Radiator{k}", "toRoomPower", batched),
+                history(reference, f"Radiator{k}", "toRoomPower"), rtol=1e-6, atol=1e-4,
+            )
+        # the simulation captured two step graphs and nothing at rollout level
+        session = batched.simulation_model  # noqa: F841 (the model owns the functional model's graph cache)
+
+    def test_a_graph_holds_for_one_initialization(self):
+        """Every simulate() initializes the model, and the components
+        reallocate their tensors: a step graph captured before reads them at
+        their old addresses (on a large building the second simulation of one
+        simulator ran from freed memory, rooms 2.3 K off).  The second
+        simulation captures its graphs again and gives what the first gave."""
+        model = build(n_pairs=3, model_id="scope_repeat")
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.to(device="cuda", dtype=torch.float64)
+        simulator = tb.Simulator(batched, execution_mode="functional", execution_backend="cuda_graph", cuda_graph_scope="step")
+        graphs, temperatures = [], []
+        for _ in range(2):
+            simulator.simulate(start_time=START, end_time=START + datetime.timedelta(hours=6), step_size=STEP, show_progress_bar=False)
+            cache = simulator._functional_session.functional_model.__dict__["_step_graphs"]
+            graphs.append({key: g.fwd.graph for key, g in cache.items()})
+            temperatures.append(history(model, "Zone0", "indoorTemperature", batched))
+        self.assertTrue(graphs[0])
+        self.assertEqual(set(graphs[1]), set(graphs[0]))
+        for key in graphs[0]:
+            self.assertIsNot(graphs[1][key], graphs[0][key], "a graph from before the initialization was replayed")
+        torch.testing.assert_close(temperatures[1], temperatures[0], rtol=0, atol=0)
+
+    def test_an_integer_leaf_takes_no_gradient(self):
+        """The adjoint graph marked every hoisted leaf as requiring a gradient;
+        a sparse bilinear term's positions are an integer leaf ("only Tensors
+        of floating point dtype can require gradients"), and a fit with fused
+        blocks stopped at its first gradient.  With an integer leaf among the
+        constants, the per-step graphs' gradients equal eager autograd's."""
+        from torch.utils import _pytree as pytree
+
+        from twin4build.simulator._step_graph import StepGraphs, _StepGraphRollout
+
+        dev, dt = "cuda", torch.float64
+        idx = torch.tensor([0, 2], device=dev)  # positions: an integer leaf
+        w = torch.tensor([0.5, -0.25], device=dev, dtype=dt)  # the values at them: a floating leaf
+
+        def step(y, theta, u, constants):
+            i, ww = constants
+            gain = torch.zeros_like(y).index_add(0, i, ww * y[i])
+            y_next = 0.9 * y + theta[0] * u[0] + theta[1] * gain
+            return y_next, y_next.sum().reshape(1)
+
+        y0 = torch.tensor([1.0, 2.0, 3.0], device=dev, dtype=dt)
+        tape = torch.linspace(0.0, 1.0, 12, device=dev, dtype=dt).reshape(12, 1)
+        theta = torch.tensor([0.3, 0.7], device=dev, dtype=dt, requires_grad=True)
+        leaves, spec = pytree.tree_flatten((idx, w))
+        leaves = [l.clone().requires_grad_(True) if l.is_floating_point() else l for l in leaves]
+        graphs = StepGraphs(step, spec, len(leaves), name="integer leaf")
+        _states, out = _StepGraphRollout.apply(graphs, y0, theta, tape, *leaves)
+        g_theta, g_w = torch.autograd.grad(out.sum(), (theta, leaves[1]))
+
+        theta_e = theta.detach().clone().requires_grad_(True)
+        w_e = w.clone().requires_grad_(True)
+        y, total = y0, 0.0
+        for t in range(tape.shape[0]):
+            y, m = step(y, theta_e, tape[t], (idx, w_e))
+            total = total + m.sum()
+        e_theta, e_w = torch.autograd.grad(total, (theta_e, w_e))
+        torch.testing.assert_close(g_theta, e_theta)
+        torch.testing.assert_close(g_w, e_w)
+
+    def test_gradient_matches_whole_rollout_capture(self):
+        from twin4build.tests.estimator.example_fixture import (
+            EXAMPLE_START,
+            STEP_SIZE,
+            example_measurements,
+            example_parameters,
+            load_model,
+        )
+
+        results = {}
+        for scope in ("rollout", "step"):
+            model = load_model()
+            model.to(device="cuda", dtype=torch.float64)
+            est = tb.Estimator(tb.Simulator(model, execution_mode="functional", execution_backend="cuda_graph", cuda_graph_scope=scope))
+            start = EXAMPLE_START[0]
+            est.estimate(
+                parameters=example_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[start + datetime.timedelta(hours=24)],
+                step_size=STEP_SIZE,
+                n_warmup=5,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1},
+            )
+            obj = est._functional_objective
+            x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64, device="cuda")
+            cols, grad = obj.batched_column_loss_and_grad(x0.unsqueeze(0))
+            results[scope] = (cols.detach().cpu(), grad.detach().cpu())
+        # the whole-rollout capture steps the compiled batched step
+        # (torch.matrix_exp), the per-step graphs the eager vmapped step (the
+        # scaling-and-squaring fallback): 1e-6 relative per step, 1e-4 over
+        # the rollout
+        torch.testing.assert_close(results["step"][0], results["rollout"][0], rtol=1e-4, atol=1e-6)
+        torch.testing.assert_close(results["step"][1], results["rollout"][1], rtol=1e-3, atol=1e-6)
+
+    def test_batched_kind_matches_eager_rows(self):
+        """The ``"batched"`` per-step graph (a batch of parameter starts,
+        one shared tape: the Pareto prepass and the column-gradient chunks)
+        must agree with the eager sequential rollout.  The reference is
+        eager because the compiled batched step (``compile`` over ``vmap``)
+        is itself numerically wrong on torch 2.11."""
+        from twin4build.tests.estimator.example_fixture import (
+            EXAMPLE_START,
+            STEP_SIZE,
+            example_measurements,
+            example_parameters,
+            load_model,
+        )
+
+        results = {}
+        for name, kwargs in (("eager", dict(execution_backend="eager", compile_step=False)), ("step", dict(execution_backend="cuda_graph", cuda_graph_scope="step"))):
+            model = load_model()
+            model.to(device="cuda", dtype=torch.float64)
+            est = tb.Estimator(tb.Simulator(model, execution_mode="functional", **kwargs))
+            start = EXAMPLE_START[0]
+            est.estimate(
+                parameters=example_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[start + datetime.timedelta(hours=24)],
+                step_size=STEP_SIZE,
+                n_warmup=5,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1},
+            )
+            obj = est._functional_objective
+            x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64, device="cuda")
+            X = torch.stack([x0, x0 * 0.9 + 0.05])  # two distinct starts
+            selector = torch.eye(int(obj.batched_column_loss_and_grad(x0.unsqueeze(0))[0].shape[1]), dtype=torch.float64, device="cuda")[:2]
+            cols, grads = obj.batched_column_gradients(X, selector)
+            results[name] = (cols.detach().cpu(), grads.detach().cpu())
+        torch.testing.assert_close(results["step"][0], results["eager"][0], rtol=1e-4, atol=1e-6)
+        torch.testing.assert_close(results["step"][1], results["eager"][1], rtol=1e-3, atol=1e-6)
+
+    @unittest.skipUnless(_has_triton(), "per-step graphs replay the compiled step, which needs Triton")
+    def test_tape_gradient_matches_eager(self):
+        """The gradient with respect to the exogenous tape (the optimizer's
+        trajectory decision variables override columns of it) under per-step
+        graphs equals the eager rollout's (#236), together with theta's
+        (parameter and trajectory variables in one problem), for one
+        parameter vector, for windows on one vector, and for a batch of
+        vectors on one shared tape.  Before, the step graphs returned no tape
+        gradient at all."""
+        from twin4build.tests.estimator.example_fixture import (
+            EXAMPLE_START,
+            STEP_SIZE,
+            example_measurements,
+            example_parameters,
+            load_model,
+        )
+
+        results = {}
+        for name, kwargs in (("eager", dict(execution_backend="eager", compile_step=False)), ("step", dict(execution_backend="cuda_graph", cuda_graph_scope="step"))):
+            model = load_model()
+            model.to(device="cuda", dtype=torch.float64)
+            simulator = tb.Simulator(model, execution_mode="functional", **kwargs)
+            est = tb.Estimator(simulator)
+            start = EXAMPLE_START[0]
+            est.estimate(
+                parameters=example_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[start + datetime.timedelta(hours=24)],
+                step_size=STEP_SIZE,
+                n_warmup=5,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1},
+            )
+            obj = est._functional_objective
+            x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64, device="cuda")
+            theta0, _ = obj._physical(x0)
+            self.assertEqual(simulator.step_graph_active(torch.device("cuda")), name == "step")
+            grads = []
+
+            # one vector: tape and theta together
+            theta = theta0.detach().clone().requires_grad_(True)
+            tape = obj.CAP[0].detach().clone().requires_grad_(True)
+            out = simulator.rollout_functional(obj.composer, obj.Y0[0], theta, tape, transform_mode=True)
+            weights = torch.linspace(0.5, 1.5, out.numel(), dtype=out.dtype, device=out.device).reshape(out.shape)
+            grads += torch.autograd.grad((out * weights).sum(), (tape, theta))
+
+            # windows: two windows on one vector, the second on a perturbed tape
+            theta = theta0.detach().clone().requires_grad_(True)
+            tape = torch.stack([obj.CAP[0], obj.CAP[0] * 1.01], dim=1).detach().requires_grad_(True)
+            windows = simulator.rollout_functional_windows(obj.composer, torch.stack([obj.Y0[0], obj.Y0[0]]), theta, tape)
+            grads += torch.autograd.grad(windows.sum(), (tape, theta))
+
+            # a batch of vectors on one shared tape
+            shared = obj.CAP[0].detach().clone().requires_grad_(True)
+            Theta = torch.stack([theta0, theta0 * 1.01]).detach().requires_grad_(True)
+            batch = simulator.rollout_functional_batched(obj.composer, obj.Y0[0].unsqueeze(0).expand(2, -1), Theta, shared)
+            grads += torch.autograd.grad(batch.sum(), (shared, Theta))
+            results[name] = [g.cpu() for g in grads]
+        self.assertGreater(float(results["eager"][0].abs().max()), 0.0)
+        for step, eager in zip(results["step"], results["eager"]):
+            torch.testing.assert_close(step, eager, rtol=1e-3, atol=1e-6)
+
+if __name__ == "__main__":
+    unittest.main()

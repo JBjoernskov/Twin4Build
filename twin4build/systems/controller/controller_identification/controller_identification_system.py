@@ -1,0 +1,2077 @@
+# Standard library imports
+import datetime
+from twin4build.systems.saref4syst.system import System
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from collections import Counter
+
+# Third party imports
+import torch
+import torch.nn as nn
+
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
+from twin4build.utils.rgetattr import rgetattr
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
+    SATCompensatedControllerSystem,
+)
+from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
+    CascadeControllerSystem,
+)
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
+    PIDControllerSystem,
+)
+from twin4build.systems.utils.sigmoid_gate import BandGate, SigmoidGate
+from twin4build.translator.translator import (
+    StepRule,
+    SetStepRule,
+    ModeledNode,
+    AnyPathRule,
+    Node,
+    Predicate,
+    SignaturePattern,
+)  # noqa: F401 (StepRule/SetStepRule/AnyPathRule used in patterns below)
+
+
+def _index_pairs(point, connection):
+    """``(input slot, output slot, source instance, target instance)`` of every
+    pair a connection carries (a batched connection carries one per instance,
+    as index tensors); ``None`` where the connection names no index (the
+    whole port or every instance)."""
+    values = (
+        point.input_port_index.get(connection),
+        point.output_port_index.get(connection),
+        point.output_component_index.get(connection),
+        point.input_component_index.get(connection),
+    )
+    n = max((int(v.numel()) for v in values if isinstance(v, torch.Tensor)), default=1)
+
+    def as_list(value):
+        if value is None or isinstance(value, slice):
+            return [None] * n
+        if isinstance(value, torch.Tensor):
+            flat = [int(v) for v in value.reshape(-1).tolist()]
+            return flat if len(flat) == n else flat[:1] * n
+        return [int(value)] * n
+
+    return list(zip(*(as_list(v) for v in values)))
+
+
+class ControllerIdentificationSystem(core.System, nn.Module):
+    r"""
+    Controller Identification System using Continuous Relaxation.
+
+    This class implements a differentiable controller identification framework
+    that can estimate control logic from observed actuator data. It composes
+    candidate controller Systems and uses continuous relaxation to identify:
+
+    1. Which sensor(s) provide feedback (β weights)
+    2. Which setpoint signal(s) are being tracked (γ weights)
+    3. Which candidate controller(s) are active (α weights)
+    4. The parameters of each candidate controller
+
+    The system supports multiple actuators, each with its own set of candidate
+    controllers. This is designed to work with the twin4build Estimator class.
+
+    Mathematical Formulation
+    ------------------------
+
+    **Control Error (per actuator):**
+
+    .. math::
+
+        e_t = \sum_j \gamma_j \cdot sp_{jt} - \sum_i \beta_i \cdot y_{it}
+
+    **Predicted Actuator Output (per actuator a):**
+
+    .. math::
+
+        \hat{u}_{a,t} = \sum_k \alpha_{a,k} \cdot C_k(e_t; \theta_k)
+
+    where :math:`C_k` is the k-th candidate controller.
+
+    **Loops combined by max:** a ``"max"`` candidate :math:`M_m` is a loop
+    of its own: it acts on its own feedback (``beta_{a}_{m}`` over the
+    sensors) about its own constant setpoint (``setpoint_{a}_{m}``,
+    estimated), and the actuator takes the larger demand,
+
+    .. math::
+
+        \hat{u}_{a,t} = \max\big(\sum_k \alpha_{a,k} C_k(e_t),\;
+                        \max_m M_m(c_{a,m} - \sum_i \beta_{a,m,i} y_{it})\big)
+
+    before the gate -- a VAV damper that answers the room temperature and,
+    above a CO2 level, the CO2 (``max(temperature PI, CO2 P)``).  With
+    ``Ti`` to infinity the loop is proportional about its setpoint, so the
+    threshold and whether there is a CO2 loop at all are identified, not
+    assumed.
+
+    **Binarization Penalty:**
+
+    .. math::
+
+        P(x) = x(1 - x)
+
+    Args:
+        n_sensors: Number of candidate feedback sensors (default: 1)
+        n_setpoints: Number of candidate setpoint signals (default: 1)
+        n_actuators: Number of actuator outputs (default: 1)
+        n_on_off_signals: Number of candidate gate signals on the
+            ``onOffSignal`` port; read from the connections at
+            ``initialize()`` when not given.
+        setpoint_controllers: Controller System classes used as setpoint
+            (PI-type) candidates.  If neither this nor
+            ``cascade_controllers`` is given, the defaults are a
+            reverse-acting and a direct-acting PIDControllerSystem plus one
+            CascadeControllerSystem.
+        setpoint_controller_kwargs: One kwargs dict per entry of
+            ``setpoint_controllers``.
+        cascade_controllers: Controller System classes used as cascade
+            candidates.
+        cascade_controller_kwargs: One kwargs dict per entry of
+            ``cascade_controllers``.
+        max_controllers: Controller classes of the ``"max"`` candidates
+            (loops on their own feedback and setpoint whose output joins the
+            others' by max); none by default.
+        max_controller_kwargs: Constructor arguments of each ``"max"``
+            candidate.
+        candidate_structure: The ordered candidate list as literals, one
+            dict with the keys ``type`` and ``ref`` per candidate (see
+            :attr:`candidate_structure`).  This is the form a serialized
+            model carries; when given it decides the candidates.
+        playback: Whether the controller outputs its measured command
+            (``actuatorMeasured``) instead of the identified law.
+        rewire_mode: Mode of the last :meth:`SimulationModel.rewire` applied
+            to the controller (``"train"``, ``"simulate"``, ``"playback"``),
+            ``None`` when it was never rewired.
+        on_off_signal_norm_min: Lower normalisation bound of each
+            ``onOffSignal`` slot (requires the sizes to be given).
+        on_off_signal_norm_max: Upper normalisation bound of each
+            ``onOffSignal`` slot (requires the sizes to be given).
+        **kwargs: Additional keyword arguments passed to parent classes
+
+    Example:
+        >>> # Default usage with built-in candidates
+        >>> controller = ControllerIdentificationSystem(
+        ...     n_sensors=1,
+        ...     n_setpoints=1,
+        ...     n_actuators=1,
+        ...     id="my_controller"
+        ... )
+        >>>
+        >>> # Custom candidates
+        >>> controller = ControllerIdentificationSystem(
+        ...     setpoint_controllers=[PIDControllerSystem, PIDControllerSystem],
+        ...     setpoint_controller_kwargs=[
+        ...         {"kp": 0.1, "Ti": 100, "Td": 0},  # PI
+        ...         {"kp": 0.1, "Ti": 100, "Td": 10}, # PID
+        ...     ],
+        ...     id="custom_controller"
+        ... )
+
+    Note:
+        This component deliberately has **no composer-style** ``forward``:
+        its estimable parameters (``alpha_{a}``, ``beta_{a}``, ``gamma_{a}``,
+        ``gamma_gate_{a}``, ...) are multi-element (``n_c > 1``)
+        ``tps.Parameter`` vectors, which the composed fast paths reject
+        upstream (``Estimator._composer_theta_spec`` raises on any
+        multi-branch parameter) -- so a pure ``forward`` here could never be
+        exercised by those paths.  Estimation with theta on this component
+        always uses the exact object-graph objective;
+        ``OneStepComposer._validate_theta_influence`` guarantees the
+        fallback instead of silently freezing theta-dependent signals.
+
+    Note:
+        :attr:`config` lists everything that defines the controller, so that
+        ``Model.serialize()`` / ``Model.load(filename=...)`` gives the same
+        controller back without another ``rewire``: the sizes, the candidate
+        structure, the playback flag and the rewire mode, the ``onOffSignal``
+        normalisation bounds, the selection weights, the gate parameters and
+        every candidate's parameters with their bounds.
+    """
+
+    # Controller type constants -- each defines a signal routing strategy
+    CTRL_SETPOINT = "setpoint"
+    CTRL_CASCADE = "cascade"
+    #: A loop on its own feedback and constant setpoint, joined by max.
+    CTRL_MAX = "max"
+    #: Bounds of a ``"max"`` candidate's setpoint when nothing set them
+    #: (the rewire writes the range of the loop's feedback).
+    _MAX_SETPOINT_BOUNDS: Tuple[float, float] = (-1e6, 1e6)
+
+    # Gate class used for the per-actuator setpoint-based gate
+    # ("gate_{a}") constructed in :meth:`_build_components`.  Subclasses
+    # can override to swap the gate type without re-implementing the
+    # whole component-building routine.  The base class ships with
+    # ``BandGate`` (smooth band-pass) which is the right default for any
+    # zone-temperature loop with a deadband; subclasses targeting other
+    # control regimes can set this to e.g. ``SigmoidGate`` for a single-
+    # threshold gate.
+    _gate_class: Type[SigmoidGate] = BandGate
+
+    # ------------------------------------------------------------------
+    # Estimable-parameter bounds (used by :meth:`get_estimable_parameters`).
+    # All bounds live as class constants so :class:`Estimator` callers can
+    # rely on a single source of truth and subclasses can tighten/loosen a
+    # specific knob without re-implementing the whole contract.
+    # ``x0`` is read from the component's *current* state (which the
+    # rewire pipeline writes data-driven seeds into); these constants only
+    # supply the ``(lower, upper)`` half of each parameter tuple.
+    # ------------------------------------------------------------------
+    _KP_BOUNDS: Tuple[float, float] = (0.1, 10.0)
+    _TI_BOUNDS: Tuple[float, float] = (1.0, 1800.0)
+    _OUTPUT_MIN_BOUNDS: Tuple[float, float] = (0.0, 1.0)
+    _DEFAULT_OUTPUT_BOUNDS: Tuple[float, float] = (0.0, 1.0)
+    _GATE_THRESHOLD_BOUNDS: Tuple[float, float] = (-0.5, 1.5)
+    _GATE_BAND_BOUNDS: Tuple[float, float] = (0.05, 5.0)
+    _GAMMA_GATE_BOUNDS: Tuple[float, float] = (0.0, 1.0)
+
+    def __init__(
+        self,
+        n_sensors: Optional[int] = None,
+        n_setpoints: Optional[int] = None,
+        n_on_off_signals: Optional[int] = None,
+        n_actuators: int = 1,
+        # --- Type-based candidate specification ---
+        # Each type defines its signal routing.  Provide one or more lists;
+        # entries within a list are individual candidate instances of that type.
+        setpoint_controllers: Optional[List[Type[core.System]]] = None,
+        setpoint_controller_kwargs: Optional[List[dict]] = None,
+        cascade_controllers: Optional[List[Type[core.System]]] = None,
+        cascade_controller_kwargs: Optional[List[dict]] = None,
+        max_controllers: Optional[List[Type[core.System]]] = None,
+        max_controller_kwargs: Optional[List[dict]] = None,
+        # --- Serialized state (see ``config``) ---
+        candidate_structure: Optional[Union[dict, List[dict]]] = None,
+        playback: bool = False,
+        rewire_mode: Optional[str] = None,
+        on_off_signal_norm_min: Optional[Union[float, List[float]]] = None,
+        on_off_signal_norm_max: Optional[Union[float, List[float]]] = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        nn.Module.__init__(self)
+
+        self.n_sensors = n_sensors
+        self.n_setpoints = n_setpoints
+        # ``n_on_off_signals`` indexes a third input port (``onOffSignal``)
+        # whose sole consumer is the ``gamma_gate``-weighted gate input.
+        # It is wired *independently* from the PI-error setpoint pool so
+        # the rewire pipeline (which prunes feedback-sensor / setpoint
+        # connections it has classified) cannot mutate the gate's input
+        # space.  Translator signature patterns auto-mirror every Brick
+        # ``Zone_Air_Temperature_Setpoint`` into this port, so by default
+        # the gate has the schedule setpoints available; downstream code
+        # can additionally wire schedule / occupancy entities here without
+        # affecting the PI loop identification.
+        self.n_on_off_signals = n_on_off_signals
+        self.n_actuators = n_actuators
+
+        # Build the ordered candidate list from per-type arguments.
+        # If nothing is provided, fall back to defaults.
+        any_type_given = (
+            setpoint_controllers is not None or cascade_controllers is not None
+        )
+
+        if not any_type_given:
+            setpoint_controllers = [PIDControllerSystem, PIDControllerSystem]
+            setpoint_controller_kwargs = [
+                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "is_reverse": True},
+                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "is_reverse": False},
+            ]
+            cascade_controllers = [CascadeControllerSystem]
+            cascade_controller_kwargs = [
+                {
+                    "ctrl_a": {"kp": 0.1, "Ti": 10.0, "Td": 0.0, "is_reverse": True},
+                    "ctrl_b": {"kp": 0.5, "Ti": 5.0, "Td": 0.0, "is_reverse": True},
+                },
+            ]
+
+        # Normalize Nones to empty lists
+        setpoint_controllers = setpoint_controllers or []
+        setpoint_controller_kwargs = setpoint_controller_kwargs or [
+            {} for _ in setpoint_controllers
+        ]
+        cascade_controllers = cascade_controllers or []
+        cascade_controller_kwargs = cascade_controller_kwargs or [
+            {} for _ in cascade_controllers
+        ]
+        max_controllers = max_controllers or []
+        max_controller_kwargs = max_controller_kwargs or [
+            {} for _ in max_controllers
+        ]
+
+        # Validate lengths
+        for label, classes, kws in [
+            ("setpoint", setpoint_controllers, setpoint_controller_kwargs),
+            ("cascade", cascade_controllers, cascade_controller_kwargs),
+            ("max", max_controllers, max_controller_kwargs),
+        ]:
+            assert len(classes) == len(kws), (
+                f"{label}_controllers ({len(classes)}) and "
+                f"{label}_controller_kwargs ({len(kws)}) must have the same length"
+            )
+
+        # Flatten into ordered candidate list: [(class, kwargs, type_tag), ...]
+        self._candidate_entries: List[Tuple[Type[core.System], dict, str]] = []
+        for cls, kw in zip(setpoint_controllers, setpoint_controller_kwargs):
+            self._candidate_entries.append((cls, kw, self.CTRL_SETPOINT))
+        for cls, kw in zip(cascade_controllers, cascade_controller_kwargs):
+            self._candidate_entries.append((cls, kw, self.CTRL_CASCADE))
+        for cls, kw in zip(max_controllers, max_controller_kwargs):
+            self._candidate_entries.append((cls, kw, self.CTRL_MAX))
+
+        assert (
+            len(self._candidate_entries) > 0
+        ), "At least one candidate controller must be provided"
+
+        # A serialized model names its candidates; they replace the list
+        # declared above unless they are the same candidates (the declared
+        # constructor arguments are then kept as the starting values).
+        if candidate_structure is not None:
+            self._candidate_entries = self._resolve_candidate_structure(
+                candidate_structure
+            )
+        self._set_candidate_entries(self._candidate_entries)
+
+        # Build input dictionary
+        self._input = {
+            "sensorValue": tps.Vector(),  # Feedback sensor values (n_sensors)
+            "setpointValue": tps.Vector(),  # PI-error setpoint signals (n_setpoints)
+            # Gate input bus -- indexed by ``gamma_gate``.  Decoupled from
+            # ``setpointValue`` so the rewire pipeline can prune the PI
+            # setpoint pool without mutating the gate's input space.  The
+            # translator's CITS signature patterns auto-mirror every
+            # Brick ``Zone_Air_Temperature_Setpoint`` into this port, so
+            # the schedule (with setback transitions) stays available
+            # to the gate even when the rewire winner picks a different
+            # setpoint for the PI error term.  Sized by
+            # ``n_on_off_signals``.
+            "onOffSignal": tps.Vector(),
+            # Playback: the historised actuator command, one slot per
+            # actuator, wired by ``rewire(mode="playback")`` from the
+            # command's own data sensor.  When ``playback`` is set the
+            # controller outputs it unchanged -- the loop is open and the
+            # plant is driven by what the BMS actually commanded, which is
+            # how the physics is calibrated before the identified loop is
+            # closed for verification.
+            "actuatorMeasured": tps.Vector(optional=True),
+        }
+
+        # Output: one signal per actuator
+        self._output = {"inputSignal": tps.Vector()}
+
+        self.playback = bool(playback)
+        self.rewire_mode = rewire_mode
+        self._built = False
+        self.INITIALIZED = False
+
+        # Build immediately if all sizes are explicitly provided.
+        if (
+            n_sensors is not None
+            and n_setpoints is not None
+            and n_on_off_signals is not None
+        ):
+            self._build_components()
+            if on_off_signal_norm_min is not None:
+                self.on_off_signal_norm_min = on_off_signal_norm_min
+            if on_off_signal_norm_max is not None:
+                self.on_off_signal_norm_max = on_off_signal_norm_max
+
+    # -- candidate structure ---------------------------------------------------
+    def _set_candidate_entries(
+        self, entries: List[Tuple[Type[core.System], dict, str]]
+    ) -> None:
+        """Store the ordered candidate list and what is derived from it."""
+        self._candidate_entries = list(entries)
+        self.n_candidates = len(self._candidate_entries)
+        self._candidate_types = [e[2] for e in self._candidate_entries]
+        self.candidate_controller_classes = [e[0] for e in self._candidate_entries]
+        self._candidate_controller_kwargs = [e[1] for e in self._candidate_entries]
+        self._has_cascade = self.CTRL_CASCADE in self._candidate_types
+        #: The ``"max"`` candidates' indices, and the others' (the blend).
+        self._max_candidates = [c for c, t in enumerate(self._candidate_types) if t == self.CTRL_MAX]
+        self._blend_candidates = [c for c, t in enumerate(self._candidate_types) if t != self.CTRL_MAX]
+        assert self._blend_candidates, "at least one candidate that is not a 'max' loop must be provided"
+        # the blend is a leading slice of the candidates (an index list would
+        # be copied to the device inside a captured CUDA graph)
+        assert self._blend_candidates == list(range(len(self._blend_candidates))), (
+            "the 'max' candidates must come after the others"
+        )
+
+    def _resolve_candidate_structure(
+        self, structure: Union[dict, List[dict]]
+    ) -> List[Tuple[Type[core.System], dict, str]]:
+        """Candidate entries for a :attr:`candidate_structure` literal.
+
+        A candidate that is already at the same position with the same class
+        and type keeps its constructor arguments; any other is built with its
+        class defaults (its parameters are written afterwards, from the
+        serialized ``candidate_{a}_{c}.*`` values).  An entry without a
+        ``ref`` (a class that cannot be imported by name) stands for the
+        candidate already at that position.
+        """
+        if isinstance(structure, dict):
+            # A one-element list is unwrapped when a literal is read back.
+            structure = [structure]
+        current = list(getattr(self, "_candidate_entries", []))
+        entries = []
+        for c, item in enumerate(structure):
+            ctype = item["type"]
+            assert ctype in (self.CTRL_SETPOINT, self.CTRL_CASCADE, self.CTRL_MAX), (
+                f"ControllerIdentificationSystem '{self.id}': unknown candidate "
+                f"type {ctype!r} in candidate_structure."
+            )
+            declared = current[c] if c < len(current) else None
+            cls = ref_to_callable(item["ref"])
+            if cls is None:
+                if declared is None or declared[2] != ctype:
+                    raise ValueError(
+                        f"ControllerIdentificationSystem '{self.id}': candidate "
+                        f"{c} of candidate_structure names no class and the "
+                        f"controller declares no '{ctype}' candidate at that "
+                        "position."
+                    )
+                cls = declared[0]
+            kw = {}
+            if declared is not None and declared[0] is cls and declared[2] == ctype:
+                kw = declared[1]
+            entries.append((cls, kw, ctype))
+        assert (
+            len(entries) > 0
+        ), "At least one candidate controller must be provided"
+        return entries
+
+    @property
+    def candidate_structure(self) -> List[dict]:
+        """The ordered candidate list as literals.
+
+        One dict per candidate with the keys ``type``, the signal routing
+        (``"setpoint"``, ``"cascade"`` or ``"max"``), and ``ref``, the import path
+        ``module:qualname`` of the candidate's class.  This is the form that
+        survives ``Model.serialize()`` / ``Model.load(filename=...)`` (a
+        class is not a literal).  Assigning a different structure to a built
+        controller rebuilds its candidates, selection weights and gates at
+        their defaults; assigning the structure it has changes nothing.
+        """
+        owner = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|"
+        return [
+            {"type": ctype, "ref": callable_to_ref(cls, owner)}
+            for cls, _, ctype in self._candidate_entries
+        ]
+
+    @candidate_structure.setter
+    def candidate_structure(self, structure: Union[dict, List[dict]]) -> None:
+        entries = self._resolve_candidate_structure(structure)
+        unchanged = [(e[0], e[2]) for e in entries] == [
+            (e[0], e[2]) for e in self._candidate_entries
+        ]
+        if unchanged:
+            return
+        self._set_candidate_entries(entries)
+        if self._built:
+            self._built = False
+            self._build_components()
+
+    # -- batching ---------------------------------------------------------------
+    #: The selection weights (``alpha_{a}``, ``beta_{a}``, ``gamma_{a}``,
+    #: ``beta_b_{a}``, ``gamma_gate_{a}``) hold one weight per slot; a batched
+    #: controller holds them flat, ``(n_c * k,)``, and normalises each
+    #: instance's over its own slots (:meth:`_selection`).
+    _batch_flat_vectors = True
+
+    @property
+    def _batch_stacked_attrs(self) -> Tuple[str, ...]:
+        """Per-loop values that are not parameters, which the rewire sets per
+        loop and a batched controller holds one per instance
+        (``Model.batch_components``): the ``onOffSignal`` normalisation bounds,
+        ``(n_c, n_on_off_signals)``, and every candidate's direction of action
+        (``is_reverse``, ``(n_c,)``: the sign of its error)."""
+        names = ["on_off_signal_norm_min", "on_off_signal_norm_max"]
+        if getattr(self, "_built", False):
+            for a in range(self.n_actuators):
+                for c in range(self.n_candidates):
+                    candidate = getattr(self, f"candidate_{a}_{c}", None)
+                    if candidate is not None and hasattr(candidate, "is_reverse"):
+                        names.append(f"candidate_{a}_{c}.is_reverse")
+        return tuple(names)
+
+    @property
+    def _batch_init_kwargs(self) -> dict:
+        """What a batched controller is built from: the sizes, the candidate
+        structure, the playback flag and the rewire mode.  The meta is then
+        built with its candidates and gates, so the instances' stacked
+        parameters land on them; controllers of another structure (another
+        candidate list, another number of actuators or signals) batch apart
+        (``Model._component_signature``)."""
+        return {
+            "n_sensors": self.n_sensors,
+            "n_setpoints": self.n_setpoints,
+            "n_on_off_signals": self.n_on_off_signals,
+            "n_actuators": self.n_actuators,
+            "candidate_structure": self.candidate_structure,
+            "playback": bool(self.playback),
+            "rewire_mode": self.rewire_mode,
+        }
+
+    # -- onOffSignal normalisation bounds ---------------------------------------
+    def _on_off_norm_tensor(self, value) -> torch.Tensor:
+        """``value`` (tensor, list or number) as one bound per ``onOffSignal``
+        slot; a batched controller's ``(n_c, n_on_off_signals)`` stack (one
+        row per instance) is kept as it is, and restored from the flat list
+        of ``n_c * n_on_off_signals`` values a load writes back
+        (``System.populate_config`` flattens tensors; flat, the bounds would
+        broadcast every instance's signal against every instance's bounds)."""
+        value = value.detach() if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=tps.float_dtype())
+        if value.dim() == 2:
+            return value
+        value = value.reshape(-1)
+        n = self.n_on_off_signals
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if n is not None and n_c > 1 and value.numel() == n_c * n:
+            return value.reshape(n_c, n)
+        if n is not None and value.numel() == 1 and n > 1:
+            value = value.expand(n).clone()
+        return value
+
+    @property
+    def on_off_signal_norm_min(self) -> torch.Tensor:
+        """Lower normalisation bound of each ``onOffSignal`` slot (the gate
+        input is ``(signal - min) / (max - min)``).  Exists once the
+        controller is built; populated by the rewire."""
+        try:
+            return self.__dict__["_on_off_signal_norm_min"]
+        except KeyError:
+            raise AttributeError("on_off_signal_norm_min") from None
+
+    @on_off_signal_norm_min.setter
+    def on_off_signal_norm_min(self, value) -> None:
+        self.__dict__["_on_off_signal_norm_min"] = self._on_off_norm_tensor(value)
+
+    @property
+    def on_off_signal_norm_max(self) -> torch.Tensor:
+        """Upper normalisation bound of each ``onOffSignal`` slot (see
+        :attr:`on_off_signal_norm_min`)."""
+        try:
+            return self.__dict__["_on_off_signal_norm_max"]
+        except KeyError:
+            raise AttributeError("on_off_signal_norm_max") from None
+
+    @on_off_signal_norm_max.setter
+    def on_off_signal_norm_max(self, value) -> None:
+        self.__dict__["_on_off_signal_norm_max"] = self._on_off_norm_tensor(value)
+
+    def _get_n_actuators_from_connections(self) -> int:
+        """Detect n_actuators by counting unique output slots used on inputSignal.
+
+        Mirrors :meth:`get_n_v_from_connections` but operates on outgoing
+        connections from the ``inputSignal`` output port instead of incoming
+        connections to an input port.
+
+        Returns:
+            int: The number of actuator slots (max output_port_index + 1), or
+                 None if no outgoing connections to inputSignal are found.
+        """
+        max_index = 0
+        found = False
+        for conn in self.connected_through:
+            if conn.output_port == "inputSignal":
+                for cp in conn.connects_system_at:
+                    idx = cp.output_port_index.get(conn)
+                    if idx is not None:
+                        found = True
+                        if isinstance(idx, int):
+                            max_index = max(max_index, idx)
+                        elif hasattr(idx, "max"):
+                            max_index = max(max_index, int(idx.max().item()))
+        return max_index + 1 if found else None
+
+    def _build_components(self) -> None:
+        """Create candidate controllers and selection-weight parameters.
+
+        Called automatically from ``__init__`` when ``n_sensors`` and
+        ``n_setpoints`` are both provided, or lazily from ``initialize()``
+        after the translator has wired up connections (so the actual sizes
+        can be read from :meth:`get_n_v_from_connections`).
+        """
+        n_sensors = self.n_sensors
+        n_setpoints = self.n_setpoints
+        n_on_off_signals = self.n_on_off_signals
+        n_actuators = self.n_actuators
+
+        alpha_init = 0.5
+        beta_init = 0.5
+        gamma_init = 0.5
+
+        # Create candidate controller instances for each actuator
+        for a in range(n_actuators):
+            for c, (CtrlClass, ctrl_kwargs, _ctype) in enumerate(
+                self._candidate_entries
+            ):
+                ctrl_id = f"{self.id}_a{a}_c{c}"
+                ctrl = CtrlClass(id=ctrl_id, **ctrl_kwargs)
+                setattr(self, f"candidate_{a}_{c}", ctrl)
+
+        # Selection weights - all per-actuator:
+        # - alpha_a: selects among candidates for actuator a (n_c = n_candidates)
+        # - beta_a: selects feedback sensors for actuator a (n_c = n_sensors)
+        # - gamma_a: selects setpoint signals for actuator a (n_c = n_setpoints)
+        for a in range(n_actuators):
+            # Alpha: candidate controller selection
+            setattr(
+                self,
+                f"alpha_{a}",
+                tps.Parameter(
+                    torch.full(
+                        (self.n_candidates,), alpha_init, dtype=tps.float_dtype()
+                    ),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                    n_c=self.n_candidates,
+                ),
+            )
+
+            # Beta: feedback sensor selection (per-actuator)
+            setattr(
+                self,
+                f"beta_{a}",
+                tps.Parameter(
+                    torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                    n_c=n_sensors,
+                ),
+            )
+
+            # Gamma: setpoint signal selection (per-actuator)
+            setattr(
+                self,
+                f"gamma_{a}",
+                tps.Parameter(
+                    torch.full((n_setpoints,), gamma_init, dtype=tps.float_dtype()),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                    n_c=n_setpoints,
+                ),
+            )
+
+            if self._has_cascade:
+                setattr(
+                    self,
+                    f"beta_b_{a}",
+                    tps.Parameter(
+                        torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
+                        min_value=0.0,
+                        max_value=1.0,
+                        requires_grad=False,
+                        n_c=n_sensors,
+                    ),
+                )
+
+            # A "max" loop's own feedback selection and its constant setpoint.
+            for c in self._max_candidates:
+                setattr(
+                    self,
+                    f"beta_{a}_{c}",
+                    tps.Parameter(
+                        torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
+                        min_value=0.0,
+                        max_value=1.0,
+                        requires_grad=False,
+                        n_c=n_sensors,
+                    ),
+                )
+                setattr(
+                    self,
+                    f"setpoint_{a}_{c}",
+                    tps.Parameter(
+                        torch.tensor(0.0, dtype=tps.float_dtype()),
+                        min_value=self._MAX_SETPOINT_BOUNDS[0],
+                        max_value=self._MAX_SETPOINT_BOUNDS[1],
+                        requires_grad=True,
+                    ),
+                )
+
+            # Setpoint-based gate sub-system per actuator.  Type is
+            # configurable via the ``_gate_class`` class attribute
+            # (defaults to ``BandGate``).  ``BandGate`` is parameterized
+            # by ``threshold`` (lower edge ``T_lo``) and ``band`` (width
+            # ``w = T_hi - T_lo``, clamped ``>= 0``) so the upper edge
+            # cannot invert below the lower one; the default band
+            # ``[18, 24]`` °C matches typical zone deadbands.  When
+            # subclasses override ``_gate_class`` to a different gate
+            # type (e.g. ``SigmoidGate``) the ``band`` kwarg is
+            # forwarded too, so a custom gate that does not accept it
+            # should silently ignore the extra keyword.
+            setattr(
+                self,
+                f"gate_{a}",
+                self._gate_class(
+                    threshold=18.0,
+                    band=6.0,
+                    steepness=100.0,
+                    id=f"{self.id}_gate_{a}",
+                ),
+            )
+
+            # gamma_gate: selects which onOffSignal slot drives the gate.
+            # Sized by ``n_on_off_signals`` (NOT ``n_setpoints``) -- the
+            # gate input bus is structurally distinct from the PI-error
+            # setpoint bus, so the rewire pipeline can prune the latter
+            # without mutating the former.
+            setattr(
+                self,
+                f"gamma_gate_{a}",
+                tps.Parameter(
+                    torch.full(
+                        (n_on_off_signals,), gamma_init, dtype=tps.float_dtype()
+                    ),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                    n_c=n_on_off_signals,
+                ),
+            )
+
+            # alpha_gate: 0 = pass-through (no gating), 1 = full gating
+            setattr(
+                self,
+                f"alpha_gate_{a}",
+                tps.Parameter(
+                    torch.tensor(0.5, dtype=tps.float_dtype()),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                ),
+            )
+
+            # default_output: actuator output when gate is inactive (0-1)
+            setattr(
+                self,
+                f"default_output_{a}",
+                tps.Parameter(
+                    torch.tensor(0.0, dtype=tps.float_dtype()),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                ),
+            )
+
+        # Per-onOffSignal normalization buffers (shared across actuators).
+        # The gate input is computed as the gamma_gate-weighted sum of
+        # the onOffSignal slots.  Without normalization the gate
+        # threshold/band x0 must be in physical units (e.g., degC) and
+        # therefore tied to a specific signal type.  Mapping each signal
+        # to ``[0, 1]`` via these buffers makes the gate seeds
+        # room/unit-agnostic; populate them via
+        # :func:`pi_loop_rewire._populate_on_off_signal_norm_bounds`
+        # after the upstream sensors have been initialised.  Defaults
+        # are identity transform (min=0, max=1) so existing models
+        # behave unchanged until the bounds are explicitly written.
+        #
+        # Plain ``torch.Tensor`` (not ``tps.Parameter``) -- they are
+        # constants, never estimated, never gradient-tracked.
+        self.on_off_signal_norm_min = torch.zeros(
+            n_on_off_signals, dtype=tps.float_dtype()
+        )
+        self.on_off_signal_norm_max = torch.ones(
+            n_on_off_signals, dtype=tps.float_dtype()
+        )
+
+        # ``forward`` theta contract: every tunable the pure step reads, keyed
+        # by the attribute path ``_forward_params`` / the composer resolve via
+        # ``rgetattr`` (selection weights, gate parameters, candidate gains).
+        names: List[str] = []
+        for a in range(n_actuators):
+            names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
+            if self._has_cascade:
+                names.append(f"beta_b_{a}")
+            for c in self._max_candidates:
+                names += [f"beta_{a}_{c}", f"setpoint_{a}_{c}"]
+            names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
+            gate = getattr(self, f"gate_{a}")
+            names += [f"gate_{a}.{n}" for n in getattr(gate, "PARAM_NAMES", ())]
+            for c in range(self.n_candidates):
+                ctrl = getattr(self, f"candidate_{a}_{c}")
+                names += [
+                    f"candidate_{a}_{c}.{n}" for n in getattr(ctrl, "PARAM_NAMES", ())
+                ]
+        self.PARAM_NAMES = tuple(names)
+        self._state_slices = None
+        self._built = True
+
+    @staticmethod
+    def _sub_config_parameters(sub) -> List[str]:
+        """Parameter names an owned sub-system (candidate or gate) lists in
+        its own config."""
+        config = getattr(sub, "config", None)
+        if not isinstance(config, dict):
+            return []
+        return list(config.get("parameters", []))
+
+    @property
+    def config(self):
+        """Everything that defines the controller, as attribute paths.
+
+        The list follows the controller's current state, so it is what
+        ``Model.serialize()`` writes and ``Model.load(filename=...)`` reads
+        back:
+
+        * the sizes ``n_sensors``, ``n_setpoints``, ``n_on_off_signals`` and
+          ``n_actuators``, the :attr:`candidate_structure`, the ``playback``
+          flag and (once rewired) the ``rewire_mode``;
+        * for a built controller, the ``onOffSignal`` normalisation bounds,
+          the selection weights of every actuator (``alpha_{a}``,
+          ``beta_{a}``, ``gamma_{a}``, ``beta_b_{a}``, ``gamma_gate_{a}``,
+          ``alpha_gate_{a}``, ``default_output_{a}``), the parameters of its
+          gate and the parameters of every candidate, and each ``"max"``
+          loop's feedback selection and setpoint (``beta_{a}_{c}``,
+          ``setpoint_{a}_{c}``).
+
+        The bounds of a candidate parameter (``candidate_{a}_{c}.kp.min_value``
+        ...) come before the values: the rewire derives them per loop, and a
+        value is stored relative to its bounds.
+        """
+        names = [
+            "n_sensors",
+            "n_setpoints",
+            "n_on_off_signals",
+            "n_actuators",
+            "candidate_structure",
+            "playback",
+        ]
+        if self.rewire_mode is not None:
+            names.append("rewire_mode")
+        if not self._built:
+            return {"parameters": names}
+        names += ["on_off_signal_norm_min", "on_off_signal_norm_max"]
+        for a in range(self.n_actuators):
+            names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
+            if self._has_cascade:
+                names.append(f"beta_b_{a}")
+            names += [f"beta_{a}_{c}" for c in self._max_candidates]
+            names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
+            gate = self._get_gate(a)
+            gate_names = self._sub_config_parameters(gate)
+            if hasattr(gate, "polarity") and "polarity" not in gate_names:
+                gate_names.append("polarity")
+            names += [f"gate_{a}.{n}" for n in gate_names]
+        bounds, values = [], []
+        for a in range(self.n_actuators):
+            for c in self._max_candidates:
+                path = f"setpoint_{a}_{c}"
+                bounds += [f"{path}.min_value", f"{path}.max_value"]
+                values.append(path)
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                for n in self._sub_config_parameters(ctrl):
+                    path = f"candidate_{a}_{c}.{n}"
+                    values.append(path)
+                    p = rgetattr(ctrl, n)
+                    if (
+                        isinstance(p, (tps.Parameter, tps.TensorParameter))
+                        and p.min_value is not None
+                        and p.max_value is not None
+                    ):
+                        bounds += [f"{path}.min_value", f"{path}.max_value"]
+        return {"parameters": names + bounds + values}
+
+    @property
+    def input(self) -> dict:
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        return self._output
+
+    def _get_candidate(self, actuator: int, candidate: int) -> core.System:
+        """Get candidate controller for actuator a, candidate c."""
+        return getattr(self, f"candidate_{actuator}_{candidate}")
+
+    def _get_alpha(self, actuator: int, candidate: int) -> torch.Tensor:
+        """Get alpha parameter for candidate c of actuator a."""
+        return getattr(self, f"alpha_{actuator}").get()[candidate]
+
+    def _get_beta(self, actuator: int, sensor: int) -> torch.Tensor:
+        """Get beta parameter for sensor i of actuator a."""
+        return getattr(self, f"beta_{actuator}").get()[sensor]
+
+    def _get_gamma(self, actuator: int, setpoint: int) -> torch.Tensor:
+        """Get gamma parameter for setpoint j of actuator a."""
+        return getattr(self, f"gamma_{actuator}").get()[setpoint]
+
+    def _get_alpha_vector(self, actuator: int) -> torch.Tensor:
+        """Get full alpha vector for actuator a."""
+        return getattr(self, f"alpha_{actuator}").get()
+
+    def _get_beta_vector(self, actuator: int) -> torch.Tensor:
+        """Get full beta vector for actuator a."""
+        return getattr(self, f"beta_{actuator}").get()
+
+    def _get_gamma_vector(self, actuator: int) -> torch.Tensor:
+        """Get full gamma vector for actuator a."""
+        return getattr(self, f"gamma_{actuator}").get()
+
+    def _get_beta_b_vector(self, actuator: int) -> torch.Tensor:
+        """Get full beta_b vector (cascade B-loop sensor selection) for actuator a."""
+        return getattr(self, f"beta_b_{actuator}").get()
+
+    def _get_gate(self, actuator: int) -> SigmoidGate:
+        """Get the setpoint-based gate sub-system for actuator ``a``.
+
+        Returns a :class:`BandGate` by default (constructed in
+        ``__init__``); the annotation stays :class:`SigmoidGate` because
+        ``BandGate`` is a subclass and callers only use the shared
+        interface (``compute_gate``, ``threshold``, ``steepness``).
+        """
+        return getattr(self, f"gate_{actuator}")
+
+    def _get_gamma_gate_vector(self, actuator: int) -> torch.Tensor:
+        """Get gamma_gate vector (gate setpoint selection) for actuator a."""
+        return getattr(self, f"gamma_gate_{actuator}").get()
+
+    def _get_alpha_gate(self, actuator: int) -> torch.Tensor:
+        """Get alpha_gate scalar (gate activation) for actuator a."""
+        return getattr(self, f"alpha_gate_{actuator}").get()
+
+    def _get_default_output(self, actuator: int) -> torch.Tensor:
+        """Get default_output scalar (output when gate is inactive) for actuator a."""
+        return getattr(self, f"default_output_{actuator}").get()
+
+    def get_estimable_parameters(
+        self,
+    ) -> List[Tuple[Any, str, Any, float, float]]:
+        """Return the standard CITS parameter tuples for the auto-estimator.
+
+        Implements the ``parameters="auto"`` contract consumed by
+        :meth:`twin4build.Estimator.estimate`: each tuple is
+        ``(component, attribute_path, x0, lower_bound, upper_bound)``
+        suitable for direct inclusion in the ``parameters`` list.
+
+        The set per actuator ``a`` and candidate ``c`` is:
+
+          * ``candidate_{a}_{c}.kp``        -- PI proportional gain
+          * ``candidate_{a}_{c}.Ti``        -- PI integral time
+          * ``candidate_{a}_{c}.output_min``-- saturation lower bound
+          * ``setpoint_{a}_{c}``            -- a ``"max"`` loop's setpoint
+          * ``default_output_{a}``          -- fallback output when gate inactive
+          * ``gate_{a}.threshold``          -- gate lower edge (T_lo)
+          * ``gate_{a}.band``               -- gate width (BandGate only)
+          * ``gamma_gate_{a}``              -- onOffSignal-slot selector
+
+        ``x0`` is read straight from the current state of each parameter,
+        which the rewire pipeline (:meth:`SimulationModel.rewire`) writes
+        data-driven seeds into.  Bounds come from the class-level
+        ``_*_BOUNDS`` constants; override on a subclass to tighten.
+
+        Returns:
+            A list of parameter tuples, possibly empty when the CITS has
+            not been built yet (``self._built is False``) or plays its
+            measured command back (``playback``: its output does not depend
+            on its parameters, so a fit has nothing to move and the
+            functional objective refuses a parameter without influence).
+        """
+        if not getattr(self, "_built", False) or getattr(self, "playback", False):
+            return []
+
+        params: List[Tuple[Any, str, Any, float, float]] = []
+
+        def _scalar(p):
+            """The start: a float, or one value per instance on a batched
+            controller (``n_c`` wide, as ``System.get_estimable_parameters``)."""
+            v = p.get()
+            if not hasattr(v, "detach"):
+                return float(v)
+            v = v.detach().reshape(-1)
+            return v.cpu().numpy().astype(float) if v.numel() > 1 else float(v[0].item())
+
+        def _bounds(p, default):
+            """The bounds the parameter carries (the rewire's per-loop
+            ``(lb, ub)``), one per instance on a batched controller;
+            ``default`` when it carries none."""
+            try:
+                lb = p.min_value.detach().reshape(-1).cpu().numpy().astype(float)
+                ub = p.max_value.detach().reshape(-1).cpu().numpy().astype(float)
+            except (AttributeError, RuntimeError, ValueError):
+                return default
+            n = p.get().numel()
+            if n > 1 and lb.size == n and ub.size == n:
+                return lb, ub
+            return float(lb.min()), float(ub.max())
+
+        for a in range(self.n_actuators):
+            # Per-candidate PID-like knobs (kp / Ti / output_min).  Skip
+            # attributes that do not exist on the candidate class (e.g.
+            # output_min is absent on some controllers).
+            for c in range(self.n_candidates):
+                cand = getattr(self, f"candidate_{a}_{c}", None)
+                if cand is None:
+                    continue
+                for attr, bounds in (
+                    ("kp", self._KP_BOUNDS),
+                    ("Ti", self._TI_BOUNDS),
+                    ("output_min", self._OUTPUT_MIN_BOUNDS),
+                ):
+                    p = getattr(cand, attr, None)
+                    if p is None or not hasattr(p, "get"):
+                        continue
+                    if not getattr(p, "requires_grad", True):
+                        # Skip parameters that the candidate has frozen
+                        # (e.g. ``Td`` on the PI subclass).
+                        continue
+                    # Prefer the bounds carried by the parameter itself: the
+                    # data-driven rewire (``pi_loop_rewire._set_param``)
+                    # writes per-loop ``(x0, lb, ub)`` onto ``kp`` / ``Ti``
+                    # (Ti up to its 7200 s ceiling), and the static class
+                    # constants (Ti <= 1800 s) would reject those seeds with
+                    # "x0 must be <= upper bound".
+                    lb, ub = _bounds(p, bounds)
+                    params.append(
+                        (
+                            self,
+                            f"candidate_{a}_{c}.{attr}",
+                            _scalar(p),
+                            lb,
+                            ub,
+                        )
+                    )
+
+            # A "max" loop's setpoint, within the range the rewire found
+            # its feedback in.
+            for c in self._max_candidates:
+                p = getattr(self, f"setpoint_{a}_{c}")
+                if getattr(p, "requires_grad", True):
+                    lb, ub = _bounds(p, self._MAX_SETPOINT_BOUNDS)
+                    params.append((self, f"setpoint_{a}_{c}", _scalar(p), lb, ub))
+
+            # default_output_{a}
+            default_out = getattr(self, f"default_output_{a}", None)
+            if default_out is not None and hasattr(default_out, "get"):
+                params.append(
+                    (
+                        self,
+                        f"default_output_{a}",
+                        _scalar(default_out),
+                        self._DEFAULT_OUTPUT_BOUNDS[0],
+                        self._DEFAULT_OUTPUT_BOUNDS[1],
+                    )
+                )
+
+            # gate_{a}.threshold and gate_{a}.band (BandGate-specific).
+            gate = getattr(self, f"gate_{a}", None)
+            if gate is not None:
+                t_param = getattr(gate, "threshold", None)
+                if t_param is not None and hasattr(t_param, "get"):
+                    params.append(
+                        (
+                            self,
+                            f"gate_{a}.threshold",
+                            _scalar(t_param),
+                            self._GATE_THRESHOLD_BOUNDS[0],
+                            self._GATE_THRESHOLD_BOUNDS[1],
+                        )
+                    )
+                b_param = getattr(gate, "band", None)
+                if b_param is not None and hasattr(b_param, "get"):
+                    params.append(
+                        (
+                            self,
+                            f"gate_{a}.band",
+                            _scalar(b_param),
+                            self._GATE_BAND_BOUNDS[0],
+                            self._GATE_BAND_BOUNDS[1],
+                        )
+                    )
+
+            # gamma_gate_{a} (vector parameter -- per-slot weight).
+            gg = getattr(self, f"gamma_gate_{a}", None)
+            if gg is not None and hasattr(gg, "get"):
+                val = gg.get()
+                if hasattr(val, "detach"):
+                    x0_vec = val.detach().cpu().numpy().flatten().tolist()
+                else:
+                    try:
+                        x0_vec = list(val)
+                    except TypeError:
+                        x0_vec = float(val)
+                params.append(
+                    (
+                        self,
+                        f"gamma_gate_{a}",
+                        x0_vec,
+                        self._GAMMA_GATE_BOUNDS[0],
+                        self._GAMMA_GATE_BOUNDS[1],
+                    )
+                )
+
+        return params
+
+    def _append_pid_params(self, params: list, ctrl: core.System, prefix: str) -> None:
+        """Append estimable PID-like parameters from *ctrl* to *params*.
+
+        Works for PIDControllerSystem and any other controller that exposes
+        the standard attrs.
+        """
+        target = ctrl
+        target_prefix = prefix
+
+        if hasattr(target, "kp"):
+            params.append((self, f"{target_prefix}.kp", 0.01, 0.001, 10, "private"))
+        if hasattr(target, "Ti"):
+            params.append((self, f"{target_prefix}.Ti", 10, 1.0, 10000.0, "private"))
+        if hasattr(target, "Td"):
+            params.append((self, f"{target_prefix}.Td", 0.0, 0.0, 0.0001, "private"))
+        if hasattr(target, "output_min"):
+            params.append(
+                (self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private")
+            )
+
+    @staticmethod
+    def _summary_pid_params(lines: list, ctrl: core.System, indent: int = 6) -> None:
+        """Append human-readable PID parameter lines for *ctrl*."""
+        pad = " " * indent
+        for attr in ("kp", "Ti", "Td", "output_min", "output_max"):
+            if hasattr(ctrl, attr):
+                lines.append(f"{pad}{attr}: {getattr(ctrl, attr).get().item():.6f}")
+        if hasattr(ctrl, "is_reverse"):
+            lines.append(f"{pad}isReverse: {ctrl.isReverse}")
+
+    @staticmethod
+    def _append_pid_scales(scales: list, ctrl: core.System) -> None:
+        """Append 1.0 gradient scales for each PID-like parameter on *ctrl*."""
+        target = ctrl.pid if hasattr(ctrl, "pid") else ctrl
+        # Keep this list in sync with ``_append_pid_params`` above.
+        for attr in ("kp", "Ti", "Td", "output_min"):
+            if hasattr(target, attr):
+                scales.append(1.0)
+
+    def lagged_output_ports(self):
+        """The command is a start-of-step signal while the loop COMPUTES (a
+        sampled controller acts on the last measurement; the loader cuts the
+        controller -> actuator edges before its cycle search instead of
+        enumerating every closed loop's cycles through the batched metas).
+        A replaying controller is recorded data and keeps its edges."""
+        return frozenset() if self.replays_data() else frozenset({"inputSignal"})
+
+    def replays_data(self) -> bool:
+        """In playback mode the controller outputs its historised command:
+        recorded data, not a dynamic system, so the functional engine keeps
+        it out of the traced cone (see ``_replays_data``)."""
+        return bool(getattr(self, "playback", False))
+
+    def replayed_output_history(self, output_name: str, n_t: int):
+        """The history this controller replays on ``output_name`` over the
+        first ``n_t`` steps, or ``None``.  In playback the command is the
+        measured actuator position, wired from the command's own data sensor
+        (``rewire(mode="playback")``): its logged history is the answer,
+        and a functional simulation records it in one shot instead of
+        stepping this controller once per time step.
+
+        The command sensor's ``measuredValue`` is what the sensor reads, a
+        stepped output (ADR 0001, decision 6); with nothing wired to it, it
+        reads its recorded series, ``measuredData``, which the run start
+        fills.  That series is the history replayed, as the functional
+        engine follows a data sensor's ``measuredValue`` to it."""
+        from twin4build.systems.sensor.sensor_system import SensorSystem
+
+        if not self.replays_data() or output_name != "inputSignal":
+            return None
+        links = []
+        for point in self.connects_at:
+            if point.input_port != "actuatorMeasured":
+                continue
+            for connection in point.connects_system_through:
+                source = connection.connects_system
+                port = source.output[connection.output_port]
+                if (
+                    isinstance(source, SensorSystem)
+                    and connection.output_port == "measuredValue"
+                    and "measuredValue" in source.output_defaults()
+                ):
+                    port = source.output["measuredData"]
+                history = port._history
+                if history is None or not (port._history_is_populated or port.is_leaf):
+                    return None
+                links.append((point, connection, history[:n_t]))
+        if not links:
+            return None
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if len(links) == 1 and n_c == 1:
+            return links[0][2]
+        # A batched controller (``Model.batch_components``), or one with
+        # several actuators: each connection places its sensor's series at
+        # its instance and actuator slot, ``(n_t, n_s, n_c, n_actuators)``.
+        first = links[0][2]
+        out = torch.zeros(
+            (first.shape[0], first.shape[1], n_c, int(self.n_actuators)),
+            dtype=first.dtype, device=first.device,
+        )
+        for point, connection, history in links:
+            for slot, source_slot, source_ic, target_ic in _index_pairs(point, connection):
+                # a scalar port's history is (n_t, n_s, n_c), a vector's (n_t, n_s, n_c, n_v)
+                value = history[:, :, source_ic or 0]
+                if value.dim() == 3:
+                    value = value[..., source_slot or 0]
+                if target_ic is None:  # one series for every instance
+                    out[:, :, :, slot or 0] = value.unsqueeze(-1)
+                else:
+                    out[:, :, target_ic, slot or 0] = value
+        return out
+
+    def initialize(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: int,
+    ) -> None:
+        """Initialize the controller system and all candidate controllers.
+
+        If ``n_sensors`` or ``n_setpoints`` were not provided at construction
+        time (None), they are inferred here from the wired connections via
+        :meth:`get_n_v_from_connections`.  This allows the translator to
+        instantiate the system without knowing the signal counts upfront.
+        """
+        # Lazy build: detect n_sensors / n_setpoints / n_on_off_signals /
+        # n_actuators from connections.
+        if not self._built:
+            n_s = self.get_n_v_from_connections("sensorValue")
+            n_sp = self.get_n_v_from_connections("setpointValue")
+            n_oo = self.get_n_v_from_connections("onOffSignal")
+            n_act = self._get_n_actuators_from_connections()
+            if n_s is not None:
+                self.n_sensors = n_s
+            if n_sp is not None:
+                self.n_setpoints = n_sp
+            if n_oo is not None:
+                self.n_on_off_signals = n_oo
+            if n_act is not None:
+                self.n_actuators = n_act
+            assert (
+                self.n_sensors is not None
+                and self.n_setpoints is not None
+                and self.n_on_off_signals is not None
+            ), (
+                f"ControllerIdentificationSystem '{self.id}': "
+                "n_sensors, n_setpoints, and n_on_off_signals must be "
+                "provided at construction or inferred from translator "
+                "connections (signature patterns must wire ``sensorValue``, "
+                "``setpointValue`` and ``onOffSignal``)."
+            )
+            self._build_components()
+
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+
+        # Initialize Vector inputs with their sizes; a batched controller
+        # (``Model.batch_components``) carries ``n_c`` instances in every port
+        n_c = self.n_c
+        self.input["sensorValue"].initialize(
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_sensors
+        )
+        self.input["setpointValue"].initialize(
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_setpoints
+        )
+        self.input["onOffSignal"].initialize(
+            n_t=max_timesteps,
+            n_s=batch_size,
+            n_c=n_c,
+            n_v=self.n_on_off_signals,
+        )
+        self.input["actuatorMeasured"].initialize(
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
+        )
+
+        # Initialize output
+        self.output["inputSignal"].initialize(
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
+        )
+
+        # Initialize all candidate controllers and the gates, with the
+        # controller's ``n_c``: a batched controller's stacked parameters
+        # hold one value per instance on its candidates and gates
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                candidate = self._get_candidate(a, c)
+                candidate.n_c = n_c
+                candidate.initialize(start_time, end_time, step_size)
+
+        for a in range(self.n_actuators):
+            gate = self._get_gate(a)
+            gate.n_c = n_c
+            gate.initialize(start_time, end_time, step_size)
+        # Identity-stable step size for ``forward``'s coefficient caches
+        # (the candidates key their caches on the step-size object).
+        self._step_size = self._scalar_step_size(step_size)
+        self._state_slices = self._compute_state_slices()
+        self.INITIALIZED = True
+
+    def _compute_weighted_signals(self, actuator: int) -> Tuple[torch.Tensor, ...]:
+        """Compute weighted sensor and setpoint signals for a specific actuator.
+
+        Uses ratio normalization (w_i / sum(w)) for beta, gamma, and beta_b weights.
+
+        Args:
+            actuator: The actuator index to compute signals for.
+
+        Returns:
+            Tuple of (weighted_setpoint, weighted_feedback[, weighted_feedback_b])
+            tensors, each shape (n_s, n_c).  weighted_feedback_b is only included
+            when cascade candidates exist.
+        """
+        # Tensor shapes: (n_s, n_c, n_v) where n_v is n_sensors or n_setpoints
+        sensor_values = self.input["sensorValue"].get()  # (n_s, n_c, n_sensors)
+        setpoint_values = self.input["setpointValue"].get()  # (n_s, n_c, n_setpoints)
+
+        # Ratio-normalised weights
+        gamma = self._get_gamma_vector(actuator)  # (n_setpoints,)
+        gamma_norm = gamma / (torch.sum(gamma) + 1e-8)
+
+        beta = self._get_beta_vector(actuator)  # (n_sensors,)
+        beta_norm = beta / (torch.sum(beta) + 1e-8)
+
+        # Weighted setpoint: sum_j gamma_norm_j * sp_jt
+        weighted_setpoint = torch.sum(
+            gamma_norm * setpoint_values, dim=-1
+        )  # (n_s, n_c)
+
+        # Weighted sensor feedback: sum_i beta_norm_i * y_it
+        weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)  # (n_s, n_c)
+
+        if self._has_cascade:
+            beta_b = self._get_beta_b_vector(actuator)  # (n_sensors,)
+            beta_b_norm = beta_b / (torch.sum(beta_b) + 1e-8)
+            weighted_feedback_b = torch.sum(
+                beta_b_norm * sensor_values, dim=-1
+            )  # (n_s, n_c)
+            return weighted_setpoint, weighted_feedback, weighted_feedback_b
+
+        return weighted_setpoint, weighted_feedback
+
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the identification math: weighted signals, candidate
+        controllers, alpha blending and the on/off gate)."""
+        inputs = {
+            "sensorValue": self.input["sensorValue"].get(),
+            "setpointValue": self.input["setpointValue"].get(),
+            "onOffSignal": self.input["onOffSignal"].get(),
+        }
+        if self.playback:
+            inputs["actuatorMeasured"] = self.input["actuatorMeasured"].get()
+        x = self.get_state() if self.state_size() > 0 else None
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._step_size
+        )
+        if x_next is not None:
+            self.set_state(x_next)
+        self.output["inputSignal"].set(outs["inputSignal"], step_index)
+
+    # -- composed-map support ------------------------------------------------
+    # Continuous state is the concatenation of the candidate controllers'
+    # ``tps.State`` memories (the order :meth:`System.get_state` produces);
+    # the gates are stateless.  ``forward`` is functorch-safe: it only reads
+    # ``params`` (never ``self.<parameter>``) and the structural attributes
+    # fixed at ``initialize`` (candidate types, state slices, gate wiring).
+
+    def _compute_state_slices(self) -> Dict[Tuple[int, int], Tuple[int, int]]:
+        """``(actuator, candidate) -> (offset, width)`` into the concatenated
+        state.  Each candidate's states are contiguous in
+        :meth:`collect_states` (it recurses child by child), so the slice is
+        located by identity of the candidate's first state object."""
+        all_states = self.collect_states()
+        offsets = []
+        acc = 0
+        for st in all_states:
+            offsets.append(acc)
+            acc += int(st.n_v)
+        slices = {}
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                own = self._get_candidate(a, c).collect_states()
+                width = sum(int(st.n_v) for st in own)
+                if width == 0:
+                    slices[(a, c)] = (acc, 0)
+                    continue
+                first = next(i for i, st in enumerate(all_states) if st is own[0])
+                slices[(a, c)] = (offsets[first], width)
+        return slices
+
+    @staticmethod
+    def _sub_params(sub, prefix: str, params: dict) -> dict:
+        """Physical-parameter dict of an owned sub-system (candidate or gate)
+        from the composite ``params`` (keys ``"<prefix>.<name>"``), falling
+        back to the sub-system's own ``tps.Parameter`` values."""
+        out = {}
+        for name in getattr(sub, "PARAM_NAMES", ()):
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else rgetattr(sub, name).get()
+        return out
+
+    def derive(self, p, step_size):
+        """Each gate's and candidate's parameters (estimated values from
+        ``p``, the rest the sub-system's own) and what it derives from them
+        (a PID candidate's gains)."""
+        sub = {}
+        for a in range(self.n_actuators):
+            gate = self._get_gate(a)
+            sub[("gate", a)] = gate.full_params(self._sub_params(gate, f"gate_{a}", p), step_size)
+            for c in range(self.n_candidates):
+                candidate = self._get_candidate(a, c)
+                sub[(a, c)] = candidate.full_params(
+                    self._sub_params(candidate, f"candidate_{a}_{c}", p), step_size
+                )
+        return {"sub_params": sub}
+
+    def _selection(self, weights: torch.Tensor, width: int) -> torch.Tensor:
+        """Selection weights normalised to one over their ``width`` slots:
+        ``(width,)`` on a controller; ``(n_c, width)`` on a batched one, whose
+        weights are flat ``(n_c * width,)``, one row per instance."""
+        if int(getattr(self, "n_c", 1) or 1) == 1:
+            return weights / (torch.sum(weights) + 1e-8)
+        weights = weights.reshape(-1, width)
+        return weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
+
+    def _blend(self, alpha: torch.Tensor, outputs: List[torch.Tensor]) -> torch.Tensor:
+        """The alpha-weighted blend of the candidates that are not ``"max"``
+        loops, the weights normalised over those candidates (one row per
+        instance on a batched controller, whose weights are flat)."""
+        k = len(self._blend_candidates)  # a leading slice (the "max" candidates come last)
+        n = self.n_candidates
+        if int(getattr(self, "n_c", 1) or 1) == 1:
+            weights = alpha.reshape(-1)[:k]
+            weights = weights / (torch.sum(weights) + 1e-8)
+            return sum(weights[c] * outputs[c] for c in range(k))
+        weights = alpha.reshape(-1, n)[:, :k]
+        weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
+        return sum(weights[:, c] * outputs[c] for c in range(k))
+
+    def forward(self, x, inputs, params, step_size):
+        """Pure one-step controller identification
+        ``(state, inputs, params) -> (new_state, outputs)``.
+
+        ``inputs`` holds the Vector ports ``sensorValue`` ``(..., n_sensors)``,
+        ``setpointValue`` ``(..., n_setpoints)`` and ``onOffSignal``
+        ``(..., n_on_off_signals)``; ``x`` the concatenated candidate memories
+        ``(..., D)`` (``None`` when every candidate is stateless); ``params``
+        a dict for :attr:`PARAM_NAMES`.  For each actuator: the beta / gamma
+        weighted feedback and setpoint drive every candidate's ``forward``,
+        the outputs are alpha-blended, every ``"max"`` loop (its own
+        feedback about its own setpoint) joins by max, and the gamma-gate
+        weighted on/off
+        signal (normalised with the rewire-populated bounds) passes through
+        the actuator's gate.  Returns ``(x_next, {"inputSignal": (...,
+        n_actuators)})``.
+        """
+        if self.playback:
+            # Open loop: the measured command is the output, the candidate
+            # memories are left untouched.
+            return x, {"inputSignal": inputs["actuatorMeasured"]}
+        if self._state_slices is None:
+            self._state_slices = self._compute_state_slices()
+        sub = params["sub_params"]
+        sensor_values = inputs["sensorValue"]
+        setpoint_values = inputs["setpointValue"]
+        on_off = inputs["onOffSignal"]
+        oo_min = self.on_off_signal_norm_min.to(device=on_off.device, dtype=on_off.dtype)
+        oo_max = self.on_off_signal_norm_max.to(device=on_off.device, dtype=on_off.dtype)
+        on_off_norm = (on_off - oo_min) / (oo_max - oo_min).clamp(min=1e-6)
+
+        new_state_parts = []  # (offset, tensor)
+        actuator_outputs = []
+        for a in range(self.n_actuators):
+            gamma_norm = self._selection(params[f"gamma_{a}"], self.n_setpoints)
+            beta_norm = self._selection(params[f"beta_{a}"], self.n_sensors)
+            weighted_setpoint = torch.sum(gamma_norm * setpoint_values, dim=-1)
+            weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)
+            weighted_feedback_b = None
+            if self._has_cascade:
+                beta_b_norm = self._selection(params[f"beta_b_{a}"], self.n_sensors)
+                weighted_feedback_b = torch.sum(beta_b_norm * sensor_values, dim=-1)
+
+            candidate_outputs = []
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                ctype = self._candidate_types[c]
+                if ctype == self.CTRL_CASCADE:
+                    ctrl_inputs = {
+                        "setpointValue_a": weighted_setpoint,
+                        "actualValue_a": weighted_feedback,
+                        "actualValue_b": weighted_feedback_b,
+                    }
+                elif ctype == self.CTRL_MAX:
+                    beta_m = self._selection(params[f"beta_{a}_{c}"], self.n_sensors)
+                    feedback_m = torch.sum(beta_m * sensor_values, dim=-1)
+                    ctrl_inputs = {
+                        "setpointValue": params[f"setpoint_{a}_{c}"] + torch.zeros_like(feedback_m),
+                        "actualValue": feedback_m,
+                    }
+                else:
+                    ctrl_inputs = {
+                        "setpointValue": weighted_setpoint,
+                        "actualValue": weighted_feedback,
+                    }
+                offset, width = self._state_slices[(a, c)]
+                x_c = x[..., offset : offset + width] if (x is not None and width) else None
+                x_c_next, out_c = ctrl.forward(x_c, ctrl_inputs, sub[(a, c)], step_size)
+                if width:
+                    new_state_parts.append((offset, x_c_next))
+                candidate_outputs.append(out_c["inputSignal"])
+            combined = self._blend(params[f"alpha_{a}"], candidate_outputs)
+            for c in self._max_candidates:
+                combined = torch.maximum(combined, candidate_outputs[c])
+
+            gamma_gate_norm = self._selection(params[f"gamma_gate_{a}"], self.n_on_off_signals)
+            gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
+            gate = self._get_gate(a)
+            _, gate_out = gate.forward(
+                None, {gate.INPUT_PORT: gate_input}, sub[("gate", a)], step_size
+            )
+            gate_signal = gate_out[gate.OUTPUT_PORT]
+            alpha_g = params[f"alpha_gate_{a}"]
+            g = (1 - alpha_g) + alpha_g * gate_signal
+            default_out = params[f"default_output_{a}"]
+            actuator_outputs.append(g * combined + (1 - g) * default_out)
+
+        output = torch.stack(actuator_outputs, dim=-1)
+        if new_state_parts:
+            new_state_parts.sort(key=lambda t: t[0])
+            x_next = torch.cat([t for _, t in new_state_parts], dim=-1)
+        else:
+            x_next = x
+        return x_next, {"inputSignal": output}
+
+    def compute_binarization_penalty(self) -> torch.Tensor:
+        """Compute binarization penalty P(x) = x(1-x) for all selection weights.
+
+        This penalty encourages weights toward 0 or 1, promoting crisp selection.
+
+        Returns:
+            torch.Tensor: Sum of x*(1-x) over all alpha, beta, gamma weights.
+        """
+        penalty = torch.tensor(0.0, dtype=tps.float_dtype())
+        for a in range(self.n_actuators):
+            alpha = self._get_alpha_vector(a)
+            penalty = penalty + torch.sum(alpha * (1 - alpha))
+            beta = self._get_beta_vector(a)
+            penalty = penalty + torch.sum(beta * (1 - beta))
+            gamma = self._get_gamma_vector(a)
+            penalty = penalty + torch.sum(gamma * (1 - gamma))
+            if self._has_cascade:
+                beta_b = self._get_beta_b_vector(a)
+                penalty = penalty + torch.sum(beta_b * (1 - beta_b))
+            for c in self._max_candidates:
+                beta_m = getattr(self, f"beta_{a}_{c}").get()
+                penalty = penalty + torch.sum(beta_m * (1 - beta_m))
+            # Gate selection weights
+            gamma_gate = self._get_gamma_gate_vector(a)
+            penalty = penalty + torch.sum(gamma_gate * (1 - gamma_gate))
+            alpha_gate = self._get_alpha_gate(a)
+            penalty = penalty + torch.sum(alpha_gate * (1 - alpha_gate))
+            # Polarity: push toward -1 or +1 via (1 - p^2)
+            polarity = self._get_gate(a).polarity.get()
+            penalty = penalty + torch.sum(1 - polarity**2)
+        return penalty
+
+    def compute_regularization_penalty(self) -> torch.Tensor:
+        """Standard interface for Estimator to compute regularization penalty.
+
+        Returns the binarization penalty P(x) = x(1-x) over all selection weights.
+        """
+        return self.compute_binarization_penalty()
+
+    def get_selection_weights(self) -> Dict[str, torch.Tensor]:
+        """Get all selection weights as a dictionary.
+
+        All weights are per-actuator:
+        - alpha_{a}_{c}: Individual alpha weights per actuator/candidate
+        - alpha_{a}: Full alpha vector for actuator a
+        - beta_{a}_{i}: Individual beta weights per actuator/sensor
+        - beta_{a}: Full beta vector for actuator a
+        - gamma_{a}_{j}: Individual gamma weights per actuator/setpoint
+        - gamma_{a}: Full gamma vector for actuator a
+        """
+        weights = {}
+
+        for a in range(self.n_actuators):
+            # Alpha weights
+            alpha_vec = self._get_alpha_vector(a)
+            weights[f"alpha_{a}"] = alpha_vec.detach().clone()
+            for c in range(self.n_candidates):
+                weights[f"alpha_{a}_{c}"] = alpha_vec[c].detach().clone()
+
+            # Beta weights
+            beta_vec = self._get_beta_vector(a)
+            weights[f"beta_{a}"] = beta_vec.detach().clone()
+            for i in range(self.n_sensors):
+                weights[f"beta_{a}_{i}"] = beta_vec[i].detach().clone()
+
+            # Gamma weights
+            gamma_vec = self._get_gamma_vector(a)
+            weights[f"gamma_{a}"] = gamma_vec.detach().clone()
+            for j in range(self.n_setpoints):
+                weights[f"gamma_{a}_{j}"] = gamma_vec[j].detach().clone()
+
+            # Beta_b weights (cascade B-loop sensor selection)
+            if self._has_cascade:
+                beta_b_vec = self._get_beta_b_vector(a)
+                weights[f"beta_b_{a}"] = beta_b_vec.detach().clone()
+                for i in range(self.n_sensors):
+                    weights[f"beta_b_{a}_{i}"] = beta_b_vec[i].detach().clone()
+
+            # Gate weights
+            gamma_gate_vec = self._get_gamma_gate_vector(a)
+            weights[f"gamma_gate_{a}"] = gamma_gate_vec.detach().clone()
+            for j in range(self.n_setpoints):
+                weights[f"gamma_gate_{a}_{j}"] = gamma_gate_vec[j].detach().clone()
+            weights[f"alpha_gate_{a}"] = self._get_alpha_gate(a).detach().clone()
+            gate = self._get_gate(a)
+            weights[f"gate_{a}_threshold"] = gate.threshold.get().detach().clone()
+            weights[f"gate_{a}_steepness"] = gate.steepness.get().detach().clone()
+            weights[f"gate_{a}_polarity"] = gate.polarity.get().detach().clone()
+            weights[f"default_output_{a}"] = (
+                self._get_default_output(a).detach().clone()
+            )
+
+        return weights
+
+    def get_candidate_controller(self, actuator: int, candidate: int) -> core.System:
+        """Get a specific candidate controller instance."""
+        return self._get_candidate(actuator, candidate)
+
+    def get_identified_structure(
+        self, threshold: float = 0.5
+    ) -> Dict[str, Union[List, Dict]]:
+        """Get the identified controller structure after thresholding.
+
+        Args:
+            threshold: Threshold for binary decision
+
+        Returns:
+            Dict describing the identified structure per actuator
+        """
+        weights = self.get_selection_weights()
+
+        structure = {
+            "actuators": {},
+            "sensors": [],
+            "setpoints": [],
+        }
+
+        # Identify active candidates per actuator
+        for a in range(self.n_actuators):
+            active_candidates = []
+            for c in range(self.n_candidates):
+                if weights.get(f"alpha_{a}_{c}", torch.tensor(0)).item() > threshold:
+                    ctrl = self._get_candidate(a, c)
+                    active_candidates.append(
+                        {
+                            "index": c,
+                            "class": ctrl.__class__.__name__,
+                            "id": ctrl.id,
+                        }
+                    )
+            structure["actuators"][a] = active_candidates
+
+        # Identify active sensors per actuator
+        structure["sensors"] = {}
+        for a in range(self.n_actuators):
+            active_sensors = []
+            for i in range(self.n_sensors):
+                if weights.get(f"beta_{a}_{i}", torch.tensor(0)).item() > threshold:
+                    active_sensors.append(i)
+            structure["sensors"][a] = active_sensors
+
+        # Identify active setpoints per actuator
+        structure["setpoints"] = {}
+        for a in range(self.n_actuators):
+            active_setpoints = []
+            for j in range(self.n_setpoints):
+                if weights.get(f"gamma_{a}_{j}", torch.tensor(0)).item() > threshold:
+                    active_setpoints.append(j)
+            structure["setpoints"][a] = active_setpoints
+
+        # Identify active B-loop sensors per actuator (cascade controllers)
+        if self._has_cascade:
+            structure["sensors_b"] = {}
+            for a in range(self.n_actuators):
+                active_sensors_b = []
+                for i in range(self.n_sensors):
+                    if (
+                        weights.get(f"beta_b_{a}_{i}", torch.tensor(0)).item()
+                        > threshold
+                    ):
+                        active_sensors_b.append(i)
+                structure["sensors_b"][a] = active_sensors_b
+
+        return structure
+
+    def reset_state(self) -> None:
+        """Reset the state of all candidate controllers."""
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                # Cascade controllers handle their own sub-PID reset
+                if hasattr(ctrl, "reset_state"):
+                    ctrl.reset_state()
+                # Reset PID controller state (direct PID candidates)
+                if hasattr(ctrl, "err_prev"):
+                    ctrl.err_prev = torch.zeros_like(ctrl.err_prev)
+                if hasattr(ctrl, "err_prev_m1"):
+                    ctrl.err_prev_m1 = torch.zeros_like(ctrl.err_prev_m1)
+                if hasattr(ctrl, "u_prev"):
+                    ctrl.u_prev = torch.zeros_like(ctrl.u_prev)
+
+    def summary(self) -> str:
+        """Get a summary of the identified controller."""
+        lines = ["=" * 60]
+        lines.append("Controller Identification Summary")
+        lines.append("=" * 60)
+        lines.append(f"\nConfiguration:")
+        lines.append(f"  Actuators: {self.n_actuators}")
+        lines.append(f"  Sensors: {self.n_sensors}")
+        lines.append(f"  Setpoints: {self.n_setpoints}")
+        lines.append(f"  Candidates: {self.n_candidates}")
+        type_counts = Counter(self._candidate_types)
+        for ctype, count in type_counts.items():
+            lines.append(f"    {ctype}: {count}")
+
+        # Selection weights
+        lines.append("\nSelection Weights:")
+        weights = self.get_selection_weights()
+
+        lines.append("  Alpha (candidate selection):")
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                ctype = self._candidate_types[c]
+                val = weights[f"alpha_{a}_{c}"].item()
+                lines.append(
+                    f"    α_{a},{c} [{ctype}] ({ctrl.__class__.__name__}): {val:.4f}"
+                )
+
+        lines.append("  Beta (sensor selection per actuator):")
+        for a in range(self.n_actuators):
+            lines.append(f"    Actuator {a}:")
+            for i in range(self.n_sensors):
+                val = weights[f"beta_{a}_{i}"].item()
+                lines.append(f"      β_{a},{i}: {val:.4f}")
+
+        lines.append("  Gamma (setpoint selection per actuator):")
+        for a in range(self.n_actuators):
+            lines.append(f"    Actuator {a}:")
+            for j in range(self.n_setpoints):
+                val = weights[f"gamma_{a}_{j}"].item()
+                lines.append(f"      γ_{a},{j}: {val:.4f}")
+
+        if self._max_candidates:
+            lines.append("  Max loops (own feedback selection and setpoint):")
+            for a in range(self.n_actuators):
+                for c in self._max_candidates:
+                    beta_m = getattr(self, f"beta_{a}_{c}").get().detach().reshape(-1)
+                    setpoint = float(getattr(self, f"setpoint_{a}_{c}").get().detach().reshape(-1)[0])
+                    lines.append(
+                        f"    candidate {a},{c}: setpoint {setpoint:.4f}, "
+                        f"β {[round(float(v), 4) for v in beta_m]}"
+                    )
+
+        if self._has_cascade:
+            lines.append("  Beta_b (cascade B-loop sensor selection per actuator):")
+            for a in range(self.n_actuators):
+                lines.append(f"    Actuator {a}:")
+                for i in range(self.n_sensors):
+                    val = weights[f"beta_b_{a}_{i}"].item()
+                    lines.append(f"      β_b_{a},{i}: {val:.4f}")
+
+        lines.append("  Gate (setpoint-based gating per actuator):")
+        for a in range(self.n_actuators):
+            lines.append(f"    Actuator {a}:")
+            alpha_g = weights[f"alpha_gate_{a}"].item()
+            lines.append(f"      α_gate: {alpha_g:.4f}")
+            thresh = weights[f"gate_{a}_threshold"].item()
+            steep = weights[f"gate_{a}_steepness"].item()
+            pol = weights[f"gate_{a}_polarity"].item()
+            lines.append(f"      threshold: {thresh:.4f}")
+            # BandGate exposes a ``band`` width parameter and a derived
+            # ``threshold_high`` property.  Print both edges and the
+            # width so the identified band ``[T_lo, T_hi]`` is visible.
+            gate_a = getattr(self, f"gate_{a}", None)
+            if gate_a is not None and hasattr(gate_a, "band"):
+                width_raw = gate_a.band.get()
+                width = (
+                    width_raw.item() if hasattr(width_raw, "item") else float(width_raw)
+                )
+                thresh_hi = thresh + width
+                lines.append(f"      threshold_high: {thresh_hi:.4f}")
+                lines.append(
+                    f"      band: [{thresh:.4f}, {thresh_hi:.4f}] (width={width:.4f})"
+                )
+            lines.append(f"      steepness: {steep:.4f}")
+            pol_label = "active above" if pol > 0 else "active below"
+            lines.append(f"      polarity: {pol:.4f} ({pol_label})")
+            default_out = weights[f"default_output_{a}"].item()
+            lines.append(f"      default_output: {default_out:.4f}")
+            for j in range(self.n_on_off_signals):
+                val = weights[f"gamma_gate_{a}_{j}"].item()
+                lines.append(f"      γ_gate_{a},{j}: {val:.4f}")
+
+        # Candidate controller parameters
+        lines.append("\nCandidate Controller Parameters:")
+        for a in range(self.n_actuators):
+            lines.append(f"  Actuator {a}:")
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                ctype = self._candidate_types[c]
+                lines.append(
+                    f"    Candidate {c} [{ctype}] ({ctrl.__class__.__name__}):"
+                )
+
+                if ctype == self.CTRL_CASCADE:
+                    for sub_name in ("ctrl_a", "ctrl_b"):
+                        sub = getattr(ctrl, sub_name)
+                        lines.append(f"      {sub_name} ({sub.__class__.__name__}):")
+                        self._summary_pid_params(lines, sub, indent=8)
+                else:
+                    self._summary_pid_params(lines, ctrl, indent=6)
+
+        # Identified structure
+        structure = self.get_identified_structure()
+        lines.append("\nIdentified Structure (threshold=0.5):")
+        for a in range(self.n_actuators):
+            lines.append(f"  Actuator {a}:")
+            lines.append(f"    Active sensors: {structure['sensors'].get(a, [])}")
+            lines.append(f"    Active setpoints: {structure['setpoints'].get(a, [])}")
+            if self._has_cascade:
+                lines.append(
+                    f"    Active B-loop sensors: {structure.get('sensors_b', {}).get(a, [])}"
+                )
+            candidates = structure["actuators"].get(a, [])
+            lines.append(f"    Active controllers: {[c['class'] for c in candidates]}")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
+    def get_estimator_parameters(self) -> List[tuple]:
+        """Get parameter specifications for use with twin4build Estimator.
+
+        Returns a list of parameter tuples for all selection weights and
+        candidate controller parameters. Uses vector Parameters with n_c
+        dimension for efficient handling of multiple weights.
+
+        Returns:
+            List of tuples: [(component, attr, x0, lb, ub, "private"), ...]
+                - x0 can be scalar (broadcast to n_c) or array of shape (n_c,)
+                - lb, ub can be scalar (broadcast) or array of shape (n_c,)
+        """
+        # Build candidate controllers if not yet built (e.g. when called before
+        # initialize() after auto-translation, where n_sensors/n_setpoints are
+        # inferred from wired connections rather than constructor arguments).
+        if not self._built:
+            n_s = self.get_n_v_from_connections("sensorValue")
+            n_sp = self.get_n_v_from_connections("setpointValue")
+            n_oo = self.get_n_v_from_connections("onOffSignal")
+            n_act = self._get_n_actuators_from_connections()
+            if n_s is not None:
+                self.n_sensors = n_s
+            if n_sp is not None:
+                self.n_setpoints = n_sp
+            if n_oo is not None:
+                self.n_on_off_signals = n_oo
+            if n_act is not None:
+                self.n_actuators = n_act
+            if (
+                self.n_sensors is not None
+                and self.n_setpoints is not None
+                and self.n_on_off_signals is not None
+            ):
+                self._build_components()
+
+        params = []
+
+        weight_lb = 0.0
+        weight_ub = 1.0
+
+        # Initial values: uniform distribution (1/n)
+        alpha_x0 = 0.5
+        beta_x0 = 0.5
+        gamma_x0 = 0.5
+
+        # All selection weights are per-actuator:
+        # - alpha_{a}: candidate selection (n_c = n_candidates)
+        # - beta_{a}: sensor selection (n_c = n_sensors)
+        # - gamma_{a}: setpoint selection (n_c = n_setpoints)
+        for a in range(self.n_actuators):
+            params.append(
+                (self, f"alpha_{a}", alpha_x0, weight_lb, weight_ub, "private")
+            )
+            params.append((self, f"beta_{a}", beta_x0, weight_lb, weight_ub, "private"))
+            params.append(
+                (self, f"gamma_{a}", gamma_x0, weight_lb, weight_ub, "private")
+            )
+            if self._has_cascade:
+                params.append(
+                    (self, f"beta_b_{a}", beta_x0, weight_lb, weight_ub, "private")
+                )
+
+            # Gate parameters (steepness is a hyperparameter, not estimated)
+            params.append(
+                (self, f"gamma_gate_{a}", gamma_x0, weight_lb, weight_ub, "private")
+            )
+            params.append((self, f"gate_{a}.threshold", 18.0, 10.0, 30.0, "private"))
+            # Only BandGate (and subclasses) expose a ``band`` width.
+            # Advertise it to the estimator so users who swap in a
+            # BandGate can learn the zone-specific deadband width;
+            # callers using a plain SigmoidGate simply won't see this
+            # parameter.  The upper edge ``threshold_high`` is derived
+            # from ``threshold + band`` and not estimated directly,
+            # which structurally prevents ``T_hi < T_lo``.
+            gate_a = getattr(self, f"gate_{a}", None)
+            if gate_a is not None and hasattr(gate_a, "band"):
+                params.append((self, f"gate_{a}.band", 4.0, 0.0, 20.0, "private"))
+            params.append((self, f"gate_{a}.polarity", 1.0, -1.0, 1.0, "private"))
+            params.append(
+                (self, f"alpha_gate_{a}", 0.5, weight_lb, weight_ub, "private")
+            )
+            params.append((self, f"default_output_{a}", 0.0, 0.0, 1.0, "private"))
+
+        # Candidate controller parameters - accessed through parent using dot notation
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                ctype = self._candidate_types[c]
+                prefix = f"candidate_{a}_{c}"
+
+                if ctype == self.CTRL_CASCADE:
+                    # Cascade: expose both sub-controller params (ctrl_a, ctrl_b)
+                    # ctrl_a saturation = intermediate clamp (estimated)
+                    # ctrl_b saturation = final output (fixed at 0/1)
+                    for sub_name in ("ctrl_a", "ctrl_b"):
+                        sub = getattr(ctrl, sub_name)
+                        sub_prefix = f"{prefix}.{sub_name}"
+                        if hasattr(sub, "kp"):
+                            params.append(
+                                (self, f"{sub_prefix}.kp", 0.1, 0.001, 10, "private")
+                            )
+                        if hasattr(sub, "Ti"):
+                            params.append(
+                                (self, f"{sub_prefix}.Ti", 10, 1.0, 10000.0, "private")
+                            )
+                        if hasattr(sub, "Td"):
+                            params.append(
+                                (self, f"{sub_prefix}.Td", 0.0, 0.0, 0.0001, "private")
+                            )
+                        if sub_name == "ctrl_a":
+                            if hasattr(sub, "output_min"):
+                                params.append(
+                                    (
+                                        self,
+                                        f"{sub_prefix}.output_min",
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        "private",
+                                    )
+                                )
+                            if hasattr(sub, "output_max"):
+                                params.append(
+                                    (
+                                        self,
+                                        f"{sub_prefix}.output_max",
+                                        1.0,
+                                        0.0,
+                                        1.0,
+                                        "private",
+                                    )
+                                )
+                else:
+                    # Standard setpoint controllers (PID, etc.)
+                    self._append_pid_params(params, ctrl, prefix)
+
+        return params
+
+    def get_gradient_scales(self, weight_scale: float = 0.01) -> List[float]:
+        """Get recommended gradient scaling factors for each parameter.
+
+        Selection weights (alpha, beta, gamma) typically have gradients ~100x
+        larger than controller parameters due to directly multiplying signals.
+        This method returns scaling factors that balance the gradients.
+
+        Note: With vector Parameters, the scales are per-parameter (not per-element).
+        The Estimator handles expanding scales to match n_c dimensions internally.
+
+        Args:
+            weight_scale: Scaling factor for selection weight gradients.
+                Default 0.01 reduces weight gradients by 100x.
+
+        Returns:
+            List of gradient scales matching the order from get_estimator_parameters()
+
+        Example:
+            >>> params = controller.get_estimator_parameters()
+            >>> scales = controller.get_gradient_scales()
+            >>> result = estimator.estimate(
+            ...     parameters=params,
+            ...     gradient_scales=scales,
+            ...     ...
+            ... )
+        """
+        scales = []
+
+        for a in range(self.n_actuators):
+            scales.append(weight_scale)  # alpha
+            scales.append(weight_scale)  # beta
+            scales.append(weight_scale)  # gamma
+            if self._has_cascade:
+                scales.append(weight_scale)  # beta_b
+            scales.append(weight_scale)  # gamma_gate
+            scales.append(1.0)  # gate.threshold
+            scales.append(1.0)  # gate.polarity
+            scales.append(weight_scale)  # alpha_gate
+            scales.append(1.0)  # default_output
+
+        # Controller parameters - no scaling (1.0)
+        # Must match the order and count of get_estimator_parameters()
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                ctype = self._candidate_types[c]
+
+                if ctype == self.CTRL_CASCADE:
+                    for sub_name in ("ctrl_a", "ctrl_b"):
+                        sub = getattr(ctrl, sub_name)
+                        for attr_name in ("kp", "Ti", "Td", "output_min", "output_max"):
+                            if hasattr(sub, attr_name):
+                                scales.append(1.0)
+                else:
+                    self._append_pid_scales(scales, ctrl)
+
+        return scales
+
+
+# NOTE: BRICK pattern registration disabled for the generic CITS class.  The
+# matching patterns are now registered on
+# :class:`ControllerIdentificationPISystem` so the translator builds
+# PI-only CITS instances (with the joint regression loop classifier as a
+# pre-step).  The generic class still works programmatically; it just no
+# longer matches BRICK topologies during translation.  Re-enable this line
+# (and the damper variant below) if you want both classes to compete.
+# ControllerIdentificationSystem.add_signature_pattern(brick_signature_pattern_vav())
+
+
+# NOTE: see comment above the previous registration; re-enable this if both
+# CITS variants should compete during translation.
+# ControllerIdentificationSystem.add_signature_pattern(brick_signature_pattern_vav_damper())
+
+# Deprecated aliases (removed in twin4build 2.1)
+ControllerIdentificationTorchSystem = ControllerIdentificationSystem

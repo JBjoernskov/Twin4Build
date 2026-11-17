@@ -13,25 +13,25 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'airFlowRateMax', value['airFlowRateMax'], 's4bldg:AirFlowRateMax') }}
+      {{ create_property_value_triples(value['id'], 'airFlowRateMax', value['airFlowRateMax'], 's4bldg:airFlowRateMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'airFlowRateMin', value['airFlowRateMin'], 's4bldg:AirFlowRateMin') }}
+      {{ create_property_value_triples(value['id'], 'airFlowRateMin', value['airFlowRateMin'], 's4bldg:airFlowRateMin') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalLatentCapacity', value['nominalLatentCapacity'], 's4bldg:NominalLatentCapacity') }}
+      {{ create_property_value_triples(value['id'], 'nominalLatentCapacity', value['nominalLatentCapacity'], 's4bldg:nominalLatentCapacity') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalSensibleCapacity', value['nominalSensibleCapacity'], 's4bldg:NominalSensibleCapacity') }}
+      {{ create_property_value_triples(value['id'], 'nominalSensibleCapacity', value['nominalSensibleCapacity'], 's4bldg:nominalSensibleCapacity') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalUa', value['nominalUa'], 's4bldg:NominalUa') }}
+      {{ create_property_value_triples(value['id'], 'nominalUa', value['nominalUa'], 's4bldg:nominalUa') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:OperationTemperatureMax') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:operationTemperatureMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:OperationTemperatureMin') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:operationTemperatureMin') }}
 
   # Data properties
   - template: |-

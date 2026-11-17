@@ -13,19 +13,19 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'closeOffRating', value['closeOffRating'], 's4bldg:CloseOffRating') }}
+      {{ create_property_value_triples(value['id'], 'closeOffRating', value['closeOffRating'], 's4bldg:closeOffRating') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'flowCoefficient', value['flowCoefficient'], 's4bldg:FlowCoefficient') }}
+      {{ create_property_value_triples(value['id'], 'flowCoefficient', value['flowCoefficient'], 's4bldg:flowCoefficient') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'size', value['size'], 's4bldg:Size') }}
+      {{ create_property_value_triples(value['id'], 'size', value['size'], 's4bldg:size') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'testPressure', value['testPressure'], 's4bldg:TestPressure') }}
+      {{ create_property_value_triples(value['id'], 'testPressure', value['testPressure'], 's4bldg:testPressure') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'workingPressure', value['workingPressure'], 's4bldg:WorkingPressure') }}
+      {{ create_property_value_triples(value['id'], 'workingPressure', value['workingPressure'], 's4bldg:workingPressure') }}
 
   # Data properties
   - template: |-

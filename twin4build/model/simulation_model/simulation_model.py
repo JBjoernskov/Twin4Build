@@ -3,11 +3,12 @@ from __future__ import annotations
 # Standard library imports
 import copy
 import datetime
+import itertools
 import json
 import os
 import pickle
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 # Third party imports
 import numpy as np
@@ -15,9 +16,12 @@ import torch
 import torch.nn.parameter
 from prettytable import PrettyTable
 from rdflib import RDF, RDFS, Literal, Namespace
+from bs4 import BeautifulSoup
+import pydotplus as pdp
 
 # Local application imports
 import twin4build.core as core
+from twin4build.utils.slots import slot_pairs
 import twin4build.estimator.estimator as estimator
 import twin4build.systems as systems
 import twin4build.utils.types as tps
@@ -27,18 +31,150 @@ from twin4build.utils.dict_utils import (
     flatten_dict,
     merge_dicts,
 )
-from twin4build.utils.get_object_attributes import get_object_attributes
-from twin4build.utils.isnumeric import isnumeric
-from twin4build.utils.istype import istype
+from twin4build.utils.get_main_dir import get_main_dir
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress
+from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.simple_cycle import simple_cycles
+from twin4build.utils.validate_period import validate_period
+from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
+    _rewire_pi_loops,
+)
+from twin4build.systems.registry import SERIALIZED_KEYS as SYSTEM_TYPE_KEYS
+from twin4build.systems.registry import PROVIDER_KEY, PROVIDER_VERSION_KEY, TYPE_ID_KEY
+from twin4build.systems.registry import SystemRegistry
+from twin4build.systems.registry import system_registry as default_system_registry
+from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSystem
+from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.device import ensure_cuda_available, move_object_tensors
 
-INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
+#: The characters an id may hold besides letters and digits (despite the name).  ``+`` is the translator's: a
+#: composite's id capped at its name budget ends in ``+N``, the members left out
+#: (``Translator._composite_component_id``), and a model holding one must load.
+INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]", "+"]
+
+# Hard cap on id length. Ids are used as filename components under
+# ``model_parameters/<class>/<id>.json`` and similar; on Windows the full
+# path must stay under MAX_PATH (260 chars) unless long-path support is
+# enabled, so we bound the id at a value that leaves headroom for the
+# project directory, class folder, and file extension.
+MAX_ID_LEN = 100
+#: The most simple cycles :meth:`SimulationModel._remove_cycles` holds at once: a
+#: graph with more is cut from that many at a time and searched again once they
+#: are used up (below it the list is complete, as one search).
+CYCLE_SAMPLE = 200_000
+
+
+def _check_id(id: str, kind: str) -> None:
+    """Validate that ``id`` is a legal string of allowed characters and
+    within :data:`MAX_ID_LEN`. Raises :class:`AssertionError` with a
+    descriptive message on failure.
+
+    ``kind`` is a short label (e.g. ``"model"`` or ``"component"``) used in
+    the error message.
+    """
+    assert isinstance(id, str), f'Argument "id" must be of type {str(type(str))}'
+    assert len(id) <= MAX_ID_LEN, (
+        f'The {kind} with id "{id}" exceeds the maximum id length of '
+        f"{MAX_ID_LEN} characters (got {len(id)}). Ids are used as "
+        f"filename components; long ids trip Windows MAX_PATH and cause "
+        f"OSError at load/save time."
+    )
+    isvalid = np.array([x.isalnum() or x in INVALID_ID_CHARS for x in id])
+    np_id = np.array(list(id))
+    violated_characters = list(np_id[isvalid == False])
+    assert all(isvalid), (
+        f'The {kind} with id "{id}" has an invalid id. The characters '
+        f'"{", ".join(violated_characters)}" are not allowed.'
+    )
+
+
+def _index_literal(idx):
+    """A port index as a literal: an int, a list for a multi-slot tensor."""
+    if isinstance(idx, torch.Tensor):
+        return idx.item() if idx.numel() == 1 else idx.reshape(-1).tolist()
+    if isinstance(idx, int):
+        return int(idx)
+    return idx
+
+
+def _convert_literal_value(value):
+    """
+    Convert an RDF literal value to its appropriate Python type.
+
+    When RDF literals are loaded without explicit datatypes, they come back as strings.
+    This function attempts to convert them to the appropriate Python type.
+    Also unwraps single-element lists to scalar values for backward compatibility.
+
+    Args:
+        value: The literal value to convert (typically a string, but may already be parsed)
+
+    Returns:
+        The converted value with appropriate Python type (int, float, bool, dict, list, or str)
+    """
+    if value is None:
+        return None
+
+    # If it's already a list (e.g., rdflib parsed JSON), unwrap single-element lists
+    if isinstance(value, list):
+        if len(value) == 1:
+            return value[0]
+        return value
+
+    # If it's another non-string type (dict, int, float, bool), return as-is
+    if not isinstance(value, str):
+        return value
+
+    # Try to parse as JSON first (for dicts/lists)
+    if value.startswith("{") or value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            # Unwrap single-element lists to scalar values for backward compatibility
+            # This handles cases where tensor Parameters were serialized as [value]
+            # but the component constructor expects a scalar
+            if isinstance(parsed, list) and len(parsed) == 1:
+                return parsed[0]
+            return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Handle boolean values
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+
+    # Handle None
+    if value == "None":
+        return None
+
+    # Try to convert to int first (more specific)
+    try:
+        # Check if it's a valid integer representation
+        if "." not in value and "e" not in value.lower():
+            return int(value)
+    except ValueError:
+        pass
+
+    # Try to convert to float
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    # Return as string if no conversion succeeded
+    return value
+
+
+@autoreset_print
+def _slot_or_zero(index) -> int:
+    """An input slot index as an int; a scalar port (no index) is slot 0."""
+    if index is None or isinstance(index, slice):
+        return 0
+    return int(index.item()) if hasattr(index, "item") else int(index)
 
 
 class SimulationModel:
@@ -53,14 +189,14 @@ class SimulationModel:
         id: Unique identifier for the model.
         dir_conf: List of directories to store model-related files.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     The simulation model preparation process involves two main steps: cycle removal and
     topological sorting to create an executable simulation sequence.
 
-    Component Dependency Graph:
-    ---------------------------
+    Component Dependency Graph
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     The simulation model can be represented as a directed multigraph :math:`G = (V, E, \iota)` comprising:
 
@@ -83,8 +219,8 @@ class SimulationModel:
         - Each edge :math:`e_i \in E` with :math:`\iota(e_i) = (c_j, c_k)` indicates that component :math:`c_j` provides input to component :math:`c_k`
         - Multiple edges can map to the same vertex pair (multigraph): :math:`\iota(e_i) = \iota(e_j) = (c_p, c_q)`
 
-    Optimized Cycle Removal Process:
-    --------------------------------
+    Optimized Cycle Removal Process
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     To find the execution order of the components (i.e. the topologically sorted order), we need to remove cycles from the dependency graph first.
     Such cycles can arise in the simulation model due to different reasons, e.g. modeling of feedback control loops or mutual dependencies between components (model a requires an input from model b and model b requires an input from model a).
@@ -133,8 +269,8 @@ class SimulationModel:
        This means, for all :math:`(c_i, c_j) \in E_{init}`, :math:`c_j` must have initial values provided.
 
 
-    Topological Sorting Process:
-    -----------------------------
+    Topological Sorting Process
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     After cycle removal, we need to find a topological ordering of the acyclic graph :math:`G_{acyclic} = (V, E_{acyclic})`.
     A topological ordering is a linear arrangement of vertices :math:`L` such that for every directed edge :math:`(c_i, c_j) \in E_{acyclic}`,
@@ -180,10 +316,11 @@ class SimulationModel:
     Examples:
         Basic model setup and preparation:
 
-        >>> model = SimulationModel(id="building_model")
+        >>> import twin4build as tb
+        >>> model = tb.SimulationModel(id="building_model")
         >>> # Create components
         >>> schedule = tb.ScheduleSystem(id="schedule")
-        >>> damper = tb.DamperTorchSystem(id="damper")
+        >>> damper = tb.DamperSystem(id="damper")
         >>> # Add components to model
         >>> model.add_component(schedule)
         >>> model.add_component(damper)
@@ -204,15 +341,21 @@ class SimulationModel:
         "_flat_execution_order",
         "_required_initialization_connections",
         "_components_no_cycles",
+        "_removed_cycle_edges",
+        "_source_cuts",
+        "_fused_components",
+        "_fusion_member_to_fused",
+        "enable_fusion",
+        "_device",
         "_is_loaded",
-        "_is_validated",
         "_result",
-        "_validated_for_simulator",
-        "_validated_for_estimator",
-        "_validated_for_optimizer",
-        "_validated_for_monitor",
         "_dir_conf",
         "_semantic_model",
+        "_translator",
+        "_rewire_reports",
+        "_system_registry",
+        "_initial_state",
+        "_initialization_count",
     )
 
     def __str__(self):
@@ -245,62 +388,157 @@ class SimulationModel:
 
         return t.get_string()
 
-    def __init__(self, id: str, dir_conf: List[str] = None) -> None:
+    def __init__(
+        self,
+        id: str,
+        dir_conf: List[str] = None,
+        system_registry: Optional[SystemRegistry] = None,
+    ) -> None:
         """
-        Initialize the Model instance.
+        Initialize the SimulationModel instance.
 
         Args:
             id: Unique identifier for the model.
             dir_conf: List of directories to store model-related files.
+            system_registry: Registry of the external ``System`` classes the
+                model serializes and loads (see
+                :mod:`twin4build.systems.registry`). ``None`` uses the default
+                registry, ``twin4build.system_registry``.
+
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
         self._id = id
         if dir_conf is None:
-            self._dir_conf = ["generated_files", "models", self._id]
+            self._dir_conf = ["generated_files", "models", self._id, "simulation_model"]
         else:
             self._dir_conf = dir_conf
 
-        assert isinstance(id, str), f'Argument "id" must be of type {str(type(str))}'
-        isvalid = np.array([x.isalnum() or x in INVALID_ID_CHARS for x in id])
-        np_id = np.array(list(id))
-        violated_characters = list(np_id[isvalid == False])
-        assert all(
-            isvalid
-        ), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+        _check_id(id, kind="model")
         self._id = id
         self._components = {}
+        self._execution_order = []
+        self._flat_execution_order = []
+        self._required_initialization_connections = []
+        self._initial_state = None  # see set_state
+        self._initialization_count = 0  # see initialization_count
+        self._components_no_cycles = {}
+        self._source_cuts = None  # a batched model's: see _cut_source_cuts
+        self._fused_components = {}
+        self._fusion_member_to_fused = {}
         self._saved_parameters = {}
         self._custom_initial_dict = None
+        self._device = torch.device("cpu")
         self._is_loaded = False
-        self._is_validated = False
+        self._rewire_reports = {}
+        self._system_registry = system_registry
 
         self._semantic_model = core.SemanticModel(
             id=self._id,
             namespaces={
-                "SIM": core.namespace.SIM,
-                "SAREF": core.namespace.SAREF,
-                "S4BLDG": core.namespace.S4BLDG,
+                "T4B": core.namespace.T4B,
+                # "SAREF": core.namespace.SAREF,
+                # "S4BLDG": core.namespace.S4BLDG,
                 "S4SYST": core.namespace.S4SYST,
-                "FSO": core.namespace.FSO,
             },
             dir_conf=self._dir_conf + ["semantic_model"],
         )
+
+        self._translator = None
 
     @property
     def components(self) -> dict:
         return self._components
 
     @property
+    def system_registry(self) -> SystemRegistry:
+        """Registry that resolves the external ``System`` classes of the model."""
+        # getattr: models unpickled from before the attribute existed
+        registry = getattr(self, "_system_registry", None)
+        if registry is None:
+            return default_system_registry
+        return registry
+
+    @property
+    def device(self) -> torch.device:
+        """Device on which simulation tensors are allocated (default cpu)."""
+        # getattr: models unpickled from before the attribute existed
+        return getattr(self, "_device", None) or torch.device("cpu")
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Floating-point dtype used for simulation tensors."""
+        return tps.float_dtype()
+
+    def to(self, device=None, dtype: torch.dtype = None) -> "SimulationModel":
+        """Move the model to a device and/or floating-point dtype.
+
+        Torch-style: ``model.to("cuda")``, ``model.to("cuda", torch.float32)``.
+        Moves every tensor the components currently own (parameters, bounds,
+        port tensors, cached matrices) and records the target so that all
+        tensors allocated later -- ``initialize()`` runs under
+        ``torch.device(self.device)`` -- land on the same device.  The
+        simulator, estimator and optimizer follow the model's device
+        automatically.  ``dtype`` is process-wide (see
+        :func:`twin4build.utils.types.set_float_dtype`).
+
+        Returns:
+            The model itself, for chaining.
+        """
+
+        if device is not None:
+            ensure_cuda_available(device)
+            self._device = torch.device(device)
+        if dtype is not None:
+            tps.set_float_dtype(dtype)
+        move_dtype = tps.float_dtype() if dtype is not None else None
+        # One walk over the whole model: the walk from a component reaches
+        # the others through the wiring, so a per-component walk visited
+        # every object once per component (minutes on 2000 components).
+        seen: set = set()
+        for component in self._components.values():
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
+            self._move_connection_indices(component, self.device)
+        for component in (self._fused_components or {}).values():
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
+            self._move_connection_indices(component, self.device)
+        return self
+
+    @staticmethod
+    def _move_connection_indices(component, device) -> None:
+        """Slot and instance index tensors of the wiring into ``component``
+        follow the model's device: the functional engine gathers with them
+        every step, and a CUDA-graph capture cannot copy them from the host."""
+        for cp in getattr(component, "connects_at", ()):
+            for table in (
+                cp.output_port_index,
+                cp.input_port_index,
+                cp.output_component_index,
+                cp.input_component_index,
+            ):
+                for conn, index in list(table.items()):
+                    if isinstance(index, torch.Tensor) and index.device != torch.device(device):
+                        table[conn] = index.to(device)
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
+
+    @property
+    def rewire_reports(self) -> dict:
+        """Per-CITS reports produced by the most recent :meth:`rewire` call."""
+        return self._rewire_reports
+
+    @property
     def dir_conf(self) -> List[str]:
         return self._dir_conf
 
     @property
-    def execution_order(self) -> List[str]:
+    def execution_order(self) -> List[List[core.System]]:
         return self._execution_order
 
     @property
-    def flat_execution_order(self) -> List[str]:
+    def flat_execution_order(self) -> List[core.System]:
         return self._flat_execution_order
 
     @dir_conf.setter
@@ -309,6 +547,7 @@ class SimulationModel:
             isinstance(x, str) for x in dir_conf
         ), f"The set value must be of type {list} and contain strings"
         self._dir_conf = dir_conf
+        self._semantic_model.dir_conf = dir_conf + ["semantic_model"]
 
     def get_dir(
         self, folder_list: List[str] = [], filename: Optional[str] = None
@@ -354,163 +593,9 @@ class SimulationModel:
             ), f'The component with id "{component.id}" already exists in the model.'
 
         if components == self._components:
-            self._update_literals(component)
+            self._update_literals([component])
 
-    def make_pickable(self) -> None:
-        """
-        Make the model instance pickable by removing unpickable references.
-
-        This method prepares the Model instance for use with multiprocessing, e.g. in the Estimator class.
-        """
-        # for c in self._components.values():
-        #     print(f"Making {c.id} pickable")
-        #     for k, input_ in c.input.items():
-        #         print(f"Making {k} of pickable")
-        #         input_.make_pickable()
-        #     for k, output_ in c.output.items():
-        #         print(f"Making {k} of pickable")
-        #         output_.make_pickable()
-
-        self.reset_torch_tensors()
-
-        fmus = self.get_component_by_class(self._components, systems.fmuSystem)
-        for fmu in fmus:
-            if "fmu" in get_object_attributes(fmu):
-                del fmu.fmu
-                del fmu.fmu_initial_state
-                fmu.INITIALIZED = False
-
-    def reset_torch_tensors(self) -> None:
-        """
-        Reset all torch.Tensor objects in the model to remove TensorWrapper references.
-
-        This method iterates through all components and their attributes to find torch.Tensor
-        objects that might contain TensorWrapper (which causes pickling issues). It creates
-        new tensors with the same values but without gradient tracking.
-
-        This is particularly useful when switching from AD (automatic differentiation) to
-        FD (finite difference) methods in the Estimator, as AD methods create gradient-tracking
-        tensors that cannot be pickled for multiprocessing.
-        """
-
-        def reset_tensor(tensor):
-            """
-            Reset a torch tensor if it contains TensorWrapper or has gradient tracking.
-
-            Args:
-                tensor: The tensor to check and potentially reset
-                path: Path for debugging purposes
-
-            Returns:
-                The original tensor or a new tensor without gradient tracking
-            """
-            assert isinstance(
-                tensor, torch.Tensor
-            ), f"The tensor must be of type {torch.Tensor.__name__}"
-
-            # First handle special cases
-            if isinstance(tensor, tps.Parameter):
-                tensor = tps.Parameter(
-                    tensor.get(),
-                    min_value=tensor._min_value,
-                    max_value=tensor._max_value,
-                    requires_grad=False,
-                )
-            elif isinstance(tensor, tps.TensorParameter):
-                tensor = tps.TensorParameter(
-                    tensor.get(),
-                    min_value=tensor._min_value,
-                    max_value=tensor._max_value,
-                    normalized=False,
-                )
-            elif isinstance(tensor, torch.Tensor):
-                tensor = (
-                    tensor.detach().clone().requires_grad_(False).type(torch.float64)
-                )
-
-            return tensor
-
-        def reset_object_tensors(obj, obj_path="", visited=None):
-            """
-            Recursively reset tensors in an object and its attributes.
-
-            Args:
-                obj: The object to process
-                obj_path: Path for debugging purposes
-                visited: Set of already visited object IDs to prevent infinite recursion
-            """
-            if obj is None:
-                return
-
-            # Initialize visited set if not provided
-            if visited is None:
-                visited = set()
-
-            # Create a unique identifier for this object to prevent infinite recursion
-            obj_id = id(obj)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
-
-            # print(f"Current object: {obj_path}")
-
-            # Handle different types of objects
-            if isinstance(obj, torch.Tensor):
-                # Direct tensor - reset if needed
-                return reset_tensor(obj)
-
-            elif isinstance(obj, (list, tuple)):
-                # Container - process each element
-                for i, item in enumerate(obj):
-                    item_path = f"{obj_path}[{i}]"
-                    if isinstance(item, torch.Tensor):
-                        new_item = reset_tensor(item)
-                        if new_item is not item:
-                            obj[i] = new_item
-                    else:
-                        # Recursively process non-tensor items
-                        reset_object_tensors(item, item_path, visited)
-
-            elif isinstance(obj, dict):
-                # Dictionary - process each value
-                for key, value in obj.items():
-                    value_path = f"{obj_path}.{key}"
-                    if isinstance(value, torch.Tensor):
-                        new_value = reset_tensor(value)
-                        if new_value is not value:
-                            obj[key] = new_value
-                    else:
-                        # Recursively process non-tensor values
-                        reset_object_tensors(value, value_path, visited)
-
-            elif hasattr(obj, "__dict__"):
-                # Object with attributes - process each attribute
-                for attr_name, attr_value in obj.__dict__.items():
-                    attr_path = f"{obj_path}.{attr_name}"
-                    if isinstance(attr_value, torch.Tensor):
-                        new_value = reset_tensor(attr_value)
-                        if new_value is not attr_value:
-                            setattr(obj, attr_name, new_value)
-                    else:
-                        # Recursively process non-tensor attributes
-                        reset_object_tensors(attr_value, attr_path, visited)
-
-        # print("Resetting torch tensors in model components...")
-
-        # Process each component
-        for comp_id, component in self._components.items():
-            # print(f"Processing component: {comp_id}")
-
-            # Reset tensors in the component itself
-            reset_object_tensors(component, f"component.{comp_id}")
-
-            # Reset tensors in component properties (input, output, parameters)
-            # for prop_name in ['input', 'output', 'parameters']:
-            #     if hasattr(component, prop_name):
-            #         prop_value = getattr(component, prop_name)
-            #         reset_object_tensors(prop_value, f"component.{comp_id}.{prop_name}")
-
-        # print("Torch tensor reset complete.")
+        self._is_loaded = False
 
     def remove_component(
         self, component: core.System, components: Dict[str, core.System] = None
@@ -527,8 +612,8 @@ class SimulationModel:
                 self.remove_connection(
                     connection.connects_system,
                     component,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         # Connection from component
@@ -537,22 +622,146 @@ class SimulationModel:
                 self.remove_connection(
                     component,
                     connection_point.connection_point_of,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         if components is None:
             components = self._components
 
+        if components is self._components:
+            component_uri = self._semantic_model.T4B.__getitem__(component.id)
+            self._semantic_model.instance_graph.remove((component_uri, None, None))
+            self._semantic_model.instance_graph.remove((None, None, component_uri))
+
         del components[component.id]
+        self._is_loaded = False
+
+    @staticmethod
+    def _resolve_port_index(
+        port_index: Optional[Union[int, torch.Tensor]],
+        this_port: Union[tps.Scalar, tps.Vector],
+        other_port: Union[tps.Scalar, tps.Vector],
+        this_port_name: str,
+        other_port_name: str,
+        paired: bool = False,
+        fan_out: bool = False,
+    ) -> Optional[Union[int, torch.Tensor]]:
+        """
+        Validate and resolve a port index for connections.
+
+        Returns the appropriate index value: the provided index if valid,
+        a generated range for vector-to-vector mappings, or None for scalars.
+        ``paired`` marks a batched connection whose tensor indices are
+        aligned with component indices: a tensor of slots may then face a
+        scalar port on the other side (one slot per instance).
+        ``fan_out`` marks the input side of a connection: a tensor of slots
+        there may face a scalar output, whose one value then fills every
+        listed slot (a room's temperature on each AHU branch serving it).
+        """
+        if port_index is not None:
+            assert isinstance(
+                this_port, tps.Vector
+            ), f"If {this_port_name} port index is set, {this_port_name} port must be a vector"
+            assert isinstance(
+                port_index, (torch.Tensor, int)
+            ), f"If {this_port_name} port index is set, it must either be an integer or a torch.Tensor"
+            if isinstance(port_index, torch.Tensor):
+                assert paired or fan_out or isinstance(other_port, tps.Vector), (
+                    f"If {this_port_name} port index is set and is a torch.Tensor, "
+                    f"{other_port_name} port must be a vector"
+                )
+                if fan_out and not paired and isinstance(other_port, tps.Scalar):
+                    slots = port_index.reshape(-1)
+                    assert slots.numel() == torch.unique(slots).numel(), (
+                        f"{this_port_name} port index {slots.tolist()} lists a slot twice"
+                    )
+            else:
+                # ``int`` ``port_index`` selects one slot of this Vector port.
+                # The opposite side may be either a Scalar (slot value flows
+                # straight to/from a scalar peer) or a Vector with its own
+                # explicit ``int`` slot (single-slot-to-single-slot bridge,
+                # e.g. CITS.inputSignal[0] -> AHU.supplyDamperPosition[3]).
+                # The translator's ``resolve_port_indices`` populates both
+                # ints in that Vector->Vector case after Vector port slot
+                # ordinals are resolved on both ends.
+                assert isinstance(other_port, (tps.Scalar, tps.Vector)), (
+                    f"If {this_port_name} port index is set and is an integer, "
+                    f"{other_port_name} port must be a scalar or vector, got "
+                    f"{other_port.__class__.__name__}"
+                )
+            return port_index
+        else:
+            if isinstance(other_port, tps.Vector) and isinstance(this_port, tps.Vector):
+                return torch.arange(this_port.size)  # Map directly
+            elif isinstance(this_port, tps.Vector) and isinstance(other_port, tps.Scalar):
+                # A scalar into a Vector port without an index takes slot 0:
+                # the single-branch case (one damper feeding one zone) needs
+                # no index, exactly as it did when the port was a Scalar.
+                return 0
+            else:
+                assert isinstance(this_port, tps.Scalar), (
+                    f"If {this_port_name} port index is not set, both output and input ports "
+                    f"must be scalars. Got {other_port_name} port type {other_port.__class__.__name__} "
+                    f"and {this_port_name} port type {this_port.__class__.__name__}"
+                )
+                return None
+
+    def _merge_vector_connection(
+        self,
+        sender_component,
+        receiver_component,
+        connection,
+        connection_point,
+        output_port,
+        input_port,
+        output_port_index,
+        input_port_index,
+        message,
+    ) -> None:
+        """Append more slots to an existing connection into a Vector input.
+
+        Vector -> Vector: one more (output slot, input slot) pair per call.
+        Scalar -> Vector: more input slots, each filled with the scalar's one
+        value (a room's temperature on every AHU branch serving it)."""
+        this_out = sender_component.output[output_port]
+        this_in = receiver_component.input[input_port]
+        assert isinstance(this_in, tps.Vector) and input_port_index is not None, message
+
+        def _as_1d(index):
+            return torch.as_tensor(index, dtype=torch.long).reshape(-1)
+
+        old_in = _as_1d(connection_point.input_port_index[connection])
+        new_in = _as_1d(input_port_index)
+        assert new_in.numel() == torch.unique(new_in).numel(), (
+            f"{message} (input port index {new_in.tolist()} lists a slot twice)"
+        )
+        assert not bool(torch.isin(new_in, old_in).any()), (
+            f"{message} (slot {new_in.tolist()} of {input_port} is already wired)"
+        )
+        if isinstance(this_out, tps.Scalar):
+            assert output_port_index is None, message
+            connection_point.set_input_port_index(connection, torch.cat([old_in, new_in]))
+            return
+        assert isinstance(this_out, tps.Vector) and output_port_index is not None, message
+        old_out = _as_1d(connection_point.output_port_index[connection])
+        new_out = _as_1d(output_port_index)
+        assert new_in.numel() == new_out.numel(), message
+        connection_point.set_input_port_index(connection, torch.cat([old_in, new_in]))
+        connection_point.set_output_port_index(connection, torch.cat([old_out, new_out]))
 
     def add_connection(
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
+        output_port_index: [int, torch.Tensor] = None,
+        input_port_index: [int, torch.Tensor] = None,
         components: Dict[str, core.System] = None,
+        output_component_index: [int, torch.Tensor] = None,
+        input_component_index: [int, torch.Tensor] = None,
+        detached=False,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -560,58 +769,118 @@ class SimulationModel:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
+            output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
+                output port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, Sequence[int], torch.Tensor]]): Index into
+                the receiver's input port when it is a vector port. Defaults to None (scalar
+                ports). From a scalar output, a list of slots puts the one value in each of
+                them (``input_port_index=[1, 2]``); wiring the same pair again on other
+                slots adds them to the same connection.
+            components (Optional[Dict[str, core.System]]): Component dictionary to operate on.
+                Defaults to the model's own component dictionary.
+            detached: ``True``: the receiver reads the value without its gradient (no parameter upstream
+                of the sender reaches the receiver through this connection; the sender is still evaluated
+                every step).  On a batched meta, one flag per pair.  ``split_worlds`` cuts a provided
+                component's connections to the other worlds' readers so.
+
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output or input port name (``System.OUTPUT_PORT_ALIASES``,
+        ``System.INPUT_PORT_ALIASES``) connects as the name that replaced it,
+        with a ``DeprecationWarning``:
+        the connection and its serialized literals hold the current name, so
+        a model saved with the old name loads and saves the new one.
         """
         if components is None:
             components = self._components
+        if isinstance(input_port_index, (list, tuple)):
+            input_port_index = torch.tensor(input_port_index, dtype=torch.long)
+        if isinstance(output_port_index, (list, tuple)):
+            output_port_index = torch.tensor(output_port_index, dtype=torch.long)
 
+        output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         self.add_component(sender_component, components=components)
         self.add_component(receiver_component, components=components)
 
         l = [f"'{k}'" for k in list(sender_component.output.keys())]
-        message = f"The property '{outputPort}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
-        assert outputPort in (
+        message = f"The property '{output_port}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
+        assert output_port in (
             set(sender_component.output.keys()) | set(sender_component.output.keys())
         ), message  # Before we joined input and output sets
 
         l = [f"'{k}'" for k in list(receiver_component.input.keys())]
-        message = f"The property '{inputPort}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
-        assert inputPort in receiver_component.input.keys(), message
+        message = f"The property '{input_port}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
+        assert input_port in receiver_component.input.keys(), message
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
         for receiver_component_connection_point in receiver_component.connects_at:
-            if receiver_component_connection_point.inputPort == inputPort:
+            if receiver_component_connection_point.input_port == input_port:
                 found_connection_point = True
                 break
+
+        # Vector -> Vector with a slot on one side only: the other side is a
+        # single-slot port (a one-branch zone reading one AHU branch), slot 0.
+        if isinstance(sender_component.output[output_port], tps.Vector) and isinstance(
+            receiver_component.input[input_port], tps.Vector
+        ):
+            if isinstance(output_port_index, int) and input_port_index is None:
+                input_port_index = 0
+            elif isinstance(input_port_index, int) and output_port_index is None:
+                output_port_index = 0
 
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
         for sender_obj_connection in sender_component.connected_through:
-            if sender_obj_connection.outputPort == outputPort:
+            if sender_obj_connection.output_port == output_port:
                 found_connection = True
                 break
 
         if found_connection_point and found_connection:
-            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{outputPort}" and "{inputPort}" already exists.'
-            assert (
+            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{output_port}" and "{input_port}" already exists.'
+            if (
                 receiver_component_connection_point
-                not in sender_obj_connection.connects_system_at
-            ), message
+                in sender_obj_connection.connects_system_at
+            ):
+                # The same output -> input pair again, on other slots: a
+                # zone served by several branches of one AHU reads
+                # ``ahu.supplyAirFlowRate[b] -> zone.supplyAirFlowRate[k]``
+                # once per branch.  One Connection carries all of them as
+                # tensor indices (the Vector -> Vector form the engines
+                # already route); anything else is a genuine duplicate.
+                existing = receiver_component_connection_point.detached_of(sender_obj_connection)
+                if not (existing is True and detached is True) and not (existing is False and not detached):
+                    raise ValueError(
+                        f"{message} A connection read without its gradient (detached) on some slots and with it "
+                        "on others is given in one call, with one flag per pair."
+                    )
+                self._merge_vector_connection(
+                    sender_component,
+                    receiver_component,
+                    sender_obj_connection,
+                    receiver_component_connection_point,
+                    output_port,
+                    input_port,
+                    output_port_index,
+                    input_port_index,
+                    message,
+                )
+                return
 
         if found_connection == False:
             sender_obj_connection = core.Connection(
-                connects_system=sender_component, outputPort=outputPort
+                connects_system=sender_component, output_port=output_port
             )
             sender_component.connected_through.append(sender_obj_connection)
 
         if found_connection_point == False:
             receiver_component_connection_point = core.ConnectionPoint(
-                connection_point_of=receiver_component, inputPort=inputPort
+                connection_point_of=receiver_component, input_port=input_port
             )
             receiver_component.connects_at.append(receiver_component_connection_point)
 
@@ -622,86 +891,124 @@ class SimulationModel:
             sender_obj_connection
         )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
 
+        paired = output_component_index is not None or input_component_index is not None
+        input_idx = self._resolve_port_index(
+            input_port_index,
+            receiver_component.input[input_port],
+            sender_component.output[output_port],
+            "input",
+            "output",
+            paired=paired,
+            fan_out=True,
+        )
+        receiver_component_connection_point.set_input_port_index(
+            sender_obj_connection, input_idx
+        )
+
+        output_idx = self._resolve_port_index(
+            output_port_index,
+            sender_component.output[output_port],
+            receiver_component.input[input_port],
+            "output",
+            "input",
+            paired=paired,
+        )
+        receiver_component_connection_point.set_output_port_index(
+            sender_obj_connection, output_idx
+        )
+        # Batched meta components: which sender / receiver instance each
+        # pair of the connection joins (aligned with tensor port indices).
+        if output_component_index is not None:
+            receiver_component_connection_point.set_output_component_index(
+                sender_obj_connection, output_component_index
+            )
+        if input_component_index is not None:
+            receiver_component_connection_point.set_input_component_index(
+                sender_obj_connection, input_component_index
+            )
+        if detached is not False and detached is not None:
+            receiver_component_connection_point.set_detached(sender_obj_connection, detached)
+
         if components == self._components:
-            sender_component_uri = self._semantic_model.SIM.__getitem__(
+            sender_component_uri = self._semantic_model.T4B.__getitem__(
                 sender_component.id
             )
-            receiver_component_uri = self._semantic_model.SIM.__getitem__(
+            receiver_component_uri = self._semantic_model.T4B.__getitem__(
                 receiver_component.id
             )
 
             sender_component_class_name = sender_component.__class__.__name__
             receiver_component_class_name = receiver_component.__class__.__name__
 
-            connection_uri = self._semantic_model.SIM.__getitem__(
+            connection_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(sender_obj_connection))
             )
-            connection_point_uri = self._semantic_model.SIM.__getitem__(
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(receiver_component_connection_point))
             )
 
             literal_sender_property = Literal(
-                outputPort
+                output_port
             )  # , datatype=core.namespace.XSD.string)
             literal_receiver_property = Literal(
-                inputPort
+                input_port
             )  # , datatype=core.namespace.XSD.string)
 
             # Add the class of the components to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     sender_component_uri,
                     RDF.type,
-                    core.namespace.SIM.__getitem__(sender_component_class_name),
+                    core.namespace.T4B.__getitem__(sender_component_class_name),
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     receiver_component_uri,
                     RDF.type,
-                    core.namespace.SIM.__getitem__(receiver_component_class_name),
+                    core.namespace.T4B.__getitem__(receiver_component_class_name),
                 )
             )
 
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
-                    core.namespace.SIM.__getitem__(sender_component_class_name),
+                    core.namespace.T4B.__getitem__(sender_component_class_name),
                     RDFS.subClassOf,
                     core.namespace.S4SYST.System,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
-                    core.namespace.SIM.__getitem__(receiver_component_class_name),
+                    core.namespace.T4B.__getitem__(receiver_component_class_name),
                     RDFS.subClassOf,
                     core.namespace.S4SYST.System,
                 )
             )
 
             # Add the class of the connections and connection points to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (connection_uri, RDF.type, core.namespace.S4SYST.Connection)
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (connection_point_uri, RDF.type, core.namespace.S4SYST.ConnectionPoint)
             )
 
             # Add the forward connection to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     sender_component_uri,
                     core.namespace.S4SYST.connectedThrough,
                     connection_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystemAt,
                     connection_point_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectionPointOf,
@@ -710,21 +1017,21 @@ class SimulationModel:
             )
 
             # Add the reverse connection to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystem,
                     sender_component_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectsSystemThrough,
                     connection_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     receiver_component_uri,
                     core.namespace.S4SYST.connectsAt,
@@ -732,23 +1039,62 @@ class SimulationModel:
                 )
             )
 
-            self._semantic_model.graph.add(
-                (connection_uri, core.namespace.SIM.outputPort, literal_sender_property)
+            self._update_literals(
+                components=[sender_component, receiver_component],
+                connections=[sender_obj_connection],
+                connection_points=[receiver_component_connection_point],
             )
-            self._semantic_model.graph.add(
-                (
-                    connection_point_uri,
-                    core.namespace.SIM.inputPort,
-                    literal_receiver_property,
-                )
-            )
+
+            # self._semantic_model.instance_graph.add(
+            #     (connection_uri, core.namespace.T4B.output_port, literal_sender_property)
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port,
+            #         literal_receiver_property,
+            #     )
+            # )
+
+            # # Add the input_port_index and output_port_index literals
+            # # Serialize indices as JSON with connection hash as keys
+            # input_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.input_port_index.items()
+            # }
+            # output_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.output_port_index.items()
+            # }
+            # literal_input_port_index = Literal(
+            #     json.dumps(input_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # literal_output_port_index = Literal(
+            #     json.dumps(output_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port_index,
+            #         literal_input_port_index,
+            #     )
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.output_port_index,
+            #         literal_output_port_index,
+            #     )
+            # )
+
+        self._is_loaded = False
 
     def remove_connection(
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         components: Dict[str, core.System] = None,
     ) -> None:
         """
@@ -766,24 +1112,26 @@ class SimulationModel:
         if components is None:
             components = self._components
 
+        output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         sender_component_connection = None
         for connection in sender_component.connected_through:
-            if connection.outputPort == outputPort:
+            if connection.output_port == output_port:
                 sender_component_connection = connection
                 break
         if sender_component_connection is None:
             raise ValueError(
-                f'The sender component "{sender_component.id}" does not have a connection with the property "{outputPort}"'
+                f'The sender component "{sender_component.id}" does not have a connection with the property "{output_port}"'
             )
 
         receiver_component_connection_point = None
         for connection_point in receiver_component.connects_at:
-            if connection_point.inputPort == inputPort:
+            if connection_point.input_port == input_port:
                 receiver_component_connection_point = connection_point
                 break
         if receiver_component_connection_point is None:
             raise ValueError(
-                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{inputPort}"'
+                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{input_port}"'
             )
 
         sender_component_connection.connects_system_at.remove(
@@ -802,28 +1150,28 @@ class SimulationModel:
             receiver_component_connection_point.connection_point_of = None
 
         if components == self._components:
-            sender_component_uri = self._semantic_model.SIM.__getitem__(
+            sender_component_uri = self._semantic_model.T4B.__getitem__(
                 sender_component.id
             )
-            receiver_component_uri = self._semantic_model.SIM.__getitem__(
+            receiver_component_uri = self._semantic_model.T4B.__getitem__(
                 receiver_component.id
             )
 
-            connection_uri = self._semantic_model.SIM.__getitem__(
+            connection_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(sender_component_connection))
-            )  # self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
-            connection_point_uri = self._semantic_model.SIM.__getitem__(
+            )  # self._semantic_model.T4B.__getitem__(sender_component.id + " " + sender_property_name)
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(receiver_component_connection_point))
-            )  # self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
+            )  # self._semantic_model.T4B.__getitem__(receiver_component.id + " " + receiver_property_name)
 
             literal_sender_property = list(
-                self._semantic_model.graph.objects(
-                    connection_uri, core.namespace.SIM.outputPort
+                self._semantic_model.instance_graph.objects(
+                    connection_uri, core.namespace.T4B.output_port
                 )
             )
             literal_receiver_property = list(
-                self._semantic_model.graph.objects(
-                    connection_point_uri, core.namespace.SIM.inputPort
+                self._semantic_model.instance_graph.objects(
+                    connection_point_uri, core.namespace.T4B.input_port
                 )
             )
             assert (
@@ -836,14 +1184,14 @@ class SimulationModel:
             literal_receiver_property = literal_receiver_property[0]
 
             # Remove the connections from the semantic model
-            self._semantic_model.graph.remove(
+            self._semantic_model.instance_graph.remove(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystemAt,
                     connection_point_uri,
                 )
             )
-            self._semantic_model.graph.remove(
+            self._semantic_model.instance_graph.remove(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectsSystemThrough,
@@ -852,55 +1200,69 @@ class SimulationModel:
             )
 
             if len(sender_component_connection.connects_system_at) == 0:
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         sender_component_uri,
                         core.namespace.S4SYST.connectedThrough,
                         connection_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
                         core.namespace.S4SYST.connectsSystem,
                         sender_component_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
-                        core.namespace.SIM.outputPort,
+                        core.namespace.T4B.output_port,
                         literal_sender_property,
                     )
                 )
 
             if len(receiver_component_connection_point.connects_system_through) == 0:
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         receiver_component_uri,
                         core.namespace.S4SYST.connectsAt,
                         connection_point_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
                         core.namespace.S4SYST.connectionPointOf,
                         receiver_component_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
-                        core.namespace.SIM.inputPort,
+                        core.namespace.T4B.input_port,
                         literal_receiver_property,
                     )
                 )
+        self._is_loaded = False
 
     def count_components(self) -> int:
+        """
+        Count the number of components in the model.
+
+        Returns:
+            int: The number of components.
+        """
         return len(self._components)
 
     def count_connections(self) -> int:
+        """
+        Count the number of connections in the model, based on the
+        s4syst:connectsSystemAt triples in the internal semantic model.
+
+        Returns:
+            int: The number of connections.
+        """
         return self._semantic_model.count_triples(
             s=None, p=core.namespace.S4SYST.connectsSystemAt, o=None
         )
@@ -916,6 +1278,14 @@ class SimulationModel:
             Dict: A dictionary of object properties.
         """
         return {key: value for (key, value) in vars(object_).items()}
+
+    def get_components_by_class(
+        self, class_: Type, filter: Optional[Callable] = None
+    ) -> List[core.System]:
+        """Return components that are instances of ``class_``."""
+        return self.get_component_by_class(
+            dict_=self.components, class_=class_, filter=filter
+        )
 
     def get_component_by_class(
         self, dict_: Dict, class_: Type, filter: Optional[Callable] = None
@@ -937,66 +1307,78 @@ class SimulationModel:
             v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))
         ]
 
-    def set_custom_initial_dict(
-        self, _custom_initial_dict: Dict[str, Dict[str, Any]]
-    ) -> None:
-        """
-        Set custom initial values for components.
+    # def set_custom_initial_dict(
+    #     self, _custom_initial_dict: Dict[str, Dict[str, Any]]
+    # ) -> None:
+    #     """
+    #     Set custom initial values for components.
 
-        Args:
-            _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+    #     Args:
+    #         _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
 
-        Raises:
-            AssertionError: If unknown component IDs are provided.
-        """
-        np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
-        legal_ids = np.array(
-            [dict_id in self._components for dict_id in _custom_initial_dict]
-        )
-        assert np.all(
-            legal_ids
-        ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
-        self._custom_initial_dict = _custom_initial_dict
+    #     Raises:
+    #         AssertionError: If unknown component IDs are provided.
+    #     """
+    #     np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
+    #     legal_ids = np.array(
+    #         [dict_id in self._components for dict_id in _custom_initial_dict]
+    #     )
+    #     assert np.all(
+    #         legal_ids
+    #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
+    #     self._custom_initial_dict = _custom_initial_dict
 
-    def set_initial_values(self, dict_: Dict[str, Any]) -> None:
-        """
-        Set initial values for all components in the model.
-        """
-        for component in self._components.values():
-            # Check that all keys in the dictionary are valid output properties
-            for key in dict_[component.id].keys():
-                assert (
-                    key in component.output
-                ), f'Invalid output property "{key}" for component "{component.id}"'
-                assert isinstance(
-                    dict_[component.id][key], component.output[key].__class__
-                ), f'Invalid type for output property "{key}" for component "{component.id}"'
-            component.output.update(dict_[component.id])
-
-    def set_parameters_from_array(
+    def _write_parameters(
         self,
         values: List[Any],
         components: List[core.System],
         parameter_names: List[str],
+        min_values: List[Any] = None,
+        max_values: List[Any] = None,
         normalized: List[bool] = None,
         overwrite: bool = False,
         save_original: bool = False,
     ) -> None:
         """
-        Set parameters for components from an array.
+        Write parameter values given as parallel lists: the estimator's writer
+        (normalized values, bounds, replacing a parameter object and saving
+        the original for :meth:`restore_parameters`).  The public setter is
+        :meth:`set_parameters`.
 
         Args:
             values (List[Any]): List of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
+            components (List[core.System]): List of components to set parameters for.
+            parameter_names (List[str]): List of attribute names corresponding to the parameters.
+            min_values (Optional[List[Any]]): List of lower bounds to set on the parameters.
+                Must be provided together with max_values (both None or both given).
+            max_values (Optional[List[Any]]): List of upper bounds to set on the parameters.
+                Must be provided together with min_values (both None or both given).
+            normalized (List[bool]): List of booleans indicating if values are normalized.
+            overwrite (bool): Whether to overwrite existing parameters.
+            save_original (bool): Whether to save original parameters for later restoration.
 
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
         """
+
         if normalized is None:
             normalized = [False] * len(values)
         elif isinstance(normalized, bool):
             normalized = [normalized] * len(values)
+
+        # assert that min_values and max_values are either both None or both not None
+        assert (min_values is None and max_values is None) or (
+            min_values is not None and max_values is not None
+        ), "min_values and max_values must both be None or both not None"
+
+        if min_values is not None and max_values is not None:
+            # Assert that the min_values and max_values are the same length as the values
+            assert len(min_values) == len(
+                values
+            ), f"The length of min_values must be the same as the length of values. Got {len(min_values)} and {len(values)}"
+            assert len(max_values) == len(
+                values
+            ), f"The length of max_values must be the same as the length of values. Got {len(max_values)} and {len(values)}"
 
         for i, (v, obj, attr, normalized_) in enumerate(
             zip(values, components, parameter_names, normalized)
@@ -1011,23 +1393,61 @@ class SimulationModel:
                 if isinstance(
                     obj_, tps.Parameter
                 ):  # Only change underlying data in torch.Parameter
+                    if min_values is not None:
+                        obj_.min_value = min_values[i]
+                    if max_values is not None:
+                        obj_.max_value = max_values[i]
                     if overwrite:
                         if save_original:
-                            if (
-                                obj.id not in self._saved_parameters
-                            ):  # Save the original parameter if we later need to restore it
-                                self._saved_parameters[obj.id] = {}
-                            self._saved_parameters[obj.id][attr] = obj_
+                            obj_key = id(obj)
+                            if obj_key not in self._saved_parameters:
+                                self._saved_parameters[obj_key] = {"__ref__": obj}
+                            self._saved_parameters[obj_key][attr] = obj_
+
+                        # Reconcile ``v`` with the *current* n_c of ``obj_``.
+                        # The estimator captures n_c at parameter-list
+                        # processing time, which happens BEFORE
+                        # :meth:`SimulationModel.initialize`.  Sub-components
+                        # like the AHU dampers get ``expand_to_n_c(n_branches)``
+                        # inside their owner's ``initialize`` -- so by the time
+                        # we land here ``obj_.min_value`` has shape ``(n_c,)``
+                        # with ``n_c > 1`` even though the theta entry the
+                        # solver hands back is scalar.  ``tps.TensorParameter``
+                        # then infers ``n_c=1`` from a scalar ``v`` and refuses
+                        # the ``(n_c,)`` bound (see
+                        # :func:`_prepare_bound_value`).  Broadcasting ``v`` to
+                        # the existing ``n_c`` matches the auto-discovery
+                        # semantics: ``get_estimable_parameters`` emits one
+                        # scalar bound, so every parallel branch shares the
+                        # same denormalized value.  Callers wanting per-branch
+                        # estimation must pass the vector form
+                        # ``(comp, attr, [x0]*n_c, [lb]*n_c, [ub]*n_c)``.
+                        target_n_c = getattr(obj_, "n_c", 1) or 1
+                        if target_n_c > 1:
+                            v_t = torch.as_tensor(v, dtype=tps.float_dtype()).reshape(
+                                -1
+                            )
+                            if v_t.numel() == 1:
+                                v_t = v_t.expand(target_n_c).clone()
+                            elif v_t.numel() != target_n_c:
+                                raise ValueError(
+                                    f"Cannot reconcile value of shape "
+                                    f"{tuple(v_t.shape)} with parameter "
+                                    f"'{attr}' on '{obj.id}' (n_c="
+                                    f"{target_n_c}).  Pass per-branch x0/lb/ub "
+                                    f"as lists if you need distinct values."
+                                )
+                            v = v_t
 
                         new_param = tps.TensorParameter(
                             v,
                             min_value=obj_.min_value,
                             max_value=obj_.max_value,
                             normalized=normalized_,
+                            scaling=getattr(obj_, "_scaling", "linear"),
                         )
                         rdelattr(obj, attr)
                         rsetattr(obj, attr, new_param)
-                        # new_param.set(v, normalized=normalized_)
                     else:
                         obj_.set(v, normalized=normalized_)
                 elif isinstance(obj_, tps.TensorParameter):
@@ -1036,15 +1456,366 @@ class SimulationModel:
                     rsetattr(obj, attr, v)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
-        for obj in self._saved_parameters:
-            for attr in self._saved_parameters[obj]:
-                old_obj = rgetattr(self._components[obj], attr)
+        """
+        Restore parameter objects previously saved by :meth:`_write_parameters`
+        (called with save_original=True).
+
+        Args:
+            keep_values (bool): If True, the restored parameter objects keep the
+                current values; only the original parameter objects (with their
+                bounds/metadata) are put back. If False, the original values are
+                restored as well.
+        """
+        for obj_key in self._saved_parameters:
+            saved = self._saved_parameters[obj_key]
+            component = saved["__ref__"]
+            for attr in saved:
+                if attr == "__ref__":
+                    continue
+                old_obj = rgetattr(component, attr)
                 v = old_obj.get()
-                new_obj = self._saved_parameters[obj][attr]
-                rdelattr(self._components[obj], attr)
-                rsetattr(self._components[obj], attr, new_obj)
+                new_obj = saved[attr]
+                rdelattr(component, attr)
+                rsetattr(component, attr, new_obj)
                 if keep_values:
                     new_obj.set(v, normalized=False)
+
+    def set_dbconfigs(self, dbconfig: Dict[str, Any]) -> "SimulationModel":
+        """Apply a database configuration to every component that supports it.
+
+        Walks ``self.components.values()`` and calls
+        ``component.set_dbconfig(dbconfig)`` on every component that exposes
+        such a method.  Components without ``set_dbconfig`` are silently
+        skipped, so this is safe to call on heterogeneous models -- only
+        e.g. :class:`SensorSystem` instances are affected.
+
+        Components that already carry a non-``None`` ``dbconfig`` are
+        overwritten (the call is non-idempotent for non-None starting
+        states); pass per-component ``dbconfig=None`` arguments via
+        :meth:`set_parameters` if you need to clear or vary per-component.
+
+        Args:
+            dbconfig: The database configuration dict (typically
+                ``{"table_name": ..., "db_host": ..., "db_port": ...,
+                "db_name": ..., "db_user": ..., "db_password": ...}``).
+
+        Returns:
+            ``self`` for chaining.
+        """
+        for comp in self._components.values():
+            setter = getattr(comp, "set_dbconfig", None)
+            if callable(setter):
+                setter(dbconfig)
+        return self
+
+    def fill_missing_inputs(
+        self,
+        defaults: Dict[Any, Any],
+    ) -> "SimulationModel":
+        """Attach providers for input ports the ontology did not wire.
+
+        Each ``defaults`` entry says "this missing port should be driven
+        by that source" -- with two axes of flexibility:
+
+        * **Scope** (the key): apply to every component declaring a port
+          name (port-only) OR to a specific component (component-scoped).
+        * **Provider** (the value): a constant (wrapped in a flat
+          :class:`ScheduleSystem`) OR a user-supplied :class:`core.System`
+          (e.g. a :class:`SensorSystem` reading a BMS historian by
+          ``uuid``) OR an explicit ``(component, output_port)`` pair when
+          the provider has more than one output.
+
+        Key shapes
+        ----------
+        * ``"port_name"`` -- port-only entry.  Connects every component
+          that:
+
+            1. declares an input port called ``port_name``
+               (``port_name in component.input``), and
+            2. has no incoming connection on that port yet, and
+            3. is not covered by a component-scoped entry below.
+
+          Idempotent across calls: the schedule id is
+          ``_sched_{port_name}``, looked up before re-creating.
+        * ``(component_or_id, port_name)`` -- component-scoped entry.
+          ``component_or_id`` may be a :class:`core.System` instance or
+          its id string.  Takes precedence over a port-only entry on
+          the same port (so a building-wide constant can coexist with
+          a per-AHU override).  The auto-generated schedule id is
+          ``_sched_{component_id}_{port_name}`` so each scoped entry
+          gets its own provider instance even if multiple components
+          map the same port to the same value.
+
+        Value shapes
+        ------------
+        * ``float | int | bool`` -- wrapped in a flat
+          :class:`ScheduleSystem` whose ``scheduleValue`` output is
+          ``value`` at every timestep.
+        * :class:`core.System` -- used directly as the provider; the
+          component is added to :attr:`self._components` if it isn't
+          already.  The provider must have **exactly one** output
+          port; that port is auto-selected.  Useful for plugging in a
+          pre-built :class:`SensorSystem` (``uuid`` + ``dbconfig`` set)
+          that reads a BMS historian: the connection is then a true
+          exogenous time-series input, even though the BRICK ontology
+          carries no equivalent URI.
+        * ``(provider, output_port_name)`` -- when the provider has
+          multiple outputs.  ``output_port_name`` must be a key of
+          ``provider.output``.
+
+        Conflict resolution
+        -------------------
+        Component-scoped entries always win over port-only entries on
+        the same port; this lets a project-wide constant (e.g.
+        ``"outdoorCo2Concentration": 400.0``) coexist with a per-component override
+        (e.g. ``(ahu02, "supplyAirTemperatureSetpoint"): leaf_sensor``)
+        without the user having to maintain two parallel dicts.  If
+        the same ``(component_id, port_name)`` pair appears twice the
+        later value wins -- standard ``dict`` semantics.
+
+        Args:
+            defaults: Mapping with the key/value shapes above.
+
+        Returns:
+            ``self`` for chaining.
+        """
+
+        def _has_incoming(component: core.System, input_port: str) -> bool:
+            for cp in component.connects_at:
+                if cp.input_port == input_port and cp.connects_system_through:
+                    return True
+            return False
+
+        def _make_schedule(value: float, id_: str) -> core.System:
+            # Empty rulesets + ``ruleset_default_value`` is the canonical
+            # ``flat schedule'' shape in twin4build (see ScheduleSystem
+            # docstring for the ruleset semantics).
+            return systems.ScheduleSystem(
+                weekday_ruleset={
+                    "ruleset_default_value": value,
+                    "ruleset_start_minute": [],
+                    "ruleset_end_minute": [],
+                    "ruleset_start_hour": [],
+                    "ruleset_end_hour": [],
+                    "ruleset_value": [],
+                },
+                add_noise=False,
+                id=id_,
+            )
+
+        def _resolve_spec(
+            spec: Any,
+            schedule_id: str,
+        ) -> tuple[core.System, str]:
+            """Normalise a value-side spec to ``(provider, output_port)``.
+
+            * Scalar -> create or reuse a flat ``ScheduleSystem`` with
+              id ``schedule_id`` and emit ``scheduleValue``.
+            * ``core.System`` -> use the unique output port (assert).
+            * ``(System, output_port)`` -- use as-is after validating
+              the output port exists.
+            """
+            # ``bool`` is a subclass of ``int`` in Python so the
+            # ``(int, float)`` check below catches flat 0/1 enable/
+            # disable schedules too -- intentional.
+            if isinstance(spec, (int, float)):
+                sched = self._components.get(schedule_id)
+                if sched is None:
+                    sched = _make_schedule(float(spec), schedule_id)
+                return sched, "scheduleValue"
+            if isinstance(spec, core.System):
+                out_keys = list(spec.output.keys())
+                assert len(out_keys) == 1, (
+                    f"fill_missing_inputs: provider {spec.id!r} has "
+                    f"{len(out_keys)} outputs ({out_keys!r}); pass a "
+                    "(provider, output_port) tuple to disambiguate."
+                )
+                return spec, out_keys[0]
+            if isinstance(spec, tuple) and len(spec) == 2:
+                provider, out_port = spec
+                assert isinstance(provider, core.System), (
+                    "fill_missing_inputs: in a (provider, output_port) "
+                    "tuple the first element must be a core.System "
+                    f"instance, got {type(provider).__name__}."
+                )
+                assert out_port in provider.output, (
+                    f"fill_missing_inputs: provider {provider.id!r} has "
+                    f"no output port {out_port!r}; valid keys are "
+                    f"{list(provider.output)}."
+                )
+                return provider, out_port
+            raise TypeError(
+                f"fill_missing_inputs: unsupported value spec "
+                f"{type(spec).__name__}({spec!r}).  Use a scalar, a "
+                "core.System instance, or a (component, output_port) "
+                "tuple."
+            )
+
+        # Split entries by scope so port-only fan-out can skip any
+        # (component, port) pair already overridden by a scoped entry.
+        port_defaults: Dict[str, Any] = {}
+        comp_defaults: Dict[tuple[str, str], Any] = {}
+        for key, spec in defaults.items():
+            if isinstance(key, str):
+                port_defaults[key] = spec
+                continue
+            if isinstance(key, tuple) and len(key) == 2:
+                comp_ref, port_name = key
+                if isinstance(comp_ref, core.System):
+                    comp_id = comp_ref.id
+                elif isinstance(comp_ref, str):
+                    comp_id = comp_ref
+                else:
+                    raise TypeError(
+                        "fill_missing_inputs: component-scoped key "
+                        "expects (System | id_str, port_name); got "
+                        f"({type(comp_ref).__name__}, {type(port_name).__name__})."
+                    )
+                if not isinstance(port_name, str):
+                    raise TypeError(
+                        "fill_missing_inputs: component-scoped key's "
+                        f"port_name must be a str, got {type(port_name).__name__}."
+                    )
+                consumer = self._components.get(comp_id)
+                if consumer is not None:
+                    port_name = consumer.resolve_input_port(port_name)
+                comp_defaults[(comp_id, port_name)] = spec
+                continue
+            raise TypeError(
+                f"fill_missing_inputs: unsupported key {key!r}.  Use a "
+                "port-name str, or a (component | component_id, port_name) "
+                "tuple."
+            )
+
+        # ---- Pass 1: port-only fan-out, skipping component-scoped overrides.
+        # A deprecated port name (``System.INPUT_PORT_ALIASES``) fills the
+        # port that replaced it, so a port named twice is wired once.
+        for port_name, spec in port_defaults.items():
+            consumers = []
+            for comp in list(self._components.values()):
+                if port_name not in getattr(comp, "input", {}):
+                    continue
+                name = comp.resolve_input_port(port_name)
+                if not _has_incoming(comp, name) and (comp.id, name) not in comp_defaults:
+                    consumers.append((comp, name))
+            if not consumers:
+                continue
+            provider, out_port = _resolve_spec(spec, f"_sched_{port_name}")
+            for consumer, name in consumers:
+                self.add_connection(provider, consumer, out_port, name)
+
+        # ---- Pass 2: per-component overrides
+        for (comp_id, port_name), spec in comp_defaults.items():
+            consumer = self._components.get(comp_id)
+            assert consumer is not None, (
+                f"fill_missing_inputs: no component with id {comp_id!r} "
+                "in this model; check the component reference or run "
+                "this method after the component has been translated / "
+                "added."
+            )
+            assert port_name in getattr(consumer, "input", {}), (
+                f"fill_missing_inputs: component {comp_id!r} has no "
+                f"input port {port_name!r}; valid ports are "
+                f"{list(getattr(consumer, 'input', {}))}."
+            )
+            if _has_incoming(consumer, port_name):
+                # Component-scoped override targeting an already-wired
+                # port is almost certainly a config bug: the user asked
+                # to drive a port that the ontology already populated.
+                # Loudly skip rather than silently double-connect (the
+                # downstream ``add_connection`` would assert anyway).
+                LOGGER.warn(
+                    "fill_missing_inputs: %s.%s already has an incoming "
+                    "connection; component-scoped override skipped.",
+                    comp_id,
+                    port_name,
+                )
+                continue
+            provider, out_port = _resolve_spec(spec, f"_sched_{comp_id}_{port_name}")
+            self.add_connection(provider, consumer, out_port, port_name)
+
+        return self
+
+    def rewire(
+        self,
+        *,
+        start_time: Any,
+        end_time: Any,
+        step_size: int,
+        mode: str = "train",
+        **rewire_kwargs: Any,
+    ) -> "SimulationModel":
+        """Run the data-driven CITS rewire on every PI-CITS in the graph.
+
+        Should be called **before** :meth:`load`: the rewire modifies
+        the topology (prunes losing sensor connections, repins CITS
+        frozen state) which would otherwise invalidate the execution
+        order computed by :meth:`load`.  It only needs the components
+        and connections produced by :class:`~twin4build.translator.Translator`
+        plus a configured dbconfig on the sensors -- no execution
+        order, validated graph, or loaded parameters are required.
+
+        Convenience entrypoint that dispatches to the internal
+        :func:`_rewire_pi_loops` helper in
+        :mod:`twin4build.systems.controller.controller_identification.pi_loop_rewire`.
+        The helper:
+
+          * loads timeseries for every connected
+            :class:`SensorSystem` over the requested window,
+          * scores every wired ``(sensor, setpoint)`` pair against
+            the downstream actuator measurement,
+          * prunes losing connections (so the surviving
+            :class:`ControllerIdentificationPISystem` has
+            ``n_sensors = n_setpoints = 1`` and a single PI candidate),
+          * writes data-driven seeds (``kp``, ``Ti``, ``output_min``,
+            ``output_max``, ``default_output_0``, ``isReverse``,
+            ``gate_0.threshold``, ``gate_0.band``, ``gamma_gate_0``)
+            onto the surviving candidate,
+          * pins ``alpha_0`` / ``beta_0`` / ``gamma_0`` / ``beta_b_0``
+            to one-hot, ``gate_0.polarity`` to ``1.0`` and
+            ``alpha_gate_{a}`` according to ``mode``.
+
+        Per-CITS ``RewireReport`` objects are stored on
+        ``self._rewire_reports`` for downstream inspection.
+
+        What the rewire derives is part of each controller's ``config``
+        (structure, weights, gate, normalisation bounds, parameter bounds,
+        the ``playback`` flag and the mode as ``rewire_mode``), so a model
+        that is serialized after the rewire reloads with the same
+        controllers and needs no second rewire.  A later rewire derives
+        them again; its mode decides which loops are open.
+
+        Args:
+            start_time, end_time, step_size: Window passed to
+                :meth:`SensorSystem.initialize` so the rewire can
+                read measurement values.
+            mode: ``"train"`` -> ``alpha_gate_{a} = 1.0`` (gate active
+                during Stage-1 estimation); ``"simulate"`` ->
+                ``alpha_gate_{a} = 0.0`` (gate bypassed for Stage-2
+                closed-loop simulation, PI passthrough).
+            **rewire_kwargs: Forwarded verbatim to
+                :func:`_rewire_pi_loops` (confidence thresholds,
+                decade-pad widths, candidate filters, ...).  See the
+                helper's docstring for the full list.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        # Local import keeps the simulation-model module import-cycle-
+        # free; the rewire helper depends on the loop-classifier,
+        # actuator GMM, ... module graph which would otherwise pull
+        # heavy dependencies into every ``SimulationModel`` import.
+
+        reports = _rewire_pi_loops(
+            self,
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            mode=mode,
+            **rewire_kwargs,
+        )
+        self._rewire_reports = reports
+        return self
 
     def set_parameters_from_config(self, d: dict, component: core.System):
         """
@@ -1058,7 +1829,7 @@ class SimulationModel:
             if cond:
                 self.set_parameters_from_config(entry, component)
             else:
-                self.set_parameters_from_array([entry], [component], [key])
+                self._write_parameters([entry], [component], [key])
         return
 
     def cache(
@@ -1075,6 +1846,8 @@ class SimulationModel:
             start_time (Optional[datetime.datetime]): Start time for caching.
             end_time (Optional[datetime.datetime]): End time for caching.
             step_size (Optional[int]): Time step size for caching.
+            simulator (Optional[core.Simulator]): Simulator instance passed to the
+                data-source components' initialize methods.
         """
         c = self.get_component_by_class(
             self._components,
@@ -1094,295 +1867,240 @@ class SimulationModel:
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: "core.Simulator",
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+        # simulator: Optional[core.Simulator] = None,
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            start_time (datetime.datetime): Start time for the simulation.
-            end_time (datetime.datetime): End time for the simulation.
-            step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
+            start_time (List[datetime.datetime]): Start time for each batched simulation.
+            end_time (List[datetime.datetime]): End time for each batched simulation.
+            step_size (List[int]): Time step size for each batched simulation.
         """
-        # self.set_initial_values()
-        self.check_for_for_missing_initial_values()
+        assert (
+            self._is_loaded
+        ), "The model is not loaded and cannot be simulated. Please call the load method first."
+
+        # Route every device-less tensor factory call inside component
+        # initialize() (ports, states, state-space matrices, schedule/leaf
+        # history tables) to the model's device.  The per-op overhead of the
+        # ambient context is only paid here, never in the step loop.
+        with torch.device(self.device):
+            self._initialize_components(start_time, end_time, step_size)
+            # the state of ``set_state`` (an estimated initial state), after
+            # the components have set their own initial conditions
+            self._apply_initial_state(start_time)
+        # The components reallocate their tensors here; a CUDA graph captured
+        # before reads them at their old addresses, so captured graphs hold
+        # for one initialization (``initialization_count``).
+        self._initialization_count = self.initialization_count + 1
+
+    @property
+    def initialization_count(self) -> int:
+        """How often the model has been initialized: a CUDA graph captured
+        after the n-th :meth:`initialize` is valid until the next."""
+        return self._initialization_count
+
+    def _initialize_components(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
+
+        # assert isinstance(
+        #     simulator, core.Simulator
+        # ), "simulator must be a core.Simulator object"
+
+        # Validate and format as lists if needed
+        # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
+
         for component in self._flat_execution_order:
-            # component.clear_results()
-            # component.initialize(start_time=start_time,
-            #                     end_time=end_time,
-            #                     step_size=step_size,
-            #                     simulator=simulator)
+            # for v in component.input.values():
+            #     v.reset()
 
-            for v in component.input.values():
-                v.reset()
-
-            for v in component.output.values():
-                v.reset()
+            # for v in component.output.values():
+            #     v.reset()
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
-            for i, connection_point in enumerate(component.connects_at):
-                for j, connection in enumerate(
-                    connection_point.connects_system_through
-                ):
-                    connected_component = connection.connects_system
-                    if isinstance(
-                        component.input[connection_point.inputPort], tps.Vector
-                    ):
-                        if (
-                            component,
-                            connected_component,
-                            connection.outputPort,
-                            connection_point.inputPort,
-                        ) in self._translator.E_conn_to_sp_group:
-                            sp, groups = self._translator.E_conn_to_sp_group[
-                                (
-                                    component,
-                                    connected_component,
-                                    connection.outputPort,
-                                    connection_point.inputPort,
-                                )
-                            ]
-                            # Find the group of the connected component
-                            modeled_match_nodes_ = self._translator.sim2sem_map[
-                                connected_component
-                            ]
-                            groups_matched = [
-                                g
-                                for g in groups
-                                if len(
-                                    modeled_match_nodes_.intersection(set(g.values()))
-                                )
-                                > 0
-                            ]
-                            assert (
-                                len(groups_matched) == 1
-                            ), "Only one group is allowed for each component."
-                            group = groups_matched[0]
-                            group_id = id(group)
-                            component.input[connection_point.inputPort].update(
-                                group_id=group_id
-                            )
-                        else:
-                            component.input[connection_point.inputPort].update()
+            # for i, connection_point in enumerate(component.connects_at):
+
+            #     update_input_port_index = False
+            #     hash_array = torch.arange(
+            #         len(connection_point.connects_system_through), dtype=torch.int64
+            #     )
+            #     for j, connection in enumerate(
+            #         connection_point.connects_system_through
+            #     ):
+            #         connected_component = connection.connects_system
+            #         if (
+            #             isinstance(
+            #                 component.input[connection_point.input_port], tps.Vector
+            #             )
+            #             and self._translator is not None
+            #             and (
+            #                 component,
+            #                 connected_component,
+            #                 connection.output_port,
+            #                 connection_point.input_port,
+            #             )
+            #             in self._translator.E_conn_to_sp_group
+            #         ):
+            #             update_input_port_index = True
+            #             sp, groups = self._translator.E_conn_to_sp_group[
+            #                 (
+            #                     component,
+            #                     connected_component,
+            #                     connection.output_port,
+            #                     connection_point.input_port,
+            #                 )
+            #             ]
+            #             # Find the group of the connected component
+            #             modeled_match_nodes_ = self._translator.sim2sem_map[
+            #                 connected_component
+            #             ]
+            #             groups_matched = [
+            #                 g
+            #                 for g in groups
+            #                 if len(modeled_match_nodes_.intersection(set(g.values())))
+            #                 > 0
+            #             ]
+            #             assert (
+            #                 len(groups_matched) == 1
+            #             ), "Only one group is allowed for each component."
+            #             group = groups_matched[0]
+            #             group_hash = hash(group)
+
+            #             # component.input[connection_point.input_port].update(
+            #             #     group_id=group_id
+            #             # )
+
+            #             ###########################
+            #             hash_array[j] = group_hash
+            #             # for idx, group_id in self.id_map.items():
+            #             #     id_array[idx] = group_id
+            #             # self.sorted_id_indices = torch.argsort(id_array)
+            #             #########################################
+
+            #     if update_input_port_index:
+            #         for index, connection in zip(
+            #             hash_array, connection_point.connects_system_through
+            #         ):
+            #             connection_point.set_input_port_index(connection, index)
 
             component.initialize(
                 start_time=start_time,
                 end_time=end_time,
                 step_size=step_size,
-                simulator=simulator,
             )
 
-    def validate(self) -> None:
-        """
-        Validate the model by checking IDs and connections.
-        """
-        PRINTPROGRESS.add_level()
-        (
-            validated_for_simulator1,
-            validated_for_estimator1,
-            validated_for_optimizer1,
-        ) = self.validate_components()
-        (
-            validated_for_simulator2,
-            validated_for_estimator2,
-            validated_for_optimizer2,
-        ) = self.validate_ids()
-        (
-            validated_for_simulator3,
-            validated_for_estimator3,
-            validated_for_optimizer3,
-        ) = self.validate_connections()
+        # Check for missing initial values AFTER all components are initialized
+        self.check_for_missing_initial_values()
 
-        self._validated_for_simulator = (
-            validated_for_simulator1
-            and validated_for_simulator2
-            and validated_for_simulator3
-        )
-        self._validated_for_estimator = (
-            validated_for_estimator1
-            and validated_for_estimator2
-            and validated_for_estimator3
-        )
-        self._validated_for_optimizer = (
-            validated_for_optimizer1
-            and validated_for_optimizer2
-            and validated_for_optimizer3
-        )
-        self._is_validated = (
-            self._validated_for_simulator
-            and self._validated_for_estimator
-            and self._validated_for_optimizer
-        )
+    def check(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
+        """Probe every declared System the model steps, on request (ADR
+        0001, decision 10): the model is initialized for the period, as a run
+        starts, and each System's ``derive`` and ``forward`` are called once
+        on the run-start values, writing nothing (:meth:`System._probe`).  A
+        data source's ``series`` is checked where it fills its outputs, at
+        every run start.  ``Simulator.simulate(check=True)`` probes the run it
+        starts.
 
-        PRINTPROGRESS(
-            "Validated for Simulator",
-            status="[OK]" if self._validated_for_simulator else "[FAILED]",
-        )
-        PRINTPROGRESS(
-            "Validated for Estimator",
-            status="[OK]" if self._validated_for_estimator else "[FAILED]",
-        )
-        PRINTPROGRESS(
-            "Validated for Optimizer",
-            status="[OK]" if self._validated_for_optimizer else "[FAILED]",
-        )
-        PRINTPROGRESS.remove_level()
-
-        # assert validated, "The model is not valid. See the warnings above."
-
-    def validate_components(self) -> None:
-        """
-        Validate the parameters of all components in the model.
+        Args:
+            start_time: Start time of each period.
+            end_time: End time of each period.
+            step_size: Step size of each period [s].
 
         Raises:
-            AssertionError: If any component has invalid parameters.
+            ValueError: Naming every System whose ``derive`` gives no dict, or
+                whose ``forward`` leaves out an output, gives one it does not
+                declare, gives an output at another size or a state of
+                another shape.
         """
-        component_instances = list(self._components.values())
-        _validated_for_simulator = True
-        _validated_for_estimator = True
-        _validated_for_optimizer = True
+        self.initialize(start_time, end_time, step_size)
+        self._probe_components(step_size)
 
-        for component in component_instances:
-            if hasattr(component, "validate"):  # Check if component has validate method
-                (
-                    validated_for_simulator_,
-                    validated_for_estimator_,
-                    validated_for_optimizer_,
-                ) = component.validate(PRINTPROGRESS)
-                _validated_for_simulator = (
-                    _validated_for_simulator and validated_for_simulator_
-                )
-                _validated_for_estimator = (
-                    _validated_for_estimator and validated_for_estimator_
-                )
-                _validated_for_optimizer = (
-                    _validated_for_optimizer and validated_for_optimizer_
-                )
-            else:
-                # Validate parameters
-                config = component.config.copy()
-                parameters = {
-                    attr: rgetattr(component, attr) for attr in config["parameters"]
-                }
-                is_none = [k for k, v in parameters.items() if v is None]
-                if any(is_none):
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, and Optimizer:"
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
-                    for par in is_none:
-                        PRINTPROGRESS(par, plain=True, status="")
-                    PRINTPROGRESS.remove_level()
+    def _probe_components(self, step_size) -> None:
+        """The probe of :meth:`check`, on the model as initialized."""
+        problems = []
+        for component in self._flat_execution_order:
+            problems.extend(component._probe(step_size))
+        if problems:
+            raise ValueError(f"The model '{self._id}' does not run:" + "".join(f"{chr(10)}  {p}" for p in problems))
 
-                    _validated_for_simulator = False
-                    _validated_for_optimizer = False
+    def _check_loaded(self) -> None:
+        """The checks of a load, which raise (ADR 0001, decision 10).
 
-                # Validate model definitions
-                for input in component.input.values():
-                    assert isinstance(
-                        input, (tps.Scalar, tps.Vector)
-                    ), "Only vectors and scalars can be used as input to components"
-
-                for output in component.output.values():
-                    assert isinstance(
-                        output, (tps.Scalar, tps.Vector)
-                    ), "Only vectors and scalars can be used as output from components"
-
-                if len(component.connects_at) == 0:
-                    for key in component.output.keys():
-                        output = component.output[key]
-                        if isinstance(
-                            output, tps.Scalar
-                        ):  # TODO: Add support for vectors
-                            if output.is_leaf == False:
-                                message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.'
-                                PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                                _validated_for_optimizer = False
-
-                            # assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
-
-                else:
-                    for key in component.output.keys():
-                        output = component.output[key]
-                        if isinstance(
-                            output, tps.Scalar
-                        ):  # TODO: Add support for vectors
-                            if output.is_leaf:
-                                message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.'
-                                PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                                _validated_for_optimizer = False
-                            # assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
-        return (
-            _validated_for_simulator,
-            _validated_for_estimator,
-            _validated_for_optimizer,
-        )
-
-    def validate_ids(self) -> None:
-        """
-        Validate the IDs of all components in the model.
+        After the parameters are read: every component's id is valid
+        (:func:`_check_id`); every input without a default is
+        wired (a declared ``size="wired"`` input is as wide as what is wired,
+        none included); a declared System's wired slots lie within its
+        declared sizes (:meth:`System.size_declared_ports`); and every
+        parameter of a declared System has a value, unless it is an optional
+        one (``Parameter(None)``) left absent.  Every problem of the model
+        is reported at once.
 
         Raises:
-            AssertionError: If any component has an invalid ID.
+            ValueError: Naming each component and what it misses.
         """
-        validated = True
-        component_instances = list(self._components.values())
-        for component in component_instances:
-            isvalid = np.array(
-                [x.isalnum() or x in INVALID_ID_CHARS for x in component.id]
-            )
-            np_id = np.array(list(component.id))
-            violated_characters = list(np_id[isvalid == False])
-            if not all(isvalid):
-                message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-                PRINTPROGRESS(message)
-                validated = False
-        return (validated, validated, validated)
+        problems = []
+        for component in self._components.values():
+            name = f"{type(component).__name__} '{component.id}'"
+            try:
+                _check_id(component.id, kind="component")
+            except AssertionError as error:
+                problems.append(str(error))
+            declared = getattr(type(component), "_declarations", {}) if type(component)._is_declared else {}
+            wired = {point.input_port for point in component.connects_at}
+            unwired = [
+                port
+                for port, value in component.input.items()
+                if port not in wired
+                and not value.optional
+                and getattr(declared.get("input", {}).get(port), "size", None) != "wired"
+            ]
+            if unwired:
+                problems.append(f"{name}: nothing is wired to the input(s) {', '.join(unwired)}, which have no default")
+            if not declared:
+                continue
+            try:
+                component.size_declared_ports()
+            except ValueError as error:
+                problems.append(str(error))
+            values = {path: rgetattr(component, path) for path in component.PARAM_NAMES}
+            absent = set(self._absent_optional_parameters(component, {"parameters": values}))
+            missing = [path for path, value in values.items() if value is None and path not in absent]
+            if missing:
+                problems.append(f"{name}: the parameter(s) {', '.join(missing)} have no value")
+        if problems:
+            raise ValueError(f"The model '{self._id}' does not load:\n  " + "\n  ".join(problems))
 
-    def validate_connections(self) -> None:
-        """
-        Validate the connections between components in the model.
-
-        Raises:
-            AssertionError: If any required connections are missing.
-        """
-        component_instances = list(self._components.values())
-        validated = True
-        for component in component_instances:
-
-            if hasattr(
-                component, "validate_connections"
-            ):  # Check if component has validate method
-                validated = component.validate_connections(PRINTPROGRESS)
-            else:
-                if (
-                    len(component.connected_through) == 0
-                    and len(component.connects_at) == 0
-                ):
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
-
-                input_labels = [cp.inputPort for cp in component.connects_at]
-                first_input = True
-                for req_input_label in component.input.keys():
-                    if (
-                        req_input_label not in input_labels
-                        and component.input[req_input_label].optional == False
-                    ):
-                        if first_input:
-                            message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-                            PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                            first_input = False
-                            PRINTPROGRESS.add_level()
-                        PRINTPROGRESS(req_input_label, plain=True)
-                        validated = False
-                if first_input == False:
-                    PRINTPROGRESS.remove_level()
-        return (validated, validated, validated)
+    @staticmethod
+    def _absent_optional_parameters(component, config: dict) -> list:
+        """The keys of ``config["parameters"]`` that name an optional parameter
+        (declared with ``Parameter(None)``) the component does not have."""
+        keys = []
+        for attr, value in (config.get("parameters") or {}).items():
+            if value is not None or not isinstance(attr, str):
+                continue
+            owner_path, _, leaf = attr.rpartition(".")
+            try:
+                owner = rgetattr(component, owner_path) if owner_path else component
+            except AttributeError:
+                continue
+            declared = getattr(type(owner), "_declarations", {}).get("parameter", {}).get(leaf)
+            if declared is not None and declared.value is None:
+                keys.append(attr)
+        return keys
 
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
@@ -1392,7 +2110,8 @@ class SimulationModel:
             force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
-        PRINTPROGRESS.add_level()
+
+        LOGGER.add_level()
 
         for component in self._components.values():
             assert hasattr(
@@ -1410,61 +2129,77 @@ class SimulationModel:
                     json.dump(config_, f, indent=4)
             else:
                 with open(filename) as f:
-                    config = json.load(f)
+                    saved = f.read()
+                config = json.loads(saved)
 
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Config structure mismatch."
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
+                    LOGGER.warning(
+                        "Class: %s, id: %s: config structure mismatch.",
+                        component.__class__.__name__,
+                        component.id,
+                    )
+                    LOGGER.add_level()
                     if comparison_result["missing_in_1"]:
-                        missing_msg = f"File config has unused parameters: {', '.join(sorted(comparison_result['missing_in_1']))}"
-                        PRINTPROGRESS(missing_msg, plain=True, status="[WARNING]")
+                        LOGGER.warning(
+                            "Unused parameters in file config: %s.",
+                            ", ".join(sorted(comparison_result["missing_in_1"])),
+                        )
                     if comparison_result["missing_in_2"]:
-                        missing_msg = f"File config is missing the following parameters: {', '.join(sorted(comparison_result['missing_in_2']))}"
-                        PRINTPROGRESS(missing_msg, plain=True, status="[WARNING]")
-                    PRINTPROGRESS.remove_level()
+                        LOGGER.warning(
+                            "Missing parameters in file config: %s.",
+                            ", ".join(sorted(comparison_result["missing_in_2"])),
+                        )
+                    LOGGER.remove_level()
 
+                absent = self._absent_optional_parameters(component, config_)
                 if force_config_overwrite:
                     config_ = merge_dicts(config_, config, prioritize="dict2")
                 else:
                     config_ = merge_dicts(
                         config_, config, prioritize="dict1"
                     )  # Prioritize config_ over config to allow user to change stuff in the fcn function (programatically)
+                # An absent optional parameter stays absent: ``None`` means
+                # "not given", not "fill in from the file".
+                for key in absent:
+                    config_["parameters"][key] = None
 
                 self.set_parameters_from_config(config_, component)
 
-                with open(filename, "w") as f:
-                    json.dump(config_, f, indent=4)
+                # written back only when it changed: every load rewrote every component's file (26 Oct 2026: a
+                # setup of 2 778 components, through a network file system each write a round trip)
+                merged = json.dumps(config_, indent=4)
+                if merged != saved:
+                    with open(filename, "w") as f:
+                        f.write(merged)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def load(
         self,
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
-        verbose: bool = False,
-        validate_model: bool = True,
+        # verbose: Union[int, None] = None,
         force_config_overwrite: bool = False,
+        logfile: Optional[str] = None,
     ) -> None:
         """
         Load and set up the model for simulation.
 
         Args:
-            rdf_file (Optional[str]): Path to a serialized model.
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            verbose (bool): Whether to print verbose output during loading.
-            validate_model (bool): Whether to perform model validation.
-            force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            rdf_file: Path to a serialized model.
+            fcn: Custom function to be applied during model loading.
+            force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
-        if verbose:
+        if LOGGER.verbose:
             self._load(
                 rdf_file=rdf_file,
                 fcn=fcn,
-                validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
-                verbose=verbose,
+                # verbose=verbose,
+                logfile=logfile,
             )
         else:
             with warnings.catch_warnings():
@@ -1472,18 +2207,19 @@ class SimulationModel:
                 self._load(
                     rdf_file=rdf_file,
                     fcn=fcn,
-                    validate_model=validate_model,
-                    force_config_overwrite=force_config_overwrite,
-                    verbose=verbose,
+                        force_config_overwrite=force_config_overwrite,
+                    # verbose=verbose,
+                    logfile=logfile,
                 )
 
+    # @reset_print
     def _load(
         self,
-        rdf_file: Optional[str] = None,
-        fcn: Optional[Callable] = None,
-        verbose: bool = False,
-        validate_model: bool = True,
-        force_config_overwrite: bool = False,
+        rdf_file: Optional[str],
+        fcn: Optional[Callable],
+        # verbose: int,
+        force_config_overwrite: bool,
+        logfile: Optional[str],
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -1491,69 +2227,107 @@ class SimulationModel:
         This method is called by load and performs the actual loading process.
 
         Args:
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            validate_model (bool): Whether to perform model validation.
+            rdf_file: Path to a serialized model.
+            fcn: Custom function to be applied during model loading.
+            force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
+        # if not LOGGER.is_active:
+        #     reset_PRINTPROGRESS = True
+        # else:
+        #     reset_PRINTPROGRESS = False
+
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
+        # ``None`` is "not given": a logfile configured on LOGGER stays.
+        if logfile is not None:
+            LOGGER.logfile = logfile
 
         if self._is_loaded:
-            warnings.warn("The simulation model is already loaded. Reloading.")
-            self.reset()
+            self._reset()
 
-        self._is_loaded = True
-
-        PRINTPROGRESS("Loading simulation model")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Loading simulation model")
+        LOGGER.add_level()
 
         if rdf_file is not None:
-            PRINTPROGRESS("Loading model from RDF file")
+            LOGGER.task("Loading model from RDF file")
             self._load_model_from_rdf(rdf_file)
+            LOGGER.ok("Loading model from RDF file", change_status=True)
 
         if fcn is not None:
             assert callable(
                 fcn
             ), "The function to be applied during model loading is not callable."
-            PRINTPROGRESS("Applying user defined function")
+            LOGGER.task("Applying user-defined function")
             fcn(self)
+            LOGGER.ok("Applying user-defined function", change_status=True)
 
-        PRINTPROGRESS("Removing cycles")
+        LOGGER.task("Fusing state-space clusters")
+        self._build_fused_clusters()
+        LOGGER.ok("Fusing state-space clusters", change_status=True)
+
+        LOGGER.task("Preparing for topological sorting")
         self._get_components_no_cycles()
+        LOGGER.ok("Preparing for topological sorting", change_status=True)
 
-        PRINTPROGRESS("Determining execution order")
+        LOGGER.task("Determining execution order")
         self._get_execution_order()
+        LOGGER.ok("Determining execution order", change_status=True)
 
-        PRINTPROGRESS("Loading parameters")
+        LOGGER.task("Loading parameters")
         self._load_parameters(force_config_overwrite=force_config_overwrite)
+        LOGGER.ok("Loading parameters", change_status=True)
 
-        if validate_model:
-            PRINTPROGRESS("Validating model")
-            self.validate()
+        LOGGER.task("Checking model")
+        self._check_loaded()
+        LOGGER.ok("Checking model", change_status=True)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
+        LOGGER.ok("Loading simulation model", change_status=True)
 
-        if verbose:
-            print(self)
+        self._is_loaded = True
+
+        # if reset_PRINTPROGRESS:
+        #     LOGGER.reset()
+
+        # if verbose:
+        #     print(self)
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
+        """
+        Enable or disable history logging of simulation results for components.
+
+        Sets the log_history flag on every input and output port (scalar and
+        vector) of the selected components.  A port that does not log keeps
+        no time history from its next initialize on (only its current value),
+        unless it holds data.
+
+        Args:
+            flag (bool): Whether to save (log) simulation results.
+            c (Optional[list]): List of components to apply the flag to.
+                If None, the flag is applied to all components in the model.
+        """
         assert isinstance(flag, bool), "The flag must be a boolean."
         if c is not None:
             assert isinstance(c, list), "The c must be a list."
             for component in c:
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
         else:
             for component in self._components.values():
                 for input_key in component.input.keys():
-                    if isinstance(component.input[input_key], tps.Scalar):
+                    if isinstance(component.input[input_key], (tps.Scalar, tps.Vector)):
                         component.input[input_key].log_history = flag
                 for output_key in component.output.keys():
-                    if isinstance(component.output[output_key], tps.Scalar):
+                    if isinstance(component.output[output_key], (tps.Scalar, tps.Vector)):
                         component.output[output_key].log_history = flag
 
-    def reset(self) -> None:
+    def _reset(self) -> None:
         """
         Reset the model to its initial state.
         """
@@ -1564,16 +2338,17 @@ class SimulationModel:
         self._flat_execution_order = []  ###
         self._required_initialization_connections = []  ###
         self._components_no_cycles = {}  ###
+        self._fused_components = {}  ###
+        self._fusion_member_to_fused = {}  ###
         self._saved_parameters = {}  ###
 
         # Reset the loaded state
         self._is_loaded = False  ###
-        self._is_validated = False  ###
 
         # Reset any estimation results
         self._result = None  ###
 
-    def get_simple_graph(self, components) -> Dict:
+    def _get_simple_graph(self, components) -> Dict:
         """
         Get a simple graph representation of the system graph.
         This is a simplified version of the system graph that drops information about edge labels (Connection and ConnectionPoint pairs).
@@ -1592,7 +2367,13 @@ class SimulationModel:
                     simple_graph[component].add(receiver_component)
         return simple_graph
 
-    def get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
+    def _cycle_sample(self) -> Tuple[List[List[core.System]], bool]:
+        """The simple cycles of the graph without cycles so far, at most
+        :data:`CYCLE_SAMPLE` of them, and whether there are more."""
+        found = list(itertools.islice(self._get_simple_cycles(self._components_no_cycles), CYCLE_SAMPLE + 1))
+        return found[:CYCLE_SAMPLE], len(found) > CYCLE_SAMPLE
+
+    def _get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
         """
         Get the simple cycles in the system graph.
 
@@ -1602,50 +2383,245 @@ class SimulationModel:
         Returns:
             List[List[core.System]]: List of simple cycles.
         """
-        G = self.get_simple_graph(components)
+        G = self._get_simple_graph(components)
         cycles = simple_cycles(G)
         return cycles
+
+    def _build_fused_clusters(self) -> None:
+        """Detect clusters of components connected through *fusable* arcs and
+        build one :class:`FusedStateSpaceSystem` per cluster.
+
+        A connection is fusable iff its output port is in the sender's
+        ``FUSABLE_OUTPUT_PORTS`` and its input port is in the receiver's
+        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair), and
+        neither instance sets ``fusable=False``.  The fused block replaces its members in the execution order -- the
+        internal arcs are eliminated exactly into one monolithic state-space
+        model, so the coupling has no co-simulation lag and is unconditionally
+        stable.  The members stay in ``self._components`` (parameter
+        targeting, port history, serialization); only the topological-sorting
+        graph and the execution order are contracted.
+
+        Populates ``self._fused_components`` (fused id -> fused component)
+        and ``self._fusion_member_to_fused`` (member id -> fused component).
+        Fusion can be disabled by setting ``self.enable_fusion = False``
+        before ``load()``.
+        """
+
+        self._fused_components = {}
+        self._fusion_member_to_fused = {}
+        if not getattr(self, "enable_fusion", True):
+            return
+        clusters, arcs = self._fusable_clusters()
+        for members in clusters:
+            if len(members) < 2:
+                continue
+            n_cs = {int(getattr(m, "n_c", 1) or 1) for m in members}
+            member_id_set = {m.id for m in members}
+            cluster_arcs = [
+                a for a in arcs if a[0].id in member_id_set and a[2].id in member_id_set
+            ]
+            internal_arcs = []
+            aligned = True
+            if n_cs == {1}:
+                for sender, s_port, receiver, r_port, pairs in cluster_arcs:
+                    in_v = pairs[0][3] if pairs else None
+                    internal_arcs.append((sender, s_port, receiver, r_port, _slot_or_zero(in_v)))
+            elif len(n_cs) == 1:
+                # Batched metas fuse when every arc pairs instance i of the
+                # sender with instance i of the receiver on one slot: the
+                # cluster-aware batching orders the metas' instances so.
+                (n_c,) = n_cs
+                for sender, s_port, receiver, r_port, pairs in cluster_arcs:
+                    s_ics = [p[0] for p in pairs]
+                    r_ics = [p[1] for p in pairs]
+                    slots = {_slot_or_zero(p[3]) for p in pairs}
+                    # the batcher writes an identity-aligned connection without
+                    # instance indices (plain broadcasting over n_c)
+                    broadcast = len(pairs) == 1 and s_ics[0] is None and r_ics[0] is None
+                    explicit = (
+                        len(pairs) == n_c
+                        and sorted(int(i) for i in s_ics) == list(range(n_c))
+                        and all(int(a) == int(b) for a, b in zip(s_ics, r_ics))
+                    )
+                    if not (broadcast or explicit) or len(slots) != 1:
+                        aligned = False
+                        break
+                    internal_arcs.append((sender, s_port, receiver, r_port, slots.pop()))
+            else:
+                aligned = False
+            if not aligned:
+                LOGGER.info(
+                    "Skipping fusion of cluster %s (batched members not aligned instance to instance)",
+                    [m.id for m in members],
+                )
+                continue
+            fused = FusedStateSpaceSystem(
+                members=members,
+                internal_arcs=internal_arcs,
+                id="fused[" + "][".join(m.id for m in members) + "]",
+            )
+            n_c = max(n_cs)
+            if n_c > 1:
+                fused.n_c = n_c
+                fused._n_c_batched = n_c
+            self._fused_components[fused.id] = fused
+            for m in members:
+                self._fusion_member_to_fused[m.id] = fused
+            LOGGER.info(
+                "Fused state-space cluster %s <- %s",
+                fused.id,
+                [m.id for m in members],
+            )
+
+    def _fusable_arcs(self):
+        """Every connection whose output port is in the sender's
+        ``FUSABLE_OUTPUT_PORTS`` and whose input port is in the receiver's
+        ``FUSABLE_INPUT_PORTS``, neither of them set ``fusable=False``, as
+        ``(sender, output port, receiver, input port, pairs)`` with ``pairs``
+        the connection's ``(s_ic, r_ic, out_v, in_v)`` instance and slot pairs
+        (one pair for a singleton scalar link)."""
+        arcs = []
+        for comp in self._components.values():
+            outs = getattr(type(comp), "FUSABLE_OUTPUT_PORTS", frozenset())
+            # an instance can opt out: coupled to its neighbours one step late instead
+            if not outs or not getattr(comp, "fusable", True):
+                continue
+            for conn in comp.connected_through:
+                if conn.output_port not in outs:
+                    continue
+                for cp in conn.connects_system_at:
+                    recv = cp.connection_point_of
+                    ins = getattr(type(recv), "FUSABLE_INPUT_PORTS", frozenset())
+                    if cp.input_port not in ins or not getattr(recv, "fusable", True):
+                        continue
+                    if self._components.get(recv.id) is not recv:
+                        continue
+                    if cp.detached_of(conn) is not False:
+                        continue  # read without its gradient (split_worlds' cut): never inside a fused block
+                    arcs.append((comp, conn.output_port, recv, cp.input_port, slot_pairs(cp, conn)))
+        return arcs
+
+    def _fusable_clusters(self):
+        """``(clusters, arcs)``: the components joined by fusable arcs, as
+        lists of members in ``components`` order, and the arcs
+        (:meth:`_fusable_arcs`)."""
+        arcs = self._fusable_arcs()
+        if not arcs:
+            return [], arcs
+        parent = {}
+
+        def find(cid):
+            parent.setdefault(cid, cid)
+            while parent[cid] != cid:
+                parent[cid] = parent[parent[cid]]
+                cid = parent[cid]
+            return cid
+
+        for sender, _, receiver, _, _ in arcs:
+            ra, rb = find(sender.id), find(receiver.id)
+            if ra != rb:
+                parent[ra] = rb
+        by_root = {}
+        for cid in parent:
+            by_root.setdefault(find(cid), set()).add(cid)
+        clusters = [
+            [c for c in self._components.values() if c.id in member_ids]
+            for member_ids in by_root.values()
+        ]
+        return clusters, arcs
+
+    def _resolve_execution_component(self, component_id: str) -> core.System:
+        """The executing component for an id: a regular component, or the
+        fused block that replaced a cluster in the execution order."""
+        comp = self._components.get(component_id)
+        if comp is not None:
+            return comp
+        return self._fused_components[component_id]
+
+    def get_component(self, component_id: str) -> core.System:
+        """Component by id.
+
+        Resolves regular components and the fused state-space blocks that
+        execute in place of clusters (e.g. for seeding an estimated initial
+        state, whose keys are executing-component ids).
+
+        Args:
+            component_id: The component id.
+
+        Returns:
+            core.System: The component.
+
+        Raises:
+            KeyError: If no component with that id exists.
+        """
+        return self._resolve_execution_component(component_id)
 
     def _copy_components(self) -> core.System:
         """
         Copy the components of the model.
+
+        Fused clusters are contracted here: every member maps to a single
+        copied node standing in for its ``FusedStateSpaceSystem`` (namespaced
+        ports ``"<member_id>.<port>"``), and intra-cluster connections are
+        dropped -- they are eliminated inside the fused block, so cycle
+        removal and topological sorting must not see them.
         """
+        fusion_map = getattr(self, "_fusion_member_to_fused", {})
+
+        def node_of(component):
+            return fusion_map.get(component.id, component)
+
+        def port_names(sender, out_port, receiver, in_port):
+            s_node, r_node = node_of(sender), node_of(receiver)
+            if s_node is not sender:
+                out_port = f"{sender.id}.{out_port}"
+            if r_node is not receiver:
+                in_port = f"{receiver.id}.{in_port}"
+            return out_port, in_port
+
         _new_components = {}
         new_to_old_mapping = {}
         old_to_new_mapping = {}
+
+        def copy_of(component):
+            node = node_of(component)
+            if node not in old_to_new_mapping:
+                new_node = copy.copy(node)
+                new_node.connected_through = []
+                new_node.connects_at = []
+                new_to_old_mapping[new_node] = node
+                old_to_new_mapping[node] = new_node
+                self.add_component(new_node, _new_components)
+            return old_to_new_mapping[node]
+
         for component in self._components.values():
-            if component not in old_to_new_mapping:
-                new_component = copy.copy(component)
-                new_component.connected_through = []
-                new_component.connects_at = []
-                new_to_old_mapping[new_component] = component
-                old_to_new_mapping[component] = new_component
-            else:
-                new_component = old_to_new_mapping[component]
+            new_component = copy_of(component)
 
             for connection in component.connected_through:
                 for connection_point in connection.connects_system_at:
                     connected_component = connection_point.connection_point_of
-                    if connected_component not in old_to_new_mapping:
-                        new_connected_component = copy.copy(connected_component)
-                        new_connected_component.connected_through = []
-                        new_connected_component.connects_at = []
-                        new_to_old_mapping[new_connected_component] = (
-                            connected_component
-                        )
-                        old_to_new_mapping[connected_component] = (
-                            new_connected_component
-                        )
-                    else:
-                        new_connected_component = old_to_new_mapping[
-                            connected_component
-                        ]
+                    if node_of(connected_component) is node_of(component):
+                        # Intra-cluster arc: eliminated inside the fused block.
+                        continue
+                    new_connected_component = copy_of(connected_component)
+                    out_port, in_port = port_names(
+                        component,
+                        connection.output_port,
+                        connected_component,
+                        connection_point.input_port,
+                    )
                     self.add_connection(
                         new_component,
                         new_connected_component,
-                        connection.outputPort,
-                        connection_point.inputPort,
+                        out_port,
+                        in_port,
+                        output_port_index=connection_point.output_port_index[
+                            connection
+                        ],
+                        input_port_index=connection_point.input_port_index[connection],
                         components=_new_components,
+                        output_component_index=connection_point.output_component_index.get(connection),
+                        input_component_index=connection_point.input_component_index.get(connection),
                     )
 
         # _new_components = {k: old_to_new_mapping[v] for k, v in self._components.items()}
@@ -1656,11 +2632,15 @@ class SimulationModel:
         Create a dictionary of components without cycles using an improved algorithm
         that minimizes the number of edges removed.
         """
+        LOGGER.add_level()
+        LOGGER.task("Copying components")
         self._components_no_cycles = self._copy_components()
+        LOGGER.ok("Copying components", change_status=True)
         self._required_initialization_connections = []
 
         # Use the improved cycle removal algorithm
         self._remove_cycles()
+        LOGGER.remove_level()
 
     def _remove_cycles(self) -> None:
         """
@@ -1678,12 +2658,45 @@ class SimulationModel:
         """
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
+        # (from id, to id) of every cut, in cut order: the one-step-lag
+        # placement of the discrete-time model, inspectable for parity checks.
+        self._removed_cycle_edges: List[Tuple[str, str]] = []
 
-        # Calculate all cycles once at the beginning
-        cycles = list(self.get_simple_cycles(self._components_no_cycles))
+        # Declared one-step lags first: a component whose class lists an
+        # output in ``LAGGED_OUTPUT_PORTS`` delivers that signal from the
+        # start of the step (its receivers read the previous step's value,
+        # and the output needs an initial value), so those edges are cut
+        # here, before the cycle search, exactly as a cycle cut would.  A
+        # star of a hundred walls around one such node otherwise multiplies
+        # every existing feedback loop by the star's size and the simple-cycle
+        # enumeration never returns.
+        self._cut_declared_lags()
+        # A batched model: the source model's cuts, before any search
+        self._cut_source_cuts()
+
+        LOGGER.task("Detecting cycles")
+        LOGGER.add_level()
+
+        # The cycles, at most CYCLE_SAMPLE at a time: a batched model merges
+        # many source components into a few meta components, and the parallel
+        # paths through the components it leaves apart (one per room sensor)
+        # multiply its simple cycles past any memory (23 Oct 2026: more than
+        # 300 000 in 5 s on a large building's 177-component cluster, the run killed
+        # at 29 GB).  Below the cap the list is complete, as before; above it the
+        # edges are chosen from the sample by the same rule, and the cycles are
+        # searched again once the sample is used up.
+        cycles, sampled = self._cycle_sample()
+        LOGGER.info("Found %s%d cycles", "more than " if sampled else "", len(cycles))
         if not cycles:
+            LOGGER.info("No cycles found")
+            LOGGER.remove_level()
+            LOGGER.ok("Detecting cycles", change_status=True)
             return  # No cycles to remove
+        LOGGER.remove_level()
+        LOGGER.ok("Detecting cycles", change_status=True)
 
+        LOGGER.task("Removing cycles")
+        LOGGER.add_level()
         while iteration < max_iterations and cycles:
             iteration += 1
 
@@ -1712,16 +2725,26 @@ class SimulationModel:
 
             # Remove ALL connections between the selected components
             c_from, c_to = best_edge
+            self._removed_cycle_edges.append((c_from.id, c_to.id))
             self._remove_all_edges_between_components(c_from, c_to)
 
             # Update cycles list by removing cycles that contained the removed edge
             cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
+            if not cycles and sampled:
+                cycles, sampled = self._cycle_sample()
 
-        if iteration >= max_iterations:
-            print(
-                f"Warning: Cycle removal reached maximum iterations ({max_iterations}). "
-                "There might be remaining cycles."
+        reached_max_iterations = iteration >= max_iterations
+        if reached_max_iterations:
+            LOGGER.warning(
+                "Cycle removal stopped after %d iterations.",
+                max_iterations,
             )
+
+        LOGGER.remove_level()
+        if reached_max_iterations:
+            LOGGER.warning("Removing cycles", change_status=True)
+        else:
+            LOGGER.ok("Removing cycles", change_status=True)
 
     def _update_cycles_after_edge_removal(self, cycles, removed_edge):
         """
@@ -1768,6 +2791,32 @@ class SimulationModel:
         Returns:
             The best edge tuple (c_from, c_to) to remove
         """
+
+        # A batched model must place its one-step lags where the source model
+        # placed them: an edge pointing backwards across the preserved source
+        # execution priorities *is* a source-model cut.  Restrict the candidates
+        # to those edges whenever any exist -- the cycle count below is
+        # otherwise dominated by cross-loop cycles through a meta component
+        # that batches several source components (e.g. every PID controller),
+        # which moved the lag onto a forward edge and changed the discrete-time
+        # model relative to the unbatched one.
+        def _points_backwards(edge):
+            source_priority = getattr(edge[0], "_batched_execution_priority", None)
+            target_priority = getattr(edge[1], "_batched_execution_priority", None)
+            return (
+                source_priority is not None
+                and target_priority is not None
+                and source_priority >= target_priority
+            )
+
+        backward_edges = {
+            edge: count
+            for edge, count in edge_cycle_count.items()
+            if _points_backwards(edge)
+        }
+        if backward_edges:
+            edge_cycle_count = backward_edges
+
         # Group edges by cycle participation count (descending)
         max_cycle_count = max(edge_cycle_count.values())
         best_edges = [
@@ -1776,16 +2825,96 @@ class SimulationModel:
 
         # If multiple edges have the same max count, apply additional criteria
         if len(best_edges) > 1:
+            LOGGER.info(
+                "Multiple component pairs have the same cycle participation count (%d)",
+                max_cycle_count,
+            )
+            LOGGER.add_level()
+            for edge in best_edges:
+                LOGGER.info("(%s, %s)", edge[0].id, edge[1].id)
+            LOGGER.remove_level()
+
             # Prefer edges from components with more outgoing connections
             def edge_priority(edge):
                 c_from, c_to = edge
+                source_priority = getattr(c_from, "_batched_execution_priority", None)
+                target_priority = getattr(c_to, "_batched_execution_priority", None)
+                # A source-model feedback edge points backwards across the
+                # preserved execution priorities. Prefer cutting it so
+                # recompilation cannot reverse Gauss-Seidel lag semantics.
+                preserves_batched_order = int(
+                    source_priority is not None
+                    and target_priority is not None
+                    and source_priority >= target_priority
+                )
                 # Higher number of outgoing connections = higher priority for removal
                 outgoing_count = len(c_from.connected_through)
-                return outgoing_count
+                return preserves_batched_order, outgoing_count
 
+            # Deterministic base order before the (stable) priority sort: the
+            # candidate order otherwise follows the cycle enumeration over a
+            # set-based graph, i.e. Python's hash seed, and a hash-dependent
+            # cut moves the Gauss-Seidel one-step lag onto a different signal
+            # between two processes -- a different discrete-time model, with
+            # measurably different trajectories.
+            best_edges.sort(key=lambda edge: (edge[0].id, edge[1].id))
             best_edges.sort(key=edge_priority, reverse=True)
 
+        LOGGER.info(
+            "Selected component pair: (%s, %s)",
+            best_edges[0][0].id,
+            best_edges[0][1].id,
+        )
         return best_edges[0]
+
+    def _cut_source_cuts(self) -> None:
+        """A batched model (:meth:`Model.batch_components`) cuts first where
+        its source model cut: every edge between the components that hold the
+        two sides of a source cut (``_source_cuts``, pairs of meta ids), as a
+        cycle cut, so its one-step lags sit on the source model's signals and
+        the cycles batching multiplies need no search."""
+        pairs = getattr(self, "_source_cuts", None)
+        if not pairs:
+            return
+        holder = {}
+        for component in self._components_no_cycles.values():
+            for member in getattr(component, "_members", None) or [component]:
+                holder[member.id] = component
+        cut = set()
+        for metas_from, metas_to in pairs:
+            for a_id in metas_from:
+                for b_id in metas_to:
+                    a, b = holder.get(a_id), holder.get(b_id)
+                    if a is None or b is None or a is b or (a.id, b.id) in cut:
+                        continue
+                    if not any(cp.connection_point_of is b for conn in a.connected_through for cp in conn.connects_system_at):
+                        continue
+                    LOGGER.info("Source model's cut: %s -> %s", a.id, b.id)
+                    self._remove_all_edges_between_components(a, b)
+                    self._removed_cycle_edges.append((a.id, b.id))
+                    cut.add((a.id, b.id))
+        LOGGER.info("Cut %d edges where the source model cut %d", len(cut), len(pairs))
+
+    def _cut_declared_lags(self) -> None:
+        """Cut every edge leaving an output named in the sender's class
+        attribute ``LAGGED_OUTPUT_PORTS`` (see :meth:`_remove_cycles`)."""
+        for component in list(self._components_no_cycles.values()):
+            decide = getattr(component, "lagged_output_ports", None)
+            lagged = decide() if callable(decide) else getattr(type(component), "LAGGED_OUTPUT_PORTS", frozenset())
+            if not lagged:
+                continue
+            receivers = []
+            for connection in list(component.connected_through):
+                if connection.output_port not in lagged:
+                    continue
+                for cp in list(connection.connects_system_at):
+                    r = cp.connection_point_of
+                    if r not in receivers:
+                        receivers.append(r)
+            for r in receivers:
+                LOGGER.info("Declared lag: cutting %s -> %s", component.id, r.id)
+                self._removed_cycle_edges.append((component.id, r.id))
+                self._remove_all_edges_between_components(component, r)
 
     def _remove_all_edges_between_components(self, c_from, c_to):
         """
@@ -1799,12 +2928,20 @@ class SimulationModel:
             c_from: Source component
             c_to: Target component
         """
+        LOGGER.add_level()
         # Find and remove all connections from c_from to c_to
         connections_to_remove = []
         for connection in c_from.connected_through:
             for connection_point in connection.connects_system_at:
                 if c_to == connection_point.connection_point_of:
                     connections_to_remove.append((connection, connection_point))
+                    LOGGER.info(
+                        "Removing connection: %s.%s --> %s.%s",
+                        c_from.id,
+                        connection.output_port,
+                        c_to.id,
+                        connection_point.input_port,
+                    )
 
         # Remove the identified connections
         for connection, connection_point in connections_to_remove:
@@ -1819,16 +2956,491 @@ class SimulationModel:
             # Clean up empty connection
             if len(connection.connects_system_at) == 0:
                 c_from.connected_through.remove(connection)
+        LOGGER.remove_level()
 
-    def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
-    ) -> None:
+    # ------------------------------------------------------------------
+    # Model state
+    # ------------------------------------------------------------------
+    def _stateful_leaves(self) -> List[Tuple[Any, Any, int, int]]:
+        """``(executing component, state owner, offset, width)`` for every
+        state owner of the model, in execution order.  The state owner is the
+        component itself or, for a fused state-space block, each of its
+        members (the block's state is its members' states one after another).
+        A batched owner carries its instances' original ids in
+        ``_source_component_ids``."""
+        from twin4build.simulator._functional import collect_stateful
+
+        leaves = []
+        for comp in collect_stateful(self):
+            members = list(getattr(comp, "members", None) or [comp])
+            offset = 0
+            for member in members:
+                if not member.is_stateful():
+                    continue
+                width = int(member.state_size())
+                leaves.append((comp, member, offset, width))
+                offset += width
+        return leaves
+
+    @staticmethod
+    def _instance_ids(owner) -> Tuple[str, ...]:
+        return tuple(getattr(owner, "_source_component_ids", None) or (owner.id,))
+
+    # ------------------------------------------------------------------
+    # Parameters by component id, across batchings
+    # ------------------------------------------------------------------
+    @staticmethod
+    def get_source_component_ids(component) -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order.
+
+        A batched meta (see ``Model.batch_components``) stands for the
+        components it was built from, one per instance; any other component
+        stands for itself, ``(component.id,)``.
         """
-        Load a chain log from a file or dictionary.
+        return SimulationModel._instance_ids(component)
+
+    @staticmethod
+    def _split_instances(component, values) -> List[Tuple[str, np.ndarray]]:
+        """The values of one parameter of ``component`` as ``[(source
+        component id, values)]``, one entry per component it stands for.
+
+        ``n`` values go one to each of ``n`` instances, a multiple of ``n``
+        in equal rows, and one value to every instance (the instances share
+        it).  A scalar is a 0-d array, a row a 1-d array.
+        """
+        ids = SimulationModel._instance_ids(component)
+        flat = np.array(values, dtype=float).reshape(-1)
+        n = len(ids)
+        if n == 1:
+            return [(ids[0], np.asarray(flat[0]) if flat.size == 1 else flat)]
+        if flat.size == n:
+            return [(cid, np.asarray(flat[i])) for i, cid in enumerate(ids)]
+        if flat.size == 1:
+            return [(cid, np.asarray(flat[0])) for cid in ids]
+        if flat.size % n == 0:
+            rows = flat.reshape(n, -1)
+            return [(cid, rows[i]) for i, cid in enumerate(ids)]
+        raise ValueError(
+            f"{flat.size} values cannot be divided over the {n} components "
+            f"'{component.id}' stands for"
+        )
+
+    @staticmethod
+    def _parameter_object(component, attr):
+        """The parameter ``attr`` of ``component`` (a dotted path), or
+        ``None`` when there is none or it is not a parameter object."""
+        try:
+            obj = rgetattr(component, attr)
+        except AttributeError:
+            return None
+        if not (callable(getattr(obj, "get", None)) and callable(getattr(obj, "set", None))):
+            return None
+        return obj
+
+    def get_parameters(self, parameters=None) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters, by the ids of the components
+        the model was built from.
 
         Args:
-            filename (Optional[str]): The filename to load the chain log from.
-            result (Optional[Dict]): The chain log dictionary to load.
+            parameters: An iterable of ``(component, attr, ...)`` tuples, the
+                parameter entries of
+                :meth:`~twin4build.estimator.estimator.Estimator.estimate`
+                (what follows ``attr`` is ignored).  ``component`` is a
+                component, its id, or a list of components; ``attr`` the
+                name of a parameter, dotted for a parameter of a sub-model
+                (``"thermal.C_air"``).  ``None`` (default): every parameter
+                each component lists in its configuration
+                (``config["parameters"]``) that is a parameter object.
+
+        Returns:
+            ``{(component id, attr): values}`` in physical units.  A batched
+            meta of ``n_c`` instances gives ``n_c`` keys, named by the
+            components it stands for (:meth:`get_source_component_ids`);
+            any other component gives one.  The values of a scalar
+            parameter are a 0-d array, those of a vector parameter a 1-d
+            array.  Keyed this way the values do not depend on how the
+            model was batched: :meth:`set_parameters` writes them to the
+            unbatched model or to any batching of it.
+
+        Raises:
+            TypeError: If ``attr`` is not a parameter of ``component``.
+            KeyError: If an id names no component of the model.
+        """
+        if parameters is None:
+            parameters = [
+                (component, attr)
+                for component in self._components.values()
+                for attr in (getattr(component, "config", None) or {}).get("parameters", [])
+                if self._parameter_object(component, attr) is not None
+            ]
+        lookup = instances = None
+        out: Dict[Tuple[str, str], np.ndarray] = {}
+        for entry in parameters:
+            component_s, attr = entry[0], str(entry[1])
+            components = component_s if isinstance(component_s, (list, tuple)) else [component_s]
+            for component in components:
+                only = None
+                if isinstance(component, str):
+                    if lookup is None:
+                        lookup, instances = self._component_lookup(), self._instances_by_id()
+                    if component in lookup:
+                        component = lookup[component]
+                    elif component in instances:
+                        only, component = component, instances[component][0]
+                    else:
+                        raise KeyError(f"'{component}' names no component of the model '{self._id}'")
+                param = self._parameter_object(component, attr)
+                if param is None:
+                    raise TypeError(
+                        f"'{attr}' is not a parameter of the component '{component.id}' "
+                        f"({component.__class__.__name__})"
+                    )
+                values = param.get().detach().cpu().numpy()
+                for cid, v in self._split_instances(component, values):
+                    if only is None or cid == only:
+                        out[(cid, attr)] = v
+        return out
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """Deprecated name of :meth:`get_parameters` (removed in 2.1)."""
+        deprecate_name("get_parameter_values", "get_parameters")
+        return self.get_parameters(parameters)
+
+    def _instances_by_id(self) -> Dict[str, Tuple[Any, int, int]]:
+        """``{source component id: (component, instance, n instances)}``:
+        each component the model's components stand for (a batched meta's
+        instances, any other component itself)."""
+        instances: Dict[str, Tuple[Any, int, int]] = {}
+        for comp in self._components.values():
+            ids = self._instance_ids(comp)
+            for i_c, cid in enumerate(ids):
+                instances.setdefault(cid, (comp, i_c, len(ids)))
+        return instances
+
+    def _component_lookup(self) -> Dict[str, Any]:
+        """The model's components by id, with the nested sub-objects that
+        carry an id of their own (e.g. ``OccupancySystem.supply_damper``).
+        ``nn.Module`` keeps child modules in ``_modules`` rather than
+        ``__dict__``, so ``.modules()`` walks the hierarchy."""
+        lookup = dict(self._components)
+        for comp in self._components.values():
+            if isinstance(comp, torch.nn.Module):
+                for child in comp.modules():
+                    if (
+                        child is not comp
+                        and hasattr(child, "id")
+                        and child.id not in lookup
+                    ):
+                        lookup[child.id] = child
+            else:
+                for attr_val in vars(comp).values():
+                    if hasattr(attr_val, "id") and attr_val.id not in lookup:
+                        lookup[attr_val.id] = attr_val
+        return lookup
+
+    def set_parameters(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from values keyed by component (or its id) and
+        attribute.
+
+        Args:
+            values: ``{(component or component id, attr): values}`` in
+                physical units, as returned by :meth:`get_parameters`.  The
+                id names a component of this model (or a sub-object of one
+                that carries an id of its own), or a component one of this
+                model's batched metas stands for.  For the latter the
+                values are written at that instance of the meta's
+                parameter and the other instances keep theirs.  A component
+                (or sub-object) given as an object is written itself, also
+                where another object carries the same id.  A value of
+                ``None`` leaves its parameter as it is.
+            strict: Raise on a key that names no parameter of this model.
+                ``False`` (default) counts it as missing.
+
+        Returns:
+            ``{"applied": n, "missing": m}``: the keys written and the keys
+            that name no parameter of this model (the component or the
+            attribute does not exist, or the number of values does not fit).
+
+        Raises:
+            KeyError: With ``strict``, on the first key that names no
+                parameter of this model; nothing is written then.
+            TypeError: If ``values`` is not a mapping (the parallel-list form
+                of 2.0's development versions is the estimator's private
+                writer now).
+        """
+        if not isinstance(values, dict):
+            raise TypeError(
+                "set_parameters takes {(component or component id, attr): values}, "
+                f"not {type(values).__name__}"
+            )
+        lookup = self._component_lookup()
+        instances = self._instances_by_id()
+        staged: Dict[Tuple[int, str], Tuple[Any, np.ndarray]] = {}
+        counts = {"applied": 0, "missing": 0}
+        for (cid, attr), value in values.items():
+            if value is None:
+                continue  # left as it is (an estimator entry whose x0 the component computes)
+            attr = str(attr)
+            if not isinstance(cid, str):
+                # an object names itself: a sub-object may share its id with
+                # a component (an occupancy's copy of a damper)
+                owner, i_c, n = cid, 0, 1
+                cid = str(getattr(cid, "id", cid))
+            elif cid in lookup:
+                owner, i_c, n = lookup[cid], 0, 1
+            else:
+                owner, i_c, n = instances.get(cid, (None, 0, 1))
+            param = None if owner is None else self._parameter_object(owner, attr)
+            written = False
+            if param is not None:
+                key = (id(owner), attr)
+                if key not in staged:
+                    staged[key] = (param, param.get().detach().cpu().numpy().astype(float).copy())
+                current = staged[key][1]
+                flat = current.reshape(-1)  # a view: ``current`` is contiguous
+                new = np.array(
+                    value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value,
+                    dtype=float,
+                ).reshape(-1)
+                if n > 1 and flat.size == n * new.size:
+                    flat.reshape(n, -1)[i_c] = new
+                    written = True
+                elif n == 1 and new.size in (1, flat.size):
+                    flat[:] = new
+                    written = True
+                elif flat.size == 1 and new.size == 1:
+                    flat[:] = new  # one value the instances share
+                    written = True
+            if written:
+                counts["applied"] += 1
+                continue
+            if strict:
+                raise KeyError(
+                    f"('{cid}', '{attr}') names no parameter of the model '{self._id}'"
+                )
+            counts["missing"] += 1
+        with torch.no_grad():
+            for param, current in staged.values():
+                reference = param.get().detach()
+                param.set(
+                    torch.as_tensor(current, dtype=reference.dtype, device=reference.device).reshape(
+                        reference.shape
+                    ),
+                    normalized=False,
+                )
+        return counts
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Deprecated name of :meth:`set_parameters` (removed in 2.1)."""
+        deprecate_name("set_parameter_values", "set_parameters")
+        return self.set_parameters(values, strict=strict)
+
+    def set_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        period_starts: Optional[List[datetime.datetime]] = None,
+    ) -> None:
+        """Set the state the simulations that follow start from.
+
+        Args:
+            state: ``{component id: values}`` by the ids of the components
+                the model was built from (a batched meta's instances, a fused
+                block's members).  Values are ``(state_size,)`` (every period
+                starts there) or ``(n_periods, state_size)`` (one row per
+                period).  ``NaN`` entries and components that are not named
+                keep their own initial condition.  ``None`` clears the state.
+            period_starts: The start time of each row.  A simulated period
+                takes the row whose start time is its own and keeps the
+                component defaults when there is none: a state estimated for
+                a window is the state at that window's start, not at any
+                other time.  Without ``period_starts`` the rows are taken in
+                order (one row serves every period).
+
+        The state is kept on the model and applied at every
+        :meth:`initialize`, after the components have set their defaults, so
+        it holds for object and functional simulations and for an estimation
+        that starts from this model.
+        """
+        if state is None:
+            self._initial_state = None
+            return
+        values = {}
+        n_rows = None
+        for cid, v in state.items():
+            t = torch.as_tensor(np.asarray(v.detach().cpu()) if isinstance(v, torch.Tensor) else np.asarray(v), dtype=tps.float_dtype())
+            if t.dim() == 1:
+                t = t.unsqueeze(0)
+            assert t.dim() == 2, f"state of '{cid}' must be (state_size,) or (n_periods, state_size), got {tuple(t.shape)}"
+            values[str(cid)] = t
+            if t.shape[0] > 1:
+                assert n_rows in (None, t.shape[0]), "the states name different numbers of periods"
+                n_rows = t.shape[0]
+        if period_starts is not None:
+            period_starts = list(period_starts)
+            assert n_rows in (None, len(period_starts)) , (
+                f"{len(period_starts)} period starts for states of {n_rows} periods"
+            )
+        self._initial_state = {"values": values, "period_starts": period_starts}
+        if getattr(self, "_is_loaded", False):
+            known = {cid for _c, owner, _o, _w in self._stateful_leaves() for cid in self._instance_ids(owner)}
+            unknown = sorted(set(values) - known)
+            if unknown:
+                LOGGER.warning(
+                    "set_state: %d of %d components are not stateful components of this model (first: %s)",
+                    len(unknown), len(values), unknown[0],
+                )
+
+    @staticmethod
+    def _same_instant(a, b) -> bool:
+        try:
+            if (a.tzinfo is None) != (b.tzinfo is None):
+                a, b = a.replace(tzinfo=None), b.replace(tzinfo=None)
+            return abs((a - b).total_seconds()) < 1.0
+        except Exception:
+            return a == b
+
+    def _apply_initial_state(self, start_time: List[datetime.datetime]) -> None:
+        """Write the state of :meth:`set_state` into the components (called
+        at the end of :meth:`initialize`)."""
+        spec = getattr(self, "_initial_state", None)
+        if not spec:
+            return
+        values, starts = spec["values"], spec["period_starts"]
+        n_s = len(start_time)
+        n_rows = max(int(v.shape[0]) for v in values.values())
+        if starts is None:
+            rows = [s if n_rows == n_s else (0 if n_rows == 1 else None) for s in range(n_s)]
+        else:
+            rows = [
+                next((j for j, t0 in enumerate(starts) if self._same_instant(t0, start_time[s])), None)
+                for s in range(n_s)
+            ]
+        if all(r is None for r in rows):
+            LOGGER.warning(
+                "The model's state is set for other period starts than the simulated ones; "
+                "the components' own initial conditions are used"
+            )
+            return
+        n_set = 0
+        for _comp, owner, _offset, width in self._stateful_leaves():
+            ids = self._instance_ids(owner)
+            if not any(cid in values for cid in ids):
+                continue
+            x = owner.get_state().detach().clone()  # (n_s, n_c, state_size)
+            for i_c, cid in enumerate(ids):
+                v = values.get(cid)
+                if v is None:
+                    continue
+                assert v.shape[1] == width, f"state of '{cid}' has {v.shape[1]} entries, the component has {width}"
+                v = v.to(device=x.device, dtype=x.dtype)
+                for s, row in enumerate(rows):
+                    if row is None:
+                        continue
+                    new = v[row if v.shape[0] > 1 else 0]
+                    keep = torch.isnan(new)
+                    x[s, i_c, :] = torch.where(keep, x[s, i_c, :], new)
+                n_set += 1
+            owner.set_state(x)
+        LOGGER.info("Model state: %d component(s) start from the set state in %d of %d period(s)",
+                    n_set, sum(r is not None for r in rows), n_s)
+
+    def _instance_state(self, component_state: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        """``{executing component id: (n_periods, n_c, state_size)}`` (the
+        estimators' ``estimated_initial_state``) as ``{component id:
+        (n_periods, state_size)}``, the ids as in :meth:`set_state`."""
+        out: Dict[str, torch.Tensor] = {}
+        for comp, owner, offset, width in self._stateful_leaves():
+            block = component_state.get(comp.id)
+            if block is None:
+                continue
+            block = torch.as_tensor(np.asarray(block.detach().cpu()) if isinstance(block, torch.Tensor) else np.asarray(block), dtype=tps.float_dtype())
+            for i_c, cid in enumerate(self._instance_ids(owner)):
+                out[cid] = block[:, i_c, offset : offset + width].clone()
+        return out
+
+    def _load_estimated_initial_state(self, result) -> bool:
+        """Set the model's state from the initial states an estimation
+        result carries (multiple shooting, collocation); ``False`` when it
+        carries none or none applies to this model."""
+        starts = list(result.get("start_time") or [])
+        instances = result.get("estimated_initial_state_instances")
+        if instances is None:
+            state = result.get("estimated_initial_state")
+            if not state:
+                return False
+            instances = self._instance_state(state)
+            if not instances:
+                LOGGER.warning(
+                    "The result's initial states name components this model does not execute "
+                    "(another batching); the model's state is not set"
+                )
+                return False
+        n_rows = max(int(torch.as_tensor(v).shape[0]) if torch.as_tensor(v).dim() == 2 else 1 for v in instances.values())
+        self.set_state(instances, period_starts=starts if len(starts) == n_rows else None)
+        LOGGER.info("Load estimation result: the model starts from the estimated state (%d components, %d periods)",
+                    len(instances), n_rows)
+        return True
+
+    def _result_names_this_model(self, component_lookup: Dict[str, Any]) -> bool:
+        """Whether every parameter entry of the loaded result names a
+        component of this model that stands for the components it stood for
+        when the result was fitted (``component_source_ids``; a result
+        without them is taken by its ids alone)."""
+        ids = list(self._result["component_id"])
+        if any(cid not in component_lookup for cid in ids):
+            return False
+        sources = self._result.get("component_source_ids")
+        if not sources:
+            return True
+        return all(
+            tuple(src) == self._instance_ids(component_lookup[cid])
+            for cid, src in zip(ids, sources)
+        )
+
+    def load_estimation_result(
+        self,
+        filename: Optional[str] = None,
+        result: Optional[Dict] = None,
+        parameters: bool = True,
+        initial_state: bool = True,
+        fixed: bool = True,
+        # verbose: int = 0,
+    ) -> None:
+        """
+        Load an estimation result from a file or dictionary.
+
+        A result names its parameters by the components of the model it was
+        fitted on.  Loaded onto another batching of that model (or onto the
+        unbatched model) those names do not resolve, or resolve to metas
+        that stand for other components; the parameters are then set from
+        the values the result carries by the ids of the components the
+        model was built from (``parameter_instances``, see
+        :meth:`set_parameters`), and the numbers applied and missing
+        are logged.  The parameters' bounds are left as they are in that
+        case.
+
+        Args:
+            filename (Optional[str]): The filename to load the estimation result from.
+            result (Optional[Dict]): The estimation result dictionary to load.
+            parameters (bool): Set the estimated parameter values (default).
+            initial_state (bool): Set the model's state (:meth:`set_state`)
+                from the initial states the result carries, when it carries
+                any (multiple shooting, collocation): a simulation of the
+                estimated periods then starts from the estimated state
+                instead of the components' defaults.  ``False`` leaves the
+                model's state as it is.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed (pinned, fixed, left out of the selection) to
+                the values it ran with (``parameter_instances_fixed``), before
+                the estimated ones: the model then simulates as it was
+                fitted whatever its own setup gave those parameters.
+                ``False`` leaves them as they are.  A result without them is
+                loaded as before.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -1848,62 +3460,95 @@ class SimulationModel:
             if ext == ".pickle":
                 with open(filename, "rb") as handle:
                     self._result = pickle.load(handle)
-
-            elif ext == ".npz":
-                if "_ls.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                elif "_mcmc.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                else:
-                    raise Exception(
-                        'The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing "_ls" or "_mcmc".'
-                    )
-
-                for key, value in self._result.items():
-                    self._result[key] = (
-                        1 / self._result["chain_betas"] if key == "chain_T" else value
-                    )
-                    if self._result[key].size == 1 and (
-                        len(self._result[key].shape) == 0
-                        or len(self._result[key].shape) == 1
-                    ):
-                        self._result[key] = value.tolist()
-
-                    elif (
-                        key == "startTime_train"
-                        or key == "endTime_train"
-                        or key == "stepSize_train"
-                    ):
-                        self._result[key] = value.tolist()
             else:
-                raise Exception(
-                    f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
-                )
+                raise Exception(f"The file {filename} is not a pickle file.")
 
-        if isinstance(self._result, estimator.EstimationResult):
-            theta = self._result["result_x"]
-        else:
-            raise Exception(
-                f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
+        assert isinstance(
+            self._result, estimator.EstimationResult
+        ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        if initial_state:
+            self._load_estimated_initial_state(self._result)
+        if not parameters:
+            return
+        held = self._result.get("parameter_instances_fixed") if fixed else None
+        if held:
+            counts = self.set_parameters(held)
+            LOGGER.info(
+                "Load estimation result: %d parameters the fit held fixed set to its values, %d not in this model",
+                counts["applied"],
+                counts["missing"],
             )
+        result_x = self._result["result_x"]
+
+        # Extended lookup including nested sub-objects (e.g.
+        # OccupancySystem.supply_damper) that have their own id but are
+        # not registered as top-level components.
+        component_lookup = self._component_lookup()
+
+        # A result fitted on another batching of the model (or on the
+        # unbatched model) names components this model does not have, or
+        # metas that stand for other components here.  The values it
+        # carries by the ids of the components the model was built from
+        # load onto any batching.
+        instance_values = self._result.get("parameter_instances")
+        if instance_values and not self._result_names_this_model(component_lookup):
+            counts = self.set_parameters(instance_values)
+            LOGGER.info(
+                "Load estimation result: the result was fitted on another batching of the "
+                "model; %d parameter values applied by component id, %d missing",
+                counts["applied"],
+                counts["missing"],
+            )
+            return
 
         flat_components = [
-            self._components[com_id] for com_id in self._result["component_id"]
+            component_lookup[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
         theta_mask = self._result["theta_mask"]
-        theta = theta[theta_mask]
-        self.set_parameters_from_array(theta, flat_components, flat_attr_list)
+        theta_slices = self._result["theta_slices"]
+        lb = self._result["lb"]
+        ub = self._result["ub"]
 
-    def check_for_for_missing_initial_values(self) -> None:
+        # Use theta_slices to properly map from the flat unique-parameter
+        # arrays (result_x, lb, ub) back to per-component values.
+        # This correctly handles parameters with n_c > 1 and shared parameters.
+        values = []
+        min_values = []
+        max_values = []
+        theta_index = self._result.get("theta_index") or [None] * len(theta_mask)
+        for param_idx, idx in zip(theta_mask, theta_index):
+            start, end = theta_slices[param_idx]
+            sel = slice(None) if idx is None else list(idx)
+            values.append(result_x[start:end][sel])
+            min_values.append(lb[start:end][sel])
+            max_values.append(ub[start:end][sel])
+
+        self._write_parameters(
+            values,
+            flat_components,
+            flat_attr_list,
+            min_values=min_values,
+            max_values=max_values,
+        )
+
+        theta_mask = self._result["theta_mask"]
+        theta_slices = self._result["theta_slices"]
+        LOGGER.info("Load estimation result: applied parameters")
+        for comp, attr, param_idx in zip(flat_components, flat_attr_list, theta_mask):
+            start, end = theta_slices[param_idx]
+            raw = result_x[start:end]
+            obj = rgetattr(comp, attr)
+            actual = obj.get() if hasattr(obj, "get") else obj
+            LOGGER.info(
+                "%s.%s: pickle: %s, actual: %s",
+                comp.id,
+                attr,
+                raw,
+                actual,
+            )
+
+    def check_for_missing_initial_values(self) -> None:
         """
         Check for missing initial values in components.
 
@@ -1912,14 +3557,23 @@ class SimulationModel:
         """
         for connection in self._required_initialization_connections:
             component = connection.connects_system
-            if connection.outputPort not in component.output:
+            if connection.output_port not in component.output:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
-            elif component.output[connection.outputPort].get() is None:
+            elif component.output[connection.output_port].get() is None:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
+
+    def check_for_for_missing_initial_values(self) -> None:
+        """Deprecated typo; use :meth:`check_for_missing_initial_values`."""
+
+        deprecate_name(
+            "check_for_for_missing_initial_values",
+            "check_for_missing_initial_values",
+        )
+        self.check_for_missing_initial_values()
 
     def _get_execution_order(self) -> None:
         """
@@ -1963,6 +3617,10 @@ class SimulationModel:
             self._execution_order.append(component_group)
             return activeComponents
 
+        LOGGER.add_level()
+        LOGGER.task("Running Kahn's algorithm")
+        LOGGER.add_level()
+
         initComponents = [
             v for v in self._components_no_cycles.values() if len(v.connects_at) == 0
         ]
@@ -1971,9 +3629,14 @@ class SimulationModel:
         while len(activeComponents) > 0:
             activeComponents = _traverse(self, activeComponents)
 
-        # Map the execution order from the no cycles component dictionary to the full component dictionary.
+        # Map the execution order from the no cycles component dictionary to the
+        # full component dictionary (fused cluster nodes resolve to their
+        # FusedStateSpaceSystem, which executes in place of its members).
         self._execution_order = [
-            [self._components[component.id] for component in component_group]
+            [
+                self._resolve_execution_component(component.id)
+                for component in component_group
+            ]
             for component_group in self._execution_order
         ]
 
@@ -1981,26 +3644,63 @@ class SimulationModel:
         self._required_initialization_connections = [
             connection
             for no_cycle_connection in self._required_initialization_connections
-            for connection in self._components[
+            for connection in self._resolve_execution_component(
                 no_cycle_connection.connects_system.id
-            ].connected_through
-            if connection.outputPort == no_cycle_connection.outputPort
+            ).connected_through
+            if connection.output_port == no_cycle_connection.output_port
         ]
 
         self._flat_execution_order = _flatten(self._execution_order)
         assert len(self._flat_execution_order) == len(
             self._components_no_cycles
-        ), 'Cycles detected in the model. Inspect the generated file "system_graph.png" to see where.'
+        ), "Cycles detected in the model. This should not happen. Please report this issue."
 
-    def _update_literals(self, component: core.System = None) -> None:
+        for i, component_group in enumerate(self._execution_order):
+            LOGGER.section("Priority: %d", i)
+            LOGGER.add_level()
+            for component in component_group:
+                LOGGER.info("%s", component.id)
+            LOGGER.remove_level()
+        LOGGER.remove_level()
+        LOGGER.ok("Running Kahn's algorithm", change_status=True)
+
+        LOGGER.remove_level()
+
+    def _update_literals(
+        self,
+        components: List[core.System] = None,
+        connections: List[core.Connection] = None,
+        connection_points: List[core.ConnectionPoint] = None,
+    ) -> None:
         """
         Update the literals in the semantic model.
         """
 
-        def _update_literals_for_component(component: core.System) -> None:
-            component_uri = self._semantic_model.SIM.__getitem__(component.id)
+        def _update_literals_for_component(
+            component: core.System,
+            connection: core.Connection = None,
+            connection_point: core.ConnectionPoint = None,
+        ) -> None:
+            component_uri = self._semantic_model.T4B.__getitem__(component.id)
+            # A component of a registered (external) class records the
+            # stable type id, the provider and the provider version it is
+            # resolved from at load.  Built-in and unregistered classes
+            # record nothing: they are resolved by class name, as before.
+            registration = self.system_registry.registration_of(type(component))
+            recorded = {} if registration is None else registration.literals()
+            for key in SYSTEM_TYPE_KEYS:
+                predicate = core.namespace.T4B.__getitem__(key)
+                self._semantic_model.instance_graph.remove(
+                    (component_uri, predicate, None)
+                )
+                if recorded.get(key) is not None:
+                    self._semantic_model.instance_graph.add(
+                        (component_uri, predicate, Literal(recorded[key]))
+                    )
             for key, value in flatten_dict(component.populate_config(), component):
-                if isinstance(value, dict):
+                if isinstance(value, (dict, list, tuple)):
+                    # Serialize dicts, lists and tuples (a setting's points)
+                    # as JSON with datatype
                     value_ = json.dumps(value)
                     datatype = core.namespace.RDF.JSON
                 else:
@@ -2009,18 +3709,18 @@ class SimulationModel:
 
                 # Check if the property is already in the semantic model
                 literal_property = list(
-                    self._semantic_model.graph.objects(
-                        component_uri, core.namespace.SIM.__getitem__(key)
+                    self._semantic_model.instance_graph.objects(
+                        component_uri, core.namespace.T4B.__getitem__(key)
                     )
                 )
                 if len(literal_property) == 0:
                     # No literal in the semantic model.
                     # Add the literal to the semantic model.
                     literal_property = Literal(value_, datatype=datatype)
-                    self._semantic_model.graph.add(
+                    self._semantic_model.instance_graph.add(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
@@ -2028,19 +3728,19 @@ class SimulationModel:
                     # There is one literal in the semantic model.
                     literal_property = literal_property[0]
                     # Remove the literal from the semantic model.
-                    self._semantic_model.graph.remove(
+                    self._semantic_model.instance_graph.remove(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
                     # Add the new literal to the semantic model.
                     literal_property = Literal(value_, datatype=datatype)
-                    self._semantic_model.graph.add(
+                    self._semantic_model.instance_graph.add(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
@@ -2050,42 +3750,437 @@ class SimulationModel:
                         f'The component with id: "{component.id}" has more than one output port.'
                     )
 
-        if component is None:
+        def _update_literals_for_connection(connection: core.Connection) -> None:
+            """
+            Update the literals for a connection in the semantic model.
+            Updates output_port.
+            """
+            connection_uri = self._semantic_model.T4B.__getitem__(str(hash(connection)))
+
+            # Define the literals to update
+            literals_to_update = {
+                "output_port": connection.output_port,
+            }
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection has more than one literal for "{key}".'
+                    )
+
+        def _update_literals_for_connection_point(
+            connection_point: core.ConnectionPoint,
+        ) -> None:
+            """
+            Update the literals for a connection point in the semantic model.
+            Updates input_port, input_port_index, and output_port_index.
+            """
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
+                str(hash(connection_point))
+            )
+
+            # Define the literals to update
+            literals_to_update = {
+                "input_port": connection_point.input_port,
+                "input_port_index": {
+                    str(hash(conn)): _index_literal(idx)
+                    for conn, idx in connection_point.input_port_index.items()
+                },
+                "output_port_index": {
+                    str(hash(conn)): _index_literal(idx)
+                    for conn, idx in connection_point.output_port_index.items()
+                },
+            }
+            detached = {
+                str(hash(conn)): (True if flag is True else [bool(v) for v in flag.tolist()])
+                for conn in connection_point.connects_system_through
+                for flag in (connection_point.detached_of(conn),)
+                if flag is not False
+            }
+            if detached:
+                # what split_worlds cut: read again as it was (only written where there is one)
+                literals_to_update["detached"] = detached
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_point_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection point has more than one literal for "{key}".'
+                    )
+
+        if components is None and connections is None and connection_points is None:
             for component in self._components.values():
                 _update_literals_for_component(component)
-        else:
-            _update_literals_for_component(component)
+                # Also update literals for all connections of this component
+                for connection in component.connected_through:
+                    _update_literals_for_connection(connection)
+                # Also update literals for all connection points of this component
+                for connection_point in component.connects_at:
+                    _update_literals_for_connection_point(connection_point)
 
-    def serialize(self):
+        if components is not None:
+            for component in components:
+                _update_literals_for_component(component)
+
+        if connections is not None:
+            for connection in connections:
+                _update_literals_for_connection(connection)
+        if connection_points is not None:
+            for connection_point in connection_points:
+                _update_literals_for_connection_point(connection_point)
+
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the model to
+        (``instance_graph.ttl`` in the model's semantic_model directory),
+        whether or not it has been written.  ``load`` rebuilds the model
+        from it."""
+        return os.path.join(
+            get_main_dir(), *self._semantic_model.dir_conf, "instance_graph.ttl"
+        )
+
+    def serialize(self) -> str:
         """
-        Serialize the simulation model.
+        Serialize the simulation model to disk.
+
+        Updates the literals of the internal semantic model from the current
+        component/connection state and serializes it, writing
+        ``ontology_graph.ttl`` and ``instance_graph.ttl`` (Turtle format) to
+        the model's semantic_model directory.
+
+        Returns:
+            The path of the instance graph written
+            (:attr:`instance_graph_path`).
         """
+        # dummy_start_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_end_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_step_size = [1]
+        # self.load(verbose=False)
+        # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
+        return self.instance_graph_path
 
-    def visualize(self, query: str = None, literals: bool = True) -> None:
+    def visualize(
+        self,
+        query: str = None,
+        literals: bool = True,
+        forward_only: bool = False,
+        compressed: bool = False,
+        **kwargs,
+    ) -> None:
         """
         Visualize the simulation model.
+
+        Args:
+            query: Custom SPARQL CONSTRUCT query. If None, a default query is used.
+            literals: If True, include all literals. If False, only include connection-related properties.
+            forward_only: If True, only include forward flow (System -> Connection -> ConnectionPoint -> System).
+                         If False, include both forward and reverse relationships.
+            compressed: If True, remove intermediate Connection and ConnectionPoint nodes
+                       and show direct edges between system components with port labels
+                       like ``"output: YYY\\ninput: XXX"``.
+            **kwargs: Additional arguments passed to semantic_model.visualize().
         """
         self._update_literals()
+        if compressed:
+            forward_only = True
         if query is None:
-            if literals:
-                query = None
-            else:
+            if forward_only and literals:
+                # Forward flow + all literals
+                # Forward: connectedThrough, connectsSystemAt, connectionPointOf
+                # All literals except rdf:type and rdfs:subClassOf
+                # Exclude reverse relationships: connectsSystem, connectsSystemThrough, connectsAt
                 query = """
                 CONSTRUCT {
                     ?s ?p ?o
                 }
                 WHERE {
                     ?s ?p ?o .
-                    FILTER (?p = s4syst:connectsSystemAt || 
-                            ?p = s4syst:connectedThrough || 
-                            ?p = s4syst:connectionPointOf ||
-                            ?p = sim:inputPort ||
-                            ?p = sim:outputPort)
+                    FILTER (?p != rdf:type && 
+                            ?p != rdfs:subClassOf &&
+                            ?p != t4b:modelsSemanticNode &&
+                            ?p != s4syst:connectsSystem &&
+                            ?p != s4syst:connectsSystemThrough &&
+                            ?p != s4syst:connectsAt)
                 }
                 """
-        self._semantic_model.visualize(query)
+            elif forward_only and not literals:
+                # Forward flow + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
+                }
+                """
+            elif not forward_only and literals:
+                # All relationships + all literals
+                query = None
+            else:
+                # All relationships + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = s4syst:connectsSystem ||
+                            ?p = s4syst:connectsSystemThrough ||
+                            ?p = s4syst:connectsAt ||
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
+                }
+                """
+        if compressed:
+            kwargs["pydot_transform"] = self._build_compressed_transform()
+        self._semantic_model.visualize(query, **kwargs)
+
+    @staticmethod
+    def _build_compressed_transform():
+        """Build a pydot_transform callback that collapses Connection/ConnectionPoint
+        nodes into direct edges labelled with port names."""
+
+        def _compress(dg):
+            # Third party imports
+
+            def _unquote(name):
+                """Strip surrounding double-quotes that pydotplus may add."""
+                s = name.strip()
+                if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+                    return s[1:-1]
+                return s
+
+            def _find_prop(props, prop_name):
+                """Find a property value whose key ends with exactly *prop_name*."""
+                for key, val in props.items():
+                    k = key.strip()
+                    if (
+                        k == prop_name
+                        or k.endswith(":" + prop_name)
+                        or k.endswith("/" + prop_name)
+                    ):
+                        return val.strip('"')
+                return "?"
+
+            # --- 1. Parse node labels ----------------------------------------
+            node_info = {}  # norm_name -> {type, props, orig_name}
+            conn_nodes = set()
+            cp_nodes = set()
+            all_headers = set()
+
+            for node in dg.get_nodes():
+                orig_name = node.get_name()
+                name = _unquote(orig_name)
+                attrs = node.obj_dict.get("attributes", {})
+                if "label" not in attrs:
+                    continue
+                soup = BeautifulSoup(attrs["label"], "html.parser")
+                rows = soup.find_all("tr")
+                if not rows:
+                    continue
+
+                header = rows[0].get_text().strip()
+                all_headers.add(header)
+                props = {}
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) == 2:
+                        props[cols[0].get_text().strip()] = cols[1].get_text().strip()
+
+                node_info[name] = {"type": header, "props": props, "orig": orig_name}
+                if header == "Connection":
+                    conn_nodes.add(name)
+                elif header == "ConnectionPoint":
+                    cp_nodes.add(name)
+
+            intermediate = conn_nodes | cp_nodes
+            if not intermediate:
+                warnings.warn(
+                    f"compressed=True: found 0 Connection/ConnectionPoint nodes. "
+                    f"Node type headers present: {all_headers}",
+                    stacklevel=4,
+                )
+                return
+
+            # --- 2. Build adjacency using normalised names --------------------
+            outgoing = {}  # norm_src -> [norm_dst, ...]
+            incoming = {}  # norm_dst -> [norm_src, ...]
+            norm_to_orig = {}
+
+            for orig_src, orig_dst in dg.obj_dict["edges"]:
+                ns, nd = _unquote(orig_src), _unquote(orig_dst)
+                outgoing.setdefault(ns, []).append(nd)
+                incoming.setdefault(nd, []).append(ns)
+                norm_to_orig.setdefault(ns, orig_src)
+                norm_to_orig.setdefault(nd, orig_dst)
+
+            for nname, info in node_info.items():
+                norm_to_orig.setdefault(nname, info["orig"])
+
+            # --- 3. Trace chains and collect new direct edges -----------------
+            new_edges = []
+            for conn in conn_nodes:
+                output_port = _find_prop(node_info[conn]["props"], "output_port")
+                senders = [s for s in incoming.get(conn, []) if s not in intermediate]
+                cps = [d for d in outgoing.get(conn, []) if d in cp_nodes]
+
+                for cp in cps:
+                    input_port = _find_prop(node_info[cp]["props"], "input_port")
+                    receivers = [
+                        d for d in outgoing.get(cp, []) if d not in intermediate
+                    ]
+
+                    for sender in senders:
+                        for receiver in receivers:
+                            label = f"output: {output_port}\\ninput: {input_port}"
+                            new_edges.append((sender, receiver, label))
+
+            # Deduplicate in case the RDF graph contained redundant paths
+            seen = set()
+            unique_edges = []
+            for entry in new_edges:
+                if entry not in seen:
+                    seen.add(entry)
+                    unique_edges.append(entry)
+            new_edges = unique_edges
+
+            if not new_edges:
+                warnings.warn(
+                    f"compressed=True: found {len(conn_nodes)} Connection and "
+                    f"{len(cp_nodes)} ConnectionPoint nodes but could not trace "
+                    f"any complete chains. Check edge directions.",
+                    stacklevel=4,
+                )
+
+            # --- 4. Remove intermediate edges and nodes -----------------------
+            dg.obj_dict["edges"] = {
+                (src, dst): edge_list
+                for (src, dst), edge_list in dg.obj_dict["edges"].items()
+                if _unquote(src) not in intermediate
+                and _unquote(dst) not in intermediate
+            }
+
+            for name in intermediate:
+                orig = node_info[name]["orig"]
+                if orig in dg.obj_dict["nodes"]:
+                    del dg.obj_dict["nodes"][orig]
+
+            # --- 5. Add new direct edges --------------------------------------
+            for sender, receiver, label in new_edges:
+                orig_src = norm_to_orig.get(sender, sender)
+                orig_dst = norm_to_orig.get(receiver, receiver)
+                edge = pdp.Edge(orig_src, orig_dst)
+                edge.obj_dict["attributes"]["label"] = f'"{label}"'
+                edge.obj_dict["attributes"]["fontsize"] = "7"
+                edge.obj_dict["attributes"]["fontname"] = "Courier"
+                dg.add_edge(edge)
+
+        return _compress
 
     def _load_model_from_rdf(self, rdf_file: str) -> None:
         """
@@ -2095,92 +4190,279 @@ class SimulationModel:
         Args:
             rdf_file (str): Path to the RDF file to load from
         """
+        LOGGER.add_level()
         self._semantic_model = core.SemanticModel(
             id=self._id,
             rdf_file=rdf_file,
-            namespaces={"SIM": core.namespace.SIM, "S4SYST": core.namespace.S4SYST},
+            namespaces={"T4B": core.namespace.T4B, "S4SYST": core.namespace.S4SYST},
             dir_conf=self._dir_conf + ["semantic_model"],
         )
 
+        LOGGER.task("Instantiating components")
+        LOGGER.add_level()
+
+        # print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
+
+        # print("all triples:")
+        # for triple in self._semantic_model.instance_graph:
+        # print(triple)
+
         # Instantiate components with their attributes
+        renamed = []
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
-            t = [t for t in sm_instance.type if t.has_subclasses() == False][0]
-            class_name = t.get_short_name()
-            cls = getattr(systems, class_name)
+            t = sm_instance.get_most_specific_type()
+            class_name = None if t is None else t.get_short_name()
             attributes = {}
+            # What the model records about the type of a component of a
+            # registered class (``twin4build.systems.registry``); these
+            # literals are not constructor arguments.
+            recorded_type = {}
             for pred, obj in sm_instance.get_predicate_object_pairs().items():
                 for obj_ in obj:
-                    if obj_.is_literal:
+                    if isinstance(obj_, core.SemanticLiteral):
+                        key = get_short_name(pred, self._semantic_model.namespaces)
+                        if key in SYSTEM_TYPE_KEYS:
+                            recorded_type[key] = str(obj_.uri)
+                            continue
                         literal_value = obj_.uri.value
-                        attributes[
-                            get_short_name(pred, self._semantic_model.namespaces)
-                        ] = literal_value
-            component = cls(id=sm_instance.get_short_name(), **attributes)
+                        # Convert string literals to appropriate Python types
+                        literal_value = _convert_literal_value(literal_value)
+                        attributes[key] = literal_value
+
+            # The class comes from the registry of the model: by type id for
+            # a registered class, by class name for a built-in class and for
+            # a model that was serialized before type ids were recorded.
+            # Nothing is imported from what the file names.
+            cls = self.system_registry.resolve(
+                recorded_type.get(TYPE_ID_KEY),
+                class_name=class_name,
+                provider=recorded_type.get(PROVIDER_KEY),
+                version=recorded_type.get(PROVIDER_VERSION_KEY),
+                component_id=sm_instance.get_short_name(),
+            )
+            if TYPE_ID_KEY in recorded_type and class_name != cls.__name__:
+                # The class registered under the type id was renamed since
+                # the model was serialized; the graph is retyped below.
+                renamed.append((sm_instance, t, cls))
+                class_name = cls.__name__
+
+            LOGGER.info(
+                "Component: %s, type: %s",
+                sm_instance.get_short_name(),
+                class_name,
+            )
+            # The literals are the flattened ``populate_config()`` of the
+            # serialized component, so a nested parameter arrives as a
+            # dotted key (``mass.V``, ``supply_damper.a``) that no
+            # constructor takes, and a class may not expose every parameter
+            # as a constructor argument (or no longer takes a key an older
+            # model recorded).  The constructor gets its own keywords only
+            # (a component rejects any other); every literal that resolves to a
+            # ``tps.Parameter`` on the built component is written to it here,
+            # so a serialized model reloads with its (fitted) values.
+            keywords = cls.constructor_keywords()
+            component = cls(
+                id=sm_instance.get_short_name(),
+                **{k: v for k, v in attributes.items() if k in keywords and k != "id"},
+            )
+            # Bounds first (``candidate_0_0.kp.min_value``): a parameter
+            # stores its value relative to its bounds, so they have to be
+            # the serialized ones before the value is written.
+            for key, value in attributes.items():
+                owner, _, bound = key.rpartition(".")
+                if (
+                    value is None
+                    or not owner
+                    or bound not in ("min_value", "max_value")
+                    or not rhasattr(component, owner)
+                ):
+                    continue
+                parameter = rgetattr(component, owner)
+                if isinstance(parameter, (tps.Parameter, tps.TensorParameter)):
+                    setattr(parameter, bound, value)
+            for key, value in attributes.items():
+                if value is None or not rhasattr(component, key):
+                    continue
+                current = rgetattr(component, key)
+                if isinstance(current, (tps.Parameter, tps.TensorParameter)):
+                    # A per-branch (n_c > 1) literal replaces the freshly
+                    # built scalar parameter with one of that width -- the
+                    # owner's initialize then finds it already expanded.  A
+                    # parameter built that wide already (a controller's slot
+                    # weights) only takes the values: replaced, it would turn
+                    # into a fixed TensorParameter the estimator refuses.
+                    per_branch = isinstance(value, list) and len(value) > 1
+                    if per_branch and isinstance(current, tps.Parameter):
+                        per_branch = int(torch.as_tensor(current.get()).numel()) != len(value)
+                    try:
+                        self._write_parameters(
+                            [value], [component], [key], overwrite=per_branch
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        raise RuntimeError(
+                            f"cannot restore parameter {key}={value!r} on "
+                            f"{class_name} '{component.id}' from {rdf_file}: {exc}"
+                        ) from exc
+                elif current is None and self._absent_optional_parameters(component, {"parameters": {key: None}}):
+                    # a saved value of an optional parameter (``supply_damper.c``):
+                    # the owner builds the parameter from it
+                    rsetattr(component, key, value)
+                elif "." in key and isinstance(current, bool) and isinstance(value, bool):
+                    # A nested flag (``supply_damper.c_tied``): no constructor
+                    # takes the dotted key, so it is written to the owner.
+                    rsetattr(component, key, value)
             # Check if the component already exists
             self.add_component(component)
+        LOGGER.remove_level()
+        LOGGER.ok("Instantiating components", change_status=True)
 
-        # Go through all the connections (from - to) and add them to the simulation model
+        LOGGER.task("Making connections")
+        LOGGER.add_level()
+
+        # Step 1: Read all connection info from the RDF graph while the
+        # original Connection / ConnectionPoint triples are still present.
+        pending_connections = []
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
             component = self._components[sm_instance.get_short_name()]
             predicate_object_pairs = sm_instance.get_predicate_object_pairs()
-            if (
-                core.namespace.S4SYST.connectedThrough in predicate_object_pairs
-            ):  # You can have a System without connections so we need to check
-                connections = predicate_object_pairs[
-                    core.namespace.S4SYST.connectedThrough
+            if core.namespace.S4SYST.connectedThrough not in predicate_object_pairs:
+                continue
+
+            connections = predicate_object_pairs[core.namespace.S4SYST.connectedThrough]
+
+            for connection in connections:
+                predicate_object_pairs_connection = (
+                    connection.get_predicate_object_pairs()
+                )
+                output_port = predicate_object_pairs_connection[
+                    core.namespace.T4B.output_port
+                ][0].uri.value
+                connection_points = predicate_object_pairs_connection[
+                    core.namespace.S4SYST.connectsSystemAt
                 ]
 
-                for connection in connections:
-                    predicate_object_pairs_connection = (
-                        connection.get_predicate_object_pairs()
+                for connection_point in connection_points:
+                    predicate_object_pairs_connection_point = (
+                        connection_point.get_predicate_object_pairs()
                     )
-                    outputPort = predicate_object_pairs_connection[
-                        core.namespace.SIM.outputPort
-                    ][
-                        0
-                    ].uri.value  # There can only be one output port per connection
-                    connection_points = predicate_object_pairs_connection[
-                        core.namespace.S4SYST.connectsSystemAt
-                    ]
+                    receiver_component = predicate_object_pairs_connection_point[
+                        core.namespace.S4SYST.connectionPointOf
+                    ][0]
+                    input_port = predicate_object_pairs_connection_point[
+                        core.namespace.T4B.input_port
+                    ][0].uri.value
 
-                    for connection_point in connection_points:
-                        predicate_object_pairs_connection_point = (
-                            connection_point.get_predicate_object_pairs()
-                        )
-                        receiver_component = predicate_object_pairs_connection_point[
-                            core.namespace.S4SYST.connectionPointOf
-                        ][
-                            0
-                        ]  # There can only be one connection point per connection
-                        inputPort = predicate_object_pairs_connection_point[
-                            core.namespace.SIM.inputPort
-                        ][
-                            0
-                        ].uri.value  # There can only be one input port per connection point
+                    conn_key = connection.get_short_name()
+                    input_port_index = None
+                    output_port_index = None
+                    detached = False
+                    if core.namespace.T4B.detached in predicate_object_pairs_connection_point:
+                        raw = predicate_object_pairs_connection_point[core.namespace.T4B.detached][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict):
+                            detached = parsed.get(conn_key, False)
+                            if isinstance(detached, list):
+                                detached = torch.tensor(detached, dtype=torch.bool)
+                    if (
+                        core.namespace.T4B.input_port_index
+                        in predicate_object_pairs_connection_point
+                    ):
+                        raw = predicate_object_pairs_connection_point[
+                            core.namespace.T4B.input_port_index
+                        ][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            input_port_index = parsed.get(conn_key)
+                    if (
+                        core.namespace.T4B.output_port_index
+                        in predicate_object_pairs_connection_point
+                    ):
+                        raw = predicate_object_pairs_connection_point[
+                            core.namespace.T4B.output_port_index
+                        ][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            output_port_index = parsed.get(conn_key)
 
-                        receiver_component_id = receiver_component.get_short_name()
-                        receiver_component = self._components[receiver_component_id]
+                    receiver_component_id = receiver_component.get_short_name()
+                    receiver_component = self._components[receiver_component_id]
+                    # Multi-slot (tensor) indices are serialized as lists.
+                    if isinstance(input_port_index, list):
+                        input_port_index = torch.tensor(input_port_index, dtype=torch.long)
+                    if isinstance(output_port_index, list):
+                        output_port_index = torch.tensor(output_port_index, dtype=torch.long)
 
-                        self.add_connection(
-                            sender_component=component,
-                            receiver_component=receiver_component,
-                            outputPort=outputPort,
-                            inputPort=inputPort,
-                        )
+                    pending_connections.append(
+                        {
+                            "sender": component,
+                            "receiver": receiver_component,
+                            "output_port": output_port,
+                            "input_port": input_port,
+                            "input_port_index": input_port_index,
+                            "output_port_index": output_port_index,
+                            "detached": detached,
+                        }
+                    )
 
+        # Step 2: Remove old Connection / ConnectionPoint instances and
+        # their triples.  add_connection() will recreate them with fresh
+        # Python-object hashes.  Without this cleanup the graph would
+        # contain BOTH the original URIs from the file AND new URIs from
+        # add_connection, duplicating every edge.
+        ig = self._semantic_model.instance_graph
+        for conn_type in (
+            core.namespace.S4SYST.Connection,
+            core.namespace.S4SYST.ConnectionPoint,
+        ):
+            for subj in list(ig.subjects(RDF.type, conn_type)):
+                ig.remove((subj, None, None))
+                ig.remove((None, None, subj))
 
-# def test():
-#     m = SimulationModel(id="testm")
+        # Step 3: Rebuild connections (adds Python objects + fresh RDF triples)
+        for data in pending_connections:
+            LOGGER.info(
+                "Adding connection: %s.%s --> %s.%s",
+                data["sender"].id,
+                data["output_port"],
+                data["receiver"].id,
+                data["input_port"],
+            )
+            self.add_connection(
+                sender_component=data["sender"],
+                receiver_component=data["receiver"],
+                output_port=data["output_port"],
+                input_port=data["input_port"],
+                input_port_index=data["input_port_index"],
+                output_port_index=data["output_port_index"],
+                detached=data.get("detached", False),
+            )
 
-#     c1 = systems.ScheduleSystem(id="sch")
-#     c2 = systems.SpaceHeaterTorchSystem(id="sh")
+        # Step 4: Forget the instances that were cached while the file was
+        # read.  They hold the triples of the file -- the connections that
+        # were rebuilt above, the literals as they were parsed -- and
+        # ``SemanticModel.serialize`` writes what its cached instances hold
+        # back into the graph: a model loaded from a file would serialize
+        # the old connections next to the new ones, to a file that does not
+        # load again.
+        self._semantic_model._instances = {}
 
-#     m.add_connection(c1, c2, "scheduleValue", "indoorTemperature")
+        # Step 5: A component whose class was renamed under its type id
+        # takes the type of its class, so the graph does not keep the old
+        # class name next to the one ``add_connection`` writes.
+        for sm_instance, old_type, cls in renamed:
+            class_uri = core.namespace.T4B.__getitem__(cls.__name__)
+            if old_type is not None:
+                ig.remove((sm_instance.uri, RDF.type, old_type.uri))
+                if not any(ig.subjects(RDF.type, old_type.uri)):
+                    ig.remove((old_type.uri, RDFS.subClassOf, None))
+            ig.add((sm_instance.uri, RDF.type, class_uri))
+            ig.add((class_uri, RDFS.subClassOf, core.namespace.S4SYST.System))
 
+        LOGGER.remove_level()
+        LOGGER.ok("Making connections", change_status=True)
 
-# if __name__ == "__main__":
-#     test()
+        LOGGER.remove_level()

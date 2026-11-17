@@ -4,10 +4,10 @@ fan
 Modules
 -------
 
-fan\_torch\_system module
--------------------------
+twin4build.systems.fan.fan\_system module
+-----------------------------------------
 
-.. automodule:: twin4build.systems.fan.fan_torch_system
+.. automodule:: twin4build.systems.fan.fan_system
    :members:
    :show-inheritance:
    :undoc-members:

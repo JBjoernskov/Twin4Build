@@ -1,0 +1,1069 @@
+"""Public functional simulation and direct CUDA Graph execution."""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+
+import torch
+
+import twin4build.utils.types as tps
+from twin4build.utils.slots import slot_pairs
+from twin4build.utils import _cuda_graph
+from twin4build.simulator._step_graph import initialization_count
+from twin4build.utils._cuda_graph import CudaGraphCallable
+from twin4build.simulator._functional import (
+    _replays_data,
+    _is_passthrough_sensor,
+    _is_series_output,
+    FunctionalModel,
+    StateLayout,
+    collect_stateful,
+    functional_rollout_tape,
+    recording_data_signature,
+)
+from twin4build.utils.rgetattr import rgetattr
+
+FUNCTIONAL_MATERIALIZATION_REVISION = "vectorized-history-v1"
+
+
+def _execution_order(model):
+    order = getattr(model, "_flat_execution_order", None)
+    if order is None:
+        order = model.flat_execution_order
+    return list(order)
+
+
+def _tensor_signature(value):
+    value = value.detach()
+    return (
+        tuple(value.shape),
+        str(value.dtype),
+        str(value.device),
+        tuple(value.reshape(-1).cpu().tolist()),
+    )
+
+
+def session_signature(model, step_size, max_t, n_periods, date_time_steps):
+    """Semantic cache key; parameter values intentionally invalidate sessions."""
+    order = _execution_order(model)
+    topology = []
+    parameters = []
+    for component in order:
+        topology.append(
+            (
+                id(component),
+                component.id,
+                tuple(
+                    (name, type(port).__name__, port.n_c, getattr(port, "n_v", None))
+                    for name, port in component.input.items()
+                ),
+                tuple(
+                    (name, type(port).__name__, port.n_c, getattr(port, "n_v", None))
+                    for name, port in component.output.items()
+                ),
+                tuple(
+                    (
+                        point.input_port,
+                        tuple(
+                            (id(connection.connects_system), connection.output_port)
+                            for connection in point.connects_system_through
+                        ),
+                    )
+                    for point in component.connects_at
+                ),
+            )
+        )
+        for name in getattr(component, "PARAM_NAMES", ()):
+            value = rgetattr(component, name)
+            # an absent optional parameter is part of the signature as None
+            parameters.append((component.id, name, None if value is None else _tensor_signature(value.get())))
+    sim_model = getattr(model, "_simulation_model", None) or model
+    return (
+        tuple(topology),
+        tuple(parameters),
+        str(getattr(sim_model, "device", torch.device("cpu"))),
+        str(tps.float_dtype()),
+        tuple(int(value) for value in step_size),
+        int(max_t),
+        int(n_periods),
+        tuple(
+            tuple(repr(value) for value in period)
+            for period in date_time_steps
+        ),
+        recording_data_signature(model),
+    )
+
+
+@dataclass
+class RolloutResult:
+    states: torch.Tensor
+    outputs: torch.Tensor
+
+
+def _timed_phase(device, function):
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    started = time.perf_counter()
+    value = function()
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    return value, time.perf_counter() - started
+
+
+class FunctionalSimulationSession:
+    """Reusable topology, recording plan, and optional captured graph."""
+
+    def __init__(self, simulator, step_size, max_t, n_periods, signature):
+        self.signature = signature
+        self.simulator = simulator
+        self.model = simulator.model
+        self.step_size = list(step_size)
+        self.max_t = int(max_t)
+        self.n_periods = int(n_periods)
+        self.outputs = [
+            (component, name)
+            for component in self.model.components.values()
+            for name in component.output
+            # A pass-through sensor publishes its producer's value on
+            # ``measuredValue``; its other outputs are data ports, present
+            # only when the sensor holds data (``SensorSystem.measuredData``).
+            if not (
+                _is_passthrough_sensor(component)
+                and name != "measuredValue"
+                and not component.output[name].is_leaf
+            )
+        ]
+        stateful = collect_stateful(self.model)
+        if not stateful:
+            raise RuntimeError(
+                "functional simulation requires at least one stateful component"
+            )
+        self.layout = StateLayout(stateful)
+        unique_steps = {int(value) for value in step_size}
+        if len(unique_steps) != 1:
+            raise RuntimeError(
+                "functional simulation does not support mixed period step sizes"
+            )
+        self.functional_model = FunctionalModel(
+            self.model,
+            self.layout.components,
+            [],
+            unique_steps.pop(),
+            outputs=self.outputs,
+        )
+        # CUDA Graphs capture the storage addresses of every tensor read by
+        # the rollout, including non-estimated component parameters.  Model
+        # initialization replaces the public parameter tensors between
+        # simulate() calls, so keep session-owned storage whose addresses stay
+        # valid for graph replay.
+        self.functional_model._default_params = {
+            component_id: {
+                name: value.detach().clone() for name, value in parameters.items()
+            }
+            for component_id, parameters in (
+                self.functional_model._default_params.items()
+            )
+        }
+        if self.functional_model.D != self.layout.width:
+            raise RuntimeError("functional state layout width mismatch")
+        self.theta = torch.zeros(
+            0,
+            dtype=tps.float_dtype(),
+            device=self.layout.gather(0).device,
+        )
+        # Every route's index tensors on the rollout's device once, here: a
+        # meta whose instances are ordered against a neighbour's (a cluster
+        # batched by its shape) routes with instance-index tensors, and a
+        # CUDA-graph capture cannot record their host-to-device copy per step.
+        self.functional_model.prepare_routes(self.theta.device)
+        self.graph = None
+        self.setup_seconds = 0.0
+        self.capture_seconds = 0.0
+        self.replay_seconds = 0.0
+        self.capture_count = 0
+        self.replay_count = 0
+        self.cached_recording = None
+        self.cached_public_histories = ()
+        self.recording_cache_hit = False
+        self.recording_cache_hits = 0
+        self.recording_cache_misses = 0
+        # per component: its unwired inputs that read its own series outputs
+        self._own_series_inputs = {}
+
+    def close(self):
+        """Release captured CUDA resources owned by this session."""
+        graph, self.graph = self.graph, None
+        if graph is not None:
+            graph.close()
+        self.cached_recording = None
+        self.cached_public_histories = ()
+
+    reset = close
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
+        return False
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def refresh_parameters(self):
+        """Refresh non-estimated parameter references after model.initialize."""
+        for component in self.functional_model.cone:
+            stable = self.functional_model._default_params[component.id]
+            for name in getattr(component, "PARAM_NAMES", ()):
+                value = rgetattr(component, name)
+                if value is not None:  # an absent optional parameter has no default
+                    stable[name].copy_(value.get())
+            settings = getattr(component, "value_setting_params", None)
+            for name, value in (settings() if callable(settings) else {}).items():
+                if name in stable and stable[name].shape == value.shape:
+                    stable[name].copy_(value)
+        self.functional_model._theta_param_cache = None
+
+    def _exogenous_sources(self, component, key):
+        if len(key) >= 3 and isinstance(component.input[key[1]], tps.Vector):
+            return dict(
+                self.functional_model._vector_slot_sources(component, key[1])
+            ).get(key[2], [])
+        return self.functional_model._trace_sources(component, key[1])
+
+    def _source_history(self, producer, output_name):
+        """A producer output's history over the window, ``(n_t, n_s, ...)``,
+        or ``None`` when it has to be stepped: a data sensor's or a
+        schedule's logged history, or the history a replaying component
+        hands over (``replayed_output_history``: a controller in playback
+        replays its measured command).  The whole tape column then comes
+        from one routed tensor instead of one stepped call per time step,
+        which on a translated building was 270 000 calls and minutes."""
+        port = producer.output[output_name]
+        history = port._history
+        if history is not None and (port._history_is_populated or port.is_leaf):
+            return history[: self.max_t]
+        if history is not None and not producer.connects_at:
+            # Schedules/weather: initialized data publishers even in legacy
+            # translated models where the output lost its ``is_leaf`` flag.
+            return history[: self.max_t]
+        if _replays_data(producer):
+            replayed = getattr(producer, "replayed_output_history", None)
+            if callable(replayed):
+                history = replayed(output_name, self.max_t)
+                if history is not None:
+                    return history
+        return None
+
+    def _routed_column(self, history, period, routes):
+        """The routes applied to every time step of ``history[:, period]``
+        at once (the routes gather along the instance and slot axes, so the
+        time axis is vmapped)."""
+        column = history[:, period]
+        apply = self.functional_model._apply_routes
+        return torch.func.vmap(lambda value: apply(value, routes))(column)
+
+    @staticmethod
+    def _history_value(port, step, period):
+        if port._history is None or (
+            not port._history_is_populated and not port.is_leaf
+        ):
+            return None
+        return port._history[step, period]
+
+    def _unconnected_value(self, component, key, step, period):
+        port_name = key[1]
+        port = component.input[port_name]
+        # An unwired input that reads one of its System's own series outputs
+        # (``Input(default=<output>)``: the occupancy's measurements) holds
+        # that output's values, known since the run start.  Read from the
+        # output: the input's own history fills slot by slot below.
+        own = self._own_series_inputs.get(component.id)
+        if own is None:
+            own = component.output_defaults() if hasattr(component, "output_defaults") else {}
+            self._own_series_inputs[component.id] = own
+        if port_name in own:
+            value = self._history_value(component.output[own[port_name]], step, period)
+            if value is not None:
+                return value
+        value = self._history_value(port, step, period)
+        if value is not None:
+            return value
+        # A genuinely unconnected, non-leaf port has no producer capable of
+        # changing it during object-graph execution. Its initialized value is
+        # therefore a static exogenous constant. Components with private
+        # time-varying publishers must be handled explicitly above.  The
+        # check is per KEY: a vector port with some slots wired and others
+        # not (an AHU branch whose damper has no controller) is asked about
+        # the unconnected SLOT, not about the port as a whole -- the caller
+        # slices the slot out of the full vector value.
+        if not self._exogenous_sources(component, key):
+            return port.get()[period]
+        raise RuntimeError(
+            f"cannot safely isolate exogenous input {component.id}.{port_name}; "
+            "add a leaf history or a dedicated exogenous publisher"
+        )
+
+    def _step_external(self, component, step, done, visiting):
+        """Run only the exogenous producer closure needed for exogenous tape."""
+        if component.id in done:
+            return
+        if component.id in self.functional_model.cone_ids:
+            raise RuntimeError(
+                "exogenous producer closure reaches functional component "
+                f"{component.id}; refusing hidden object-graph dynamics"
+            )
+        if component.id in visiting:
+            raise RuntimeError(
+                f"exogenous producer closure contains a cycle at {component.id}"
+            )
+        visiting.add(component.id)
+        # A component that replays recorded data (a controller in playback
+        # mode) outputs its history whatever its inputs say, so its
+        # producers are not part of the closure: they may well be
+        # functional components (the zone whose temperature it reads).
+        if not _replays_data(component):
+            for point in component.connects_at:
+                for connection in point.connects_system_through:
+                    producer = connection.connects_system
+                    output = producer.output[connection.output_port]
+                    value = self._history_value(output, step, 0)
+                    if value is not None:
+                        output._tensor.copy_(output._history[step])
+                    else:
+                        self._step_external(producer, step, done, visiting)
+            self.simulator._assign_component_inputs(component, step)
+        component.do_step(
+            self.simulator.second_time_steps[:, step],
+            self.simulator.date_time_steps[:, step],
+            self.step_size,
+            step,
+        )
+        visiting.remove(component.id)
+        done.add(component.id)
+
+    def _lagged_passthrough_sensors(self):
+        """Output indices of pass-through sensors that execute before their
+        producer in the model's execution order.  Object mode copies such a
+        sensor's value before the producer steps, so its history is the
+        producer's, one step late, starting at the producer's initial value;
+        the functional rollout reproduces that history."""
+        cached = getattr(self, "_lagged_passthrough", None)
+        if cached is not None:
+            return cached
+        position = {c.id: i for i, c in enumerate(self.model.flat_execution_order)}
+        lagged = {}
+        for index, (component, output_name) in enumerate(self.outputs):
+            if not (_is_passthrough_sensor(component) and output_name == "measuredValue"):
+                continue
+            producer, port_name, _ = self.functional_model._follow(component, "measuredValue")
+            if position.get(producer.id, -1) > position.get(component.id, -1):
+                # the instance and slot of the producer's port the sensor reads
+                s_ic, out_v = None, None
+                for cp in component.connects_at:
+                    if cp.input_port != "measuredValue":
+                        continue
+                    for conn in cp.connects_system_through:
+                        pairs = slot_pairs(cp, conn)
+                        if pairs:
+                            s_ic, _, out_v, _ = pairs[0]
+                lagged[index] = (producer.output[port_name], s_ic, out_v)
+        self._lagged_passthrough = lagged
+        return lagged
+
+    @staticmethod
+    def _initial_value(port, s_ic, out_v):
+        """A port's initial value for one instance and slot, ``(n_s,)``."""
+        t = port._tensor.detach()
+        if t.dim() >= 2:
+            t = t[:, 0 if s_ic is None or isinstance(s_ic, slice) else int(s_ic)]
+        if t.dim() >= 2:
+            t = t[..., 0 if out_v is None or isinstance(out_v, slice) else int(out_v)]
+        return t.reshape(-1)
+
+    def record_exogenous_inputs(self):
+        """Build exogenous tape and initial feedback without an object-graph timestep."""
+        if self.cached_recording is not None:
+            self.recording_cache_hit = True
+            self.recording_cache_hits += 1
+            for port, history in self.cached_public_histories:
+                # A port that was given data holds that data as its history
+                # (initialize put it back): nothing to restore, and data
+                # repeated over copies is one row seen many times, which an
+                # in-place write refuses.  Any other history is written in
+                # place, so a captured graph keeps reading the same tensor.
+                if not port._is_leaf:
+                    port._history.copy_(history)
+                port._history_is_populated = True
+                port._tensor.copy_(history[-1])
+            y0, exogenous_tape = self.cached_recording
+            return y0.detach().clone(), exogenous_tape.detach().clone()
+        self.recording_cache_hit = False
+        self.recording_cache_misses += 1
+        functional_model = self.functional_model
+        # the producers' initial values (set by the model's initialize) for
+        # the pass-through sensors that read them one step late
+        self._passthrough_initial = {
+            index: self._initial_value(port, s_ic, out_v).clone()
+            for index, (port, s_ic, out_v) in self._lagged_passthrough_sensors().items()
+            if port._tensor is not None
+        }
+        components = dict(self.model.components)
+        sim_model = getattr(self.model, "_simulation_model", None) or self.model
+        components.update(getattr(sim_model, "_fused_components", None) or {})
+        device = self.theta.device
+        exogenous_tape = torch.zeros(
+            self.max_t,
+            self.n_periods,
+            functional_model._n_exogenous,
+            dtype=tps.float_dtype(),
+            device=device,
+        )
+        external_done = [set() for _ in range(self.max_t)]
+        for key in functional_model._exogenous_keys:
+            component = components[key[0]]
+            sources = self._exogenous_sources(component, key)
+            target = functional_model._exogenous_index[key]
+            if sources:
+                histories = [self._source_history(p, name) for p, name, _ in sources]
+                if all(h is not None for h in histories):
+                    # Every source has the window on hand: one routed
+                    # tensor per period fills the whole column.
+                    for period in range(self.n_periods):
+                        column = None
+                        for (producer, output_name, routes), history in zip(sources, histories):
+                            routed = self._routed_column(history, period, routes)
+                            column = routed if column is None else column + routed
+                        exogenous_tape[:, period, target] = column.reshape(self.max_t, -1).to(device)
+                    continue
+            for step in range(self.max_t):
+                for period in range(self.n_periods):
+                    if sources:
+                        pieces = []
+                        for producer, output_name, routes in sources:
+                            value = self._history_value(
+                                producer.output[output_name], step, period
+                            )
+                            if (
+                                value is None
+                                and not producer.connects_at
+                                and producer.output[output_name]._history is not None
+                            ):
+                                # Schedules/weather are initialized data
+                                # publishers even in legacy translated models
+                                # where their output lost the ``is_leaf`` flag.
+                                value = producer.output[output_name]._history[
+                                    step, period
+                                ]
+                            if value is None:
+                                try:
+                                    self._step_external(
+                                        producer,
+                                        step,
+                                        external_done[step],
+                                        set(),
+                                    )
+                                except RuntimeError as exc:
+                                    raise RuntimeError(
+                                        f"{exc} (while recording exogenous input "
+                                        f"{key} from {producer.id}.{output_name})"
+                                    ) from exc
+                                value = producer.output[output_name].get()[period]
+                            pieces.append(functional_model._apply_routes(value, routes))
+                        value = pieces[0]
+                        for piece in pieces[1:]:
+                            value = value + piece
+                    else:
+                        value = self._unconnected_value(component, key, step, period)
+                        if len(key) >= 3 and isinstance(
+                            component.input[key[1]], tps.Vector
+                        ):
+                            value = value[..., key[2]]
+                    exogenous_tape[step, period, target] = value.reshape(-1).to(device)
+                    # Preserve public histories for unconnected exogenous tape ports.
+                    port = component.input[key[1]]
+                    if not sources and port.log_history:
+                        if isinstance(port, tps.Vector) and len(key) >= 3:
+                            port._history[step, period, :, key[2]] = value
+                        else:
+                            port._history[step, period] = value
+                        if step == self.max_t - 1 and period == self.n_periods - 1:
+                            port._history_is_populated = True
+                            port._tensor.copy_(port._history[-1])
+        feedback = torch.zeros(
+            self.n_periods,
+            functional_model.n_feedback,
+            dtype=tps.float_dtype(),
+            device=device,
+        )
+        for key, mask, sources in zip(
+            functional_model._feedback_keys,
+            functional_model._feedback_masks,
+            functional_model._fb_producer,
+        ):
+            component = components[key[0]]
+            port = component.input[key[1]]
+            slc = functional_model._fb_index[key]
+            for period in range(self.n_periods):
+                merged = None
+                for producer, output_name, routes in sources:
+                    current = producer.output[output_name].get()[period]
+                    routed = functional_model._apply_routes(current, routes)
+                    merged = routed if merged is None else merged + routed
+                feedback[period, slc] = merged.reshape(-1) * mask.to(device)
+            # A pass-through/data sensor may be the immediate object-graph
+            # producer even though composition follows it to the modelled
+            # signal. If that publisher executes first, object-graph step zero
+            # consumes its initialized history value.
+            if not isinstance(port, tps.Vector):
+                immediate = functional_model._connection_sources(component, key[1])
+                pieces = []
+                for producer, output_name, routes in immediate:
+                    if (
+                        functional_model.pos.get(producer.id, -1)
+                        >= functional_model.pos[component.id]
+                    ):
+                        pieces = []
+                        break
+                    published = self._history_value(producer.output[output_name], 0, 0)
+                    if published is None:
+                        pieces = []
+                        break
+                    pieces.append((producer, output_name, routes))
+                if pieces:
+                    for period in range(self.n_periods):
+                        merged = None
+                        for producer, output_name, routes in pieces:
+                            published = self._history_value(
+                                producer.output[output_name], 0, period
+                            )
+                            routed = functional_model._apply_routes(published, routes)
+                            merged = routed if merged is None else merged + routed
+                        feedback[period, slc] = merged.reshape(-1) * mask.to(device)
+        # External requested outputs are materialized by the same minimal
+        # producer closure used for exogenous tape. This never steps a cone component.
+        for index, (component, port_name) in enumerate(self.outputs):
+            if self.functional_model.meas_sources[index][0] != "external":
+                continue
+            port = component.output[port_name]
+            if _is_passthrough_sensor(component):
+                # A pass-through sensor's ``measuredValue`` resolves to its
+                # producer (``_follow``) and is never external; any other
+                # output of it is a data port (``measuredData``, history
+                # filled at initialize) or empty.  Stepping the sensor would
+                # walk into the cone component that feeds it.
+                if port.is_leaf and port._history is not None:
+                    port._tensor.copy_(port._history[-1])
+                continue
+            if (
+                component.id in functional_model.cone_ids
+                and _is_series_output(component, port_name)
+                and port._history is not None
+            ):
+                # a functional System's output that its series filled at the
+                # run start (the occupancy's measurements): known, and the
+                # System is stepped by the rollout only
+                port._tensor.copy_(port._history[-1])
+                continue
+            if _replays_data(component) and port._history is not None:
+                # A replaying component that hands its history over needs
+                # no stepping: the history is its output.
+                handed = self._source_history(component, port_name)
+                if handed is not None:
+                    port._history[: self.max_t].copy_(handed.reshape(port._history[: self.max_t].shape))
+                    port._history_is_populated = True
+                    port._tensor.copy_(port._history[self.max_t - 1])
+                    continue
+            for step in range(self.max_t):
+                self._step_external(component, step, external_done[step], set())
+        y0 = torch.stack([self.layout.gather(p) for p in range(self.n_periods)])
+        if functional_model.n_feedback:
+            y0 = torch.cat([y0, feedback], dim=1)
+        self.cached_recording = (y0.detach().clone(), exogenous_tape.detach().clone())
+        return y0, exogenous_tape
+
+    def _full_rollout(self, y0, theta, exogenous_tape, *, transform_mode=False):
+        # The compiled step when the simulator compiles it (``compile_step``),
+        # as the estimator's rollouts do: a few hundred Triton kernels per
+        # step instead of the eager step's thousands, so a captured rollout
+        # is small (13 MB a step on a 2000-component model against 50 MB)
+        # and an uncaptured one is fast.  The compiled step is the
+        # transform-mode step.
+        step = None
+        if self.simulator.step_compilation_active(theta.device):
+            step = self.functional_model.compiled_step
+        state_rows = []
+        output_rows = []
+        for period in range(self.n_periods):
+            states, outputs = functional_rollout_tape(
+                self.functional_model,
+                y0[period],
+                theta,
+                exogenous_tape[:, period],
+                transform_mode=transform_mode,
+                step=step,
+            )
+            state_rows.append(states)
+            output_rows.append(outputs)
+        return torch.stack(state_rows, dim=1), torch.stack(output_rows, dim=1)
+
+    def _full_rollout_graph(self, y0, theta, exogenous_tape):
+        # Transform mode avoids value-dependent discretization caches
+        # (torch.allclose / boolean indexing), which are illegal during stream
+        # capture, while retaining the same fixed-shape tensor equations.
+        return self._full_rollout(y0, theta, exogenous_tape, transform_mode=True)
+
+    def _warm_step_caches(self, y0, exogenous_tape):
+        """One eager step before the compiled step's first trace.
+
+        Forwards fill lazy caches on their first call (``state_size`` walks
+        ``vars(self)`` once and keeps the int); ``torch.compile`` cannot
+        trace that walk, and on this path the compiled step would otherwise
+        be the first call.  The estimator's rollouts get the same warm-up
+        from their eager evaluations.
+        """
+        if getattr(self, "_step_caches_warm", False):
+            return
+        if not self.simulator.step_compilation_active(self.theta.device):
+            return
+        with torch.no_grad():
+            self.functional_model.F_aug(
+                y0[0], self.theta, exogenous_tape[0, 0], transform_mode=True
+            )
+        self._step_caches_warm = True
+
+    def rollout(self, backend, y0, exogenous_tape):
+        self._warm_step_caches(y0, exogenous_tape)
+        if backend == "eager":
+            states, outputs = self._full_rollout(y0, self.theta, exogenous_tape)
+            return RolloutResult(states, outputs)
+        if self.theta.device.type != "cuda":
+            raise RuntimeError(
+                "execution_backend='cuda_graph' requires a CUDA model; "
+                "call model.to('cuda') first"
+            )
+        if self.simulator.step_graph_active(self.theta.device):
+            # one step captured, replayed along the rollout: nothing at
+            # rollout level is captured (see _step_graph)
+            from twin4build.simulator._step_graph import step_graph_rollout
+
+            started = time.perf_counter()
+            state_rows, output_rows = [], []
+            for period in range(self.n_periods):
+                states, outputs = step_graph_rollout(
+                    self.functional_model, y0[period], self.theta, exogenous_tape[:, period]
+                )
+                state_rows.append(states)
+                output_rows.append(outputs)
+            torch.cuda.synchronize()
+            self.replay_seconds += time.perf_counter() - started
+            self.replay_count += 1
+            return RolloutResult(torch.stack(state_rows, dim=1), torch.stack(output_rows, dim=1))
+        # a graph captured before the model's last initialize() reads the
+        # tensors it reallocated at their old addresses: capture again
+        count = initialization_count(self.functional_model)
+        if self.graph is not None and getattr(self, "_graph_initialization", None) != count:
+            self.graph = None
+        if self.graph is None:
+            self._graph_initialization = count
+            _cuda_graph.warn_if_large_eager_capture(
+                len(self.functional_model.cone),
+                int(exogenous_tape.shape[0]) * int(self.n_periods),
+                self.simulator.step_compilation_active(self.theta.device),
+            )
+            started = time.perf_counter()
+            self.graph = CudaGraphCallable(self._full_rollout_graph)
+            states, outputs = self.graph(y0, self.theta, exogenous_tape)
+            torch.cuda.synchronize()
+            self.capture_seconds += time.perf_counter() - started
+            self.capture_count += 1
+        else:
+            started = time.perf_counter()
+            states, outputs = self.graph(y0, self.theta, exogenous_tape)
+            torch.cuda.synchronize()
+            self.replay_seconds += time.perf_counter() - started
+            self.replay_count += 1
+        return RolloutResult(states.clone(), outputs.clone())
+
+    def _outputs_feeding_logged_inputs(self):
+        """``id`` of every output port wired into an input port that logs:
+        its history is routed into that input's (:meth:`materialize_inputs`),
+        so it is published even when the output itself does not log (a
+        sensor's ``measuredValue`` reads its producer's)."""
+        out = set()
+        for component in self.model.components.values():
+            for connection_point in component.connects_at:
+                if not component.input[connection_point.input_port].log_history:
+                    continue
+                for connection in connection_point.connects_system_through:
+                    out.add(id(connection.connects_system.output[connection.output_port]))
+        return out
+
+    def materialize_outputs(self, result):
+        """Write the rollout output tape into public output ports."""
+        feeding = self._outputs_feeding_logged_inputs()
+        for index, (component, output_name) in enumerate(self.outputs):
+            port = component.output[output_name]
+            source = self.functional_model.meas_sources[index]
+            if port._history is None and not port.log_history and id(port) not in feeding:
+                continue  # keeps no history and feeds none: its value is the tape's
+            if source[0] == "external":
+                if port._history is None:
+                    raise RuntimeError(
+                        f"functional rollout cannot materialize external output "
+                        f"{component.id}.{output_name}"
+                    )
+                port._history_is_populated = True
+                continue
+            slc = self.functional_model.meas_slices[index]
+            flat = result.outputs[:, :, slc]
+            if isinstance(port, tps.Vector):
+                values = flat.reshape(self.max_t, self.n_periods, port.n_c, port.n_v)
+            else:
+                values = flat.reshape(self.max_t, self.n_periods, port.n_c)
+            initial = getattr(self, "_passthrough_initial", {}).get(index)
+            if initial is not None:
+                # a pass-through sensor that executes before its producer
+                # publishes the producer's previous value (object mode's order)
+                first = initial.reshape(1, self.n_periods, *([1] * (values.dim() - 2))).expand(1, *values.shape[1:]).to(values.dtype)
+                values = torch.cat([first, values[:-1]], dim=0)
+            if port._history is None:  # feeds a logged input, keeps no history of its own
+                port._history = torch.zeros(values.shape, dtype=values.dtype, device=values.device)
+            port._history.copy_(values)
+            port._history_is_populated = True
+            port._tensor.copy_(values[-1])
+
+    @staticmethod
+    def _index(index, device):
+        if index is None:
+            return slice(None)
+        if isinstance(index, slice):
+            return index
+        return torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1)
+
+    @staticmethod
+    def _vector_index(index, device):
+        if index is None:
+            return slice(None)
+        if isinstance(index, (int, slice)):
+            return index
+        if isinstance(index, torch.Tensor) and index.ndim == 0:
+            return index.to(dtype=torch.long, device=device)
+        return torch.as_tensor(index, dtype=torch.long, device=device)
+
+    @classmethod
+    def _select_components(cls, value, index, dimension):
+        index = cls._index(index, value.device)
+        if isinstance(index, slice):
+            slices = [slice(None)] * value.ndim
+            slices[dimension] = index
+            return value[tuple(slices)]
+        return torch.index_select(value, dimension, index)
+
+    @staticmethod
+    def _paired(component_index, vector_index):
+        """A batched connection lists one (instance, slot) pair per element:
+        both indices are tensors of the same length and are read together,
+        not as an outer product."""
+        return (
+            isinstance(component_index, torch.Tensor)
+            and isinstance(vector_index, torch.Tensor)
+            and component_index.ndim > 0
+            and vector_index.ndim > 0
+            and component_index.numel() == vector_index.numel()
+        )
+
+    @classmethod
+    def _route_value(cls, value, output_port_index, output_component_index, dimension, is_vector):
+        if is_vector and cls._paired(output_component_index, output_port_index):
+            slices = [slice(None)] * value.ndim
+            slices[dimension] = cls._index(output_component_index, value.device)
+            slices[dimension + 1] = cls._index(output_port_index, value.device)
+            return value[tuple(slices)]
+        value = cls._select_components(value, output_component_index, dimension)
+        if is_vector:
+            value = value[..., cls._vector_index(output_port_index, value.device)]
+        return value
+
+    @classmethod
+    def _route_history(cls, source_port, output_port_index, output_component_index):
+        return cls._route_value(
+            source_port._history, output_port_index, output_component_index,
+            dimension=2, is_vector=isinstance(source_port, tps.Vector),
+        )
+
+    @classmethod
+    def _route_tensor(cls, source_port, output_port_index, output_component_index):
+        return cls._route_value(
+            source_port._tensor, output_port_index, output_component_index,
+            dimension=1, is_vector=isinstance(source_port, tps.Vector),
+        )
+
+    @classmethod
+    def _assign_routed(
+        cls,
+        target,
+        value,
+        *,
+        component_dimension,
+        component_index,
+        vector_index,
+    ):
+        component_index = cls._index(component_index, target.device)
+        vector_index = cls._vector_index(vector_index, target.device)
+        if target.ndim == component_dimension + 2 and cls._paired(component_index, vector_index):
+            slices = [slice(None)] * target.ndim
+            slices[component_dimension] = component_index
+            slices[component_dimension + 1] = vector_index
+            target[tuple(slices)] = value
+            return
+        if isinstance(component_index, slice):
+            slices = [slice(None)] * target.ndim
+            slices[component_dimension] = component_index
+            destination = target[tuple(slices)]
+            if target.ndim == component_dimension + 2:
+                if (
+                    isinstance(vector_index, torch.Tensor)
+                    and vector_index.ndim > 0
+                    and value.ndim == destination.ndim - 1
+                ):
+                    # One scalar value into several slots: broadcast over them.
+                    value = value.unsqueeze(-1)
+                destination[..., vector_index] = value
+            else:
+                destination.copy_(value)
+            return
+
+        if target.ndim == component_dimension + 2:
+            destination = target[..., vector_index]
+            destination.index_copy_(component_dimension, component_index, value)
+        else:
+            target.index_copy_(component_dimension, component_index, value)
+
+    def materialize_inputs(self):
+        """Route complete producer histories into connected input ports."""
+        connected_ports = []
+        seen_ports = set()
+        for component in self.model.components.values():
+            for connection_point in component.connects_at:
+                input_port = component.input[connection_point.input_port]
+                if id(input_port) not in seen_ports:
+                    connected_ports.append(
+                        (component, connection_point.input_port, input_port)
+                    )
+                    seen_ports.add(id(input_port))
+                for connection in connection_point.connects_system_through:
+                    output_port = connection.connects_system.output[
+                        connection.output_port
+                    ]
+                    output_port_index = connection_point.output_port_index[connection]
+                    input_port_index = connection_point.input_port_index[connection]
+                    output_component_index = (
+                        connection_point.output_component_index.get(
+                            connection, slice(None)
+                        )
+                    )
+                    input_component_index = connection_point.input_component_index.get(
+                        connection, slice(None)
+                    )
+                    try:
+                        if (
+                            input_port._history is not None
+                            and output_port._history is not None
+                        ):
+                            history = self._route_history(
+                                output_port,
+                                output_port_index,
+                                output_component_index,
+                            )
+                            self._assign_routed(
+                                input_port._history,
+                                history,
+                                component_dimension=2,
+                                component_index=input_component_index,
+                                vector_index=input_port_index,
+                            )
+                        if input_port._tensor is None or output_port._tensor is None:
+                            # A port nothing initialised (an unwired optional
+                            # vector of width 0): nothing to materialise.
+                            continue
+                        current = self._route_tensor(
+                            output_port,
+                            output_port_index,
+                            output_component_index,
+                        )
+                        self._assign_routed(
+                            input_port._tensor,
+                            current,
+                            component_dimension=1,
+                            component_index=input_component_index,
+                            vector_index=input_port_index,
+                        )
+                    except IndexError as exc:
+                        raise IndexError(
+                            "Batched component-index mapping failed for "
+                            f"{connection.connects_system.id}.{connection.output_port} "
+                            f"-> {component.id}.{connection_point.input_port}; "
+                            f"output_i_c={output_component_index}, "
+                            f"input_i_c={input_component_index}"
+                        ) from exc
+
+        for _, _, port in connected_ports:
+            if port.log_history and port._history is not None:
+                port._history_is_populated = True
+                port._tensor.copy_(port._history[-1])
+        # The unwired inputs nothing routes into, as the composer resolves
+        # them (_resolve_inputs): one that reads another input
+        # (``Input(default=otherInput)``) held that input's values, one that
+        # reads one of the System's own series outputs (a sensor's recorded
+        # series) held that output's, one of no slots (an unwired
+        # "wired"-size vector) held none.
+        for component in self.model.components.values():
+            defaults = component.input_defaults() if hasattr(component, "input_defaults") else {}
+            own = component.output_defaults() if hasattr(component, "output_defaults") else {}
+            for name, port in component.input.items():
+                if not port.log_history or port._history is None or port._history_is_populated:
+                    continue
+                if name in defaults:
+                    read = component.input[defaults[name]]
+                elif name in own:
+                    read = component.output[own[name]]
+                else:
+                    read = None
+                if read is not None and read._history is not None and (read._history_is_populated or read.is_leaf):
+                    port._history.copy_(read._history)
+                    port._tensor.copy_(read._history[-1])
+                    port._history_is_populated = True
+                elif read is None and port._history.numel() == 0:
+                    port._history_is_populated = True
+        return connected_ports
+
+    def finalize_materialization(self, result):
+        self.layout.scatter(result.states[-1, :, : self.functional_model.D])
+
+    def cache_public_histories(self):
+        """Snapshot source histories not regenerated by the functional rollout."""
+        source_ports = {}
+        for index, (component, output_name) in enumerate(self.outputs):
+            if self.functional_model.meas_sources[index][0] == "external":
+                port = component.output[output_name]
+                source_ports[id(port)] = port
+        components = dict(self.model.components)
+        sim_model = getattr(self.model, "_simulation_model", None) or self.model
+        components.update(getattr(sim_model, "_fused_components", None) or {})
+        for key in self.functional_model._exogenous_keys:
+            component = components[key[0]]
+            if not self._exogenous_sources(component, key):
+                port = component.input[key[1]]
+                source_ports[id(port)] = port
+        self.cached_public_histories = tuple(
+            (port, port._history.detach().clone())
+            for port in source_ports.values()
+            if port._history is not None and port._history_is_populated
+        )
+
+    def materialize(self, simulator, result):
+        """Compatibility wrapper for complete functional materialization."""
+        self.materialize_outputs(result)
+        self.materialize_inputs()
+        simulator._validate_component_inputs(self.model)
+        self.finalize_materialization(result)
+
+
+def run_functional_simulation(simulator, backend, step_size, max_t, n_periods):
+    """Execute a public functional/cuda_graph simulation after initialization."""
+    sim_model = getattr(simulator.model, "_simulation_model", None) or simulator.model
+    device = torch.device(getattr(sim_model, "device", torch.device("cpu")))
+
+    def prepare_session():
+        signature = session_signature(
+            simulator.model,
+            step_size,
+            max_t,
+            n_periods,
+            simulator.date_time_steps,
+        )
+        session = getattr(simulator, "_functional_session", None)
+        if session is None or session.signature != signature:
+            replacement = FunctionalSimulationSession(
+                simulator, step_size, max_t, n_periods, signature
+            )
+            simulator._functional_session = replacement
+            if session is not None:
+                session.close()
+            session = replacement
+            simulator._functional_setup_count = (
+                getattr(simulator, "_functional_setup_count", 0) + 1
+            )
+        session.refresh_parameters()
+        return session
+
+    session, setup_seconds = _timed_phase(device, prepare_session)
+    simulator._functional_setup_seconds = setup_seconds
+    (y0, exogenous_tape), exogenous_seconds = _timed_phase(
+        device, session.record_exogenous_inputs
+    )
+    result, rollout_seconds = _timed_phase(
+        device, lambda: session.rollout(backend, y0, exogenous_tape)
+    )
+    _, output_materialization_seconds = _timed_phase(
+        device, lambda: session.materialize_outputs(result)
+    )
+    _, input_materialization_seconds = _timed_phase(device, session.materialize_inputs)
+    validation_started = time.perf_counter()
+    validation_counts = simulator._validate_component_inputs(session.model)
+    validation_seconds = time.perf_counter() - validation_started
+    _, finalization_seconds = _timed_phase(
+        device, lambda: session.finalize_materialization(result)
+    )
+    session.cache_public_histories()
+    validation_check_count, validation_host_sync_count = validation_counts
+    simulator._exogenous_recording_seconds = exogenous_seconds
+    simulator._exogenous_recording_cache_hit = session.recording_cache_hit
+    simulator._exogenous_recording_cache_hits = session.recording_cache_hits
+    simulator._exogenous_recording_cache_misses = session.recording_cache_misses
+    simulator._functional_rollout_seconds = rollout_seconds
+    simulator._output_materialization_seconds = output_materialization_seconds
+    simulator._input_materialization_seconds = input_materialization_seconds
+    simulator._functional_validation_seconds = validation_seconds
+    simulator._functional_finalization_seconds = finalization_seconds
+    simulator._functional_validation_check_count = validation_check_count
+    simulator._functional_validation_host_sync_count = validation_host_sync_count
+    simulator._cuda_graph_capture_count = session.capture_count
+    simulator._cuda_graph_replay_count = session.replay_count
+    simulator._cuda_graph_capture_seconds = session.capture_seconds
+    simulator._cuda_graph_replay_seconds = session.replay_seconds
+    simulator._last_exogenous_tape = exogenous_tape
+    simulator._last_functional_initial_state = y0
+    simulator._last_execution_metadata = {
+        "execution_mode": "functional",
+        "execution_backend": backend,
+        "functional_materialization_revision": FUNCTIONAL_MATERIALIZATION_REVISION,
+        "sequential_rollout": True,
+        "vmap": False,
+        "functional_setup_count": simulator._functional_setup_count,
+        "functional_setup_seconds": simulator._functional_setup_seconds,
+        "model_initialization_seconds": getattr(
+            simulator, "_functional_initialization_seconds", None
+        ),
+        "exogenous_recording_seconds": exogenous_seconds,
+        "exogenous_recording_cache_hit": session.recording_cache_hit,
+        "exogenous_recording_cache_hits": session.recording_cache_hits,
+        "exogenous_recording_cache_misses": session.recording_cache_misses,
+        "functional_rollout_seconds": rollout_seconds,
+        "output_materialization_seconds": output_materialization_seconds,
+        "input_materialization_seconds": input_materialization_seconds,
+        "validation_seconds": validation_seconds,
+        "finalization_seconds": finalization_seconds,
+        "validation_check_count": validation_check_count,
+        "validation_host_sync_count": validation_host_sync_count,
+        "cuda_graph_capture_count": session.capture_count,
+        "cuda_graph_replay_count": session.replay_count,
+        "cuda_graph_capture_seconds": session.capture_seconds,
+        "cuda_graph_replay_seconds": session.replay_seconds,
+    }
+    return result

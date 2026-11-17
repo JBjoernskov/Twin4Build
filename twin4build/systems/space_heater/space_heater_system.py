@@ -1,0 +1,566 @@
+# Third party imports
+import torch
+from scipy.optimize import fsolve
+
+# Local application imports
+import twin4build.utils.constants as constants
+import twin4build.utils.types as tps
+from twin4build import core
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, Setting, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
+
+
+def _ua_at_nominal(heater) -> float:
+    """``UA``'s default: the UA at which the radiator meets its nominal
+    sizing (:meth:`SpaceHeaterSystem.solve_UA`)."""
+    return heater.solve_UA()
+
+
+class SpaceHeaterSystem(core.System):
+    r"""
+    Space Heater (Radiator) Model with Finite Element Discretization.
+
+    This model represents a radiator that transfers heat from hot water to a room using
+    multiple finite elements and bilinear state-space dynamics. The radiator is 
+    discretized to capture temperature distribution along its length with flow-dependent
+    heat transfer characteristics.
+
+    Args:
+        Q_flow_nominal_sh: Nominal heat output [W]
+        T_a_nominal_sh: Nominal supply water temperature [°C]
+        T_b_nominal_sh: Nominal return water temperature [°C]
+        TAir_nominal_sh: Nominal room air temperature [°C]
+        thermalMassHeatCapacity: Total thermal mass heat capacity [J/K]
+        nelements: Number of finite elements
+        UA: Overall heat transfer coefficient [W/K]; by default the UA at which
+            the radiator delivers its nominal power at its nominal temperatures
+            (:meth:`solve_UA`), computed when the radiator is built
+
+    Mathematical Formulation
+    ------------------------
+
+    **Continuous-Time Differential Equations:**
+
+    The model uses a state-space representation with n finite elements. For each element i,
+    the temperature dynamics are described by:
+
+    .. math::
+
+        C_1 \frac{dT_1}{dt} = \dot{m} \cdot c_p \cdot (T_{sup} - T_1) - \frac{UA}{n} \cdot (T_1 - T_z) \quad \forall i = 1
+
+    .. math::
+
+        C_i \frac{dT_i}{dt} = \dot{m} \cdot c_p \cdot (T_{i-1} - T_i) - \frac{UA}{n} \cdot (T_i - T_z) \quad \forall i \in {2..n}
+
+    where:
+       - :math:`C_i` is the thermal capacitance of element i [J/K]
+       - :math:`T_i` is the temperature of element i [°C]
+       - :math:`\dot{m}` is the water mass flow rate [kg/s]
+       - :math:`c_p` is the specific heat capacity of water [J/(kg·K)]
+       - :math:`UA` is the overall heat transfer coefficient [W/K]
+       - :math:`n` is the number of elements
+       - :math:`T_z` is the zone (room) temperature [°C]
+       - :math:`T_{sup}` is the supply water temperature [°C]
+
+    **The Two Powers:**
+
+    The radiator has two heat flows, and they are two different outputs.
+
+    ``toRoomPower`` is the heat the radiator gives to the room:
+
+    .. math::
+
+        Q_{room} = \frac{UA}{n} \sum_{i=1}^n (T_i - T_z)
+
+    ``toRadiatorPower`` is the heat the radiator takes from the heating
+    circuit, which is what a heat meter on the circuit measures:
+
+    .. math::
+
+        Q_{rad} = \dot{m} \cdot c_p \cdot (T_{sup} - T_n)
+
+    where :math:`T_n`, the temperature of the last element, is the outlet
+    water temperature.  Summing the element equations above gives the heat
+    balance of the radiator:
+
+    .. math::
+
+        \sum_{i=1}^n C_i \frac{dT_i}{dt} = Q_{rad} - Q_{room}
+
+    The two powers differ by the rate of change of the heat stored in the
+    radiator.  They are equal in steady state and have the same long-run
+    mean; they differ while the radiator warms up (it takes more from the
+    circuit than it gives to the room) and while it cools down (it gives heat
+    to the room with the valve closed, when :math:`Q_{rad} = 0`).  Compare
+    ``toRadiatorPower`` with a heat meter on the water side and use
+    ``toRoomPower`` as the heat gain of the room.
+
+    Both outputs are evaluated at the end-of-step element temperatures, with
+    the inputs of the step.
+
+    **Inputs and Outputs:**
+
+    Inputs:
+       - ``supplyWaterTemperature``: Supply water temperature [°C]
+       - ``waterFlowRate``: Water mass flow rate [kg/s]
+       - ``indoorTemperature``: Room air temperature [°C]
+
+    Outputs:
+       - ``outletWaterTemperature``: Outlet water temperature [°C]
+       - ``toRoomPower``: Heat given to the room [W]
+       - ``toRadiatorPower``: Heat taken from the heating circuit [W]
+
+    **State-Space Representation:**
+
+    The system is implemented using the DiscreteStatespaceSystem with matrices:
+
+    *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_1 \\ T_2 \\ \vdots \\ T_n\end{bmatrix}`
+
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_{sup} \\ \dot{m} \\ T_z\end{bmatrix}`
+
+    *Base System Matrices:*
+
+    For n finite elements:
+
+    .. math::
+
+       \mathbf{A} = \begin{bmatrix}
+       -\frac{UA/n}{C_1} & 0 & 0 & \cdots & 0 \\
+       0 & -\frac{UA/n}{C_2} & 0 & \cdots & 0 \\
+       0 & 0 & -\frac{UA/n}{C_3} & \cdots & 0 \\
+       \vdots & \vdots & \vdots & \ddots & \vdots \\
+       0 & 0 & 0 & \cdots & -\frac{UA/n}{C_n}
+       \end{bmatrix}
+
+    .. math::
+
+       \mathbf{B} = \begin{bmatrix}
+       0 & 0 & \frac{UA/n}{C_1} \\
+       0 & 0 & \frac{UA/n}{C_2} \\
+       \vdots & \vdots & \vdots \\
+       0 & 0 & \frac{UA/n}{C_n}
+       \end{bmatrix}
+
+    .. math::
+
+       \mathbf{C} = \begin{bmatrix}
+       0 & 0 & \cdots & 0 & 1 \\
+       \frac{UA}{n} & \frac{UA}{n} & \cdots & \frac{UA}{n} & \frac{UA}{n}
+       \end{bmatrix}
+
+    .. math::
+
+       \mathbf{D} = \begin{bmatrix} 0 & 0 & 0 \\ 0 & 0 & -UA \end{bmatrix}
+
+    The rows of :math:`\mathbf{C}` and :math:`\mathbf{D}` are the outlet water
+    temperature and ``toRoomPower``.  ``toRadiatorPower`` is a product of two
+    inputs and of an input and a state, so it is not a row of the linear
+    output equation; it is computed from the inputs and the outlet water
+    temperature after the step.
+
+    **Bilinear Coupling Matrices:**
+
+    *State-Input Coupling (E matrices):*
+
+    .. math::
+
+       \mathbf{E} \in \mathbb{R}^{3 \times n \times n} = \begin{bmatrix}
+       \mathbf{0}_{n \times n} & \text{(supply temperature)} \\
+       \begin{bmatrix}
+       -\frac{c_p}{C_1} & 0 & 0 & \cdots & 0 & 0 \\
+       \frac{c_p}{C_1} & -\frac{c_p}{C_2} & 0 & \cdots & 0 & 0 \\
+       0 & \frac{c_p}{C_2} & -\frac{c_p}{C_3} & \cdots & 0 & 0 \\
+       \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+       0 & 0 & 0 & \cdots & \frac{c_p}{C_{n-1}} & -\frac{c_p}{C_n}
+       \end{bmatrix} & \text{(water flow rate)} \\
+       \mathbf{0}_{n \times n} & \text{(zone temperature)}
+       \end{bmatrix}
+
+    *Input-Input Coupling (F matrices):*
+
+    .. math::
+
+       \mathbf{F} \in \mathbb{R}^{3 \times n \times 3} = \begin{bmatrix}
+       \begin{bmatrix}
+       0 & \frac{c_p}{C_1} & 0 \\
+       0 & 0 & 0 \\
+       \vdots & \vdots & \vdots \\
+       0 & 0 & 0
+       \end{bmatrix} & \text{(supply temperature)} \\
+       \mathbf{0}_{n \times 3} & \text{(water flow rate)} \\
+       \mathbf{0}_{n \times 3} & \text{(zone temperature)}
+       \end{bmatrix}
+
+    *Bilinear Effects*
+
+    The bilinear terms handle specific flow-dependent heat transfer effects:
+       - :math:`\mathbf{E}[1,i,i] \cdot u_1 \cdot x_i = -\frac{c_p}{C_i} \dot{m} T_i`: Water flow removing heat from element i
+       - :math:`\mathbf{E}[1,i,i-1] \cdot u_1 \cdot x_{i-1} = \frac{c_p}{C_i} \dot{m} T_{i-1}`: Water flow bringing heat from previous element
+       - :math:`\mathbf{F}[0,0,1] \cdot u_0 \cdot u_1 = \frac{c_p}{C_1} T_{sup} \dot{m}`: Supply temperature bringing heat to first element
+
+    **Model Initialization:**
+
+    The model is initialized by solving numerically for UA in steady-state nominal conditions:
+
+    .. math::
+
+        0 = \mathbf{A}_{U\!A} \mathbf{x} + \mathbf{B}_{U\!A} \mathbf{u}
+
+    where:
+       - :math:`\mathbf{A}_{U\!A}` is the A matrix given :math:`U\!A`
+       - :math:`\mathbf{B}_{U\!A}` is the B matrix given :math:`U\!A`
+       - :math:`\mathbf{x}` is the state vector
+       - :math:`\mathbf{u}` is the input vector
+
+    Note: the gradients of this computation is not tracked, meaning that that parameters Q_flow_nominal_sh, T_a_nominal_sh, T_b_nominal_sh, TAir_nominal_sh cannot be calibrated.
+
+    Physical Interpretation
+    -----------------------
+
+    **Finite Element Discretization:**
+       - Each element represents a section of the radiator with its own thermal mass
+       - States capture temperature distribution along radiator length
+       - Flow-dependent heat transfer between elements modeled with bilinear terms
+
+    **Flow-Dependent Effects:**
+       - Water flow brings heat at supply temperature to first element (F matrix coupling)
+       - Water flow transfers heat between consecutive elements (E matrix coupling)
+       - These effects are critical for accurate radiator performance modeling
+
+    Computational Features
+    ----------------------
+
+       - **Automatic Differentiation:** PyTorch tensors enable gradient computation
+       - **Adaptive Discretization:** Matrices updated when flow conditions change significantly
+       - **Parameter Estimation:** UA coefficient and thermal mass available for calibration
+
+    
+
+    Examples
+    --------
+    Basic space heater model:
+
+    >>> import twin4build as tb
+    >>>
+    >>> # Create single-element radiator
+    >>> heater = tb.SpaceHeaterSystem(
+    ...     Q_flow_nominal_sh=2000,        # 2 kW nominal output
+    ...     T_a_nominal_sh=70,             # 70°C supply temperature
+    ...     T_b_nominal_sh=50,             # 50°C return temperature
+    ...     TAir_nominal_sh=20,            # 20°C room temperature
+    ...     thermalMassHeatCapacity=50000, # 50 kJ/K thermal mass
+    ...     nelements=1,
+    ...     id="radiator_single"
+    ... )
+
+    Multi-element radiator for detailed modeling:
+
+    >>> # Create multi-element radiator for better temperature distribution
+    >>> heater = tb.SpaceHeaterSystem(
+    ...     Q_flow_nominal_sh=3500,        # 3.5 kW nominal output
+    ...     T_a_nominal_sh=75,             # Higher supply temperature
+    ...     T_b_nominal_sh=55,             # Higher return temperature
+    ...     TAir_nominal_sh=22,            # Slightly warmer room
+    ...     thermalMassHeatCapacity=80000, # Higher thermal mass
+    ...     nelements=5,                   # 5 elements for detail
+    ...     id="radiator_multi_element"
+    ... )
+
+    Notes
+    -----
+    Model Characteristics:
+       - The radiator is discretized into multiple elements for accurate
+         temperature distribution modeling
+       - Each element has its own thermal mass and heat transfer characteristics
+       - The UA value is calculated numerically to match nominal conditions
+       - Heat transfer to the room is modeled as a single UA*(T_i - T_z) term
+         per element; radiative exchange is not modeled separately but lumped
+         into the overall UA coefficient
+
+    Implementation Details:
+       - The model uses a state-space representation for efficient computation
+       - All calculations are performed using PyTorch tensors for gradient tracking
+       - The UA value is optimized using numerical methods during initialization
+       - The model supports both steady-state and dynamic simulations
+    """
+
+    REMOVED_ATTRIBUTES = {
+        "initialize_UA": "UA starts at the nominal solve; give UA= to start elsewhere, "
+        "or heater.UA = heater.solve_UA() to solve again after a nominal changed",
+    }
+
+    Q_flow_nominal_sh = Setting(1000.0, doc="Nominal heat output [W]")
+    T_a_nominal_sh = Setting(60.0, doc="Nominal supply water temperature [degC]")
+    T_b_nominal_sh = Setting(45.0, doc="Nominal return water temperature [degC]")
+    TAir_nominal_sh = Setting(21.0, doc="Nominal room air temperature [degC]")
+    nelements = Setting(3, doc="Number of elements along the water flow")
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the room it heats; False: couple to it one step late",
+    )
+    supplyWaterTemperature = Input(doc="Supply water temperature [degC]")
+    waterFlowRate = Input(doc="Water flow rate [kg/s]")
+    indoorTemperature = Input(doc="Indoor air temperature [degC]")
+    elements = State(size=nelements, init=21.0, doc="Element water temperatures [degC], along the flow")
+    outletWaterTemperature = Output(init=elements, doc="Outlet water temperature [degC]")
+    toRoomPower = Output(doc="Heat given to the room [W]")
+    toRadiatorPower = Output(doc="Heat taken from the heating circuit [W]")
+    thermalMassHeatCapacity = Parameter(
+        500000.0, lb=1e4, ub=1e7, relative=(0.25, 4.0), scaling="log", doc="Thermal mass heat capacity [J/K]"
+    )
+    UA = Parameter(
+        _ua_at_nominal, lb=1.0, ub=2000.0, relative=(0.25, 4.0),
+        doc="Overall heat transfer coefficient [W/K]; default: the nominal solve",
+    )
+
+    def _ua_residual(self, UA_candidate):
+        """Calculate the residual for UA optimization.
+
+        This method is used by fsolve to find the UA value that matches the nominal
+        heat output. It calculates the steady-state temperatures and heat output for
+        a given UA value and returns the difference from the nominal heat output.
+
+        Args:
+            UA_candidate (float): Candidate UA value to evaluate.
+
+        Returns:
+            float: Difference between calculated and nominal heat output.
+        """
+        # This runs on the CPU in plain floats, ON PURPOSE.  SciPy's ``fsolve``
+        # converts whatever the residual returns with ``numpy.asanyarray``; a
+        # caller inside ``with torch.device("cuda")`` would otherwise allocate
+        # every tensor built here on the GPU and the solve would die with
+        # "can't convert cuda:0 device type tensor to numpy".  It is a one-off
+        # (nelements x nelements) solve when the radiator is built, so there
+        # is nothing to gain from running it on the device anyway.
+        n = self.nelements
+        cpu = torch.device("cpu")
+        tmc = self.thermalMassHeatCapacity.get()
+        C_elem = float(tmc.flatten()[0].item()) / n
+        UA_elem = float(UA_candidate.item()) / n
+        q_nom = float(self.Q_flow_nominal_sh)
+        t_a = float(self.T_a_nominal_sh)
+        t_b = float(self.T_b_nominal_sh)
+        t_air = float(self.TAir_nominal_sh)
+        m_dot = q_nom / (float(constants.CP_WATER) * (t_a - t_b))
+        c_p = float(constants.CP_WATER)
+        # Build A, B
+        A = torch.zeros((n, n), dtype=tps.float_dtype(), device=cpu)
+        B = torch.zeros((n, 3), dtype=tps.float_dtype(), device=cpu)
+        for i in range(n):
+            A[i, i] = -(m_dot * c_p + UA_elem) / C_elem
+            if i > 0:
+                A[i, i - 1] = (m_dot * c_p) / C_elem
+        B[0, 0] = (m_dot * c_p) / C_elem
+        for i in range(n):
+            B[i, 2] = UA_elem / C_elem
+        u = torch.tensor([t_a, m_dot, t_air], dtype=tps.float_dtype(), device=cpu)
+        try:
+            x_ss = -torch.linalg.solve(
+                A, B @ u
+            )  # Find states in steady-state given nominal conditions and UA guess
+        except Exception:
+            return 1e6
+        # Calculate power given states and UA guess.  Return a plain float so
+        # the residual is device- and dtype-agnostic from fsolve's point of
+        # view.
+        power = UA_elem * float(torch.sum(x_ss - t_air).item())
+        return power - q_nom
+
+    def _state_heat_capacities(self):
+        """Every element holds ``thermalMassHeatCapacity / nelements`` [J/K]."""
+        per_element = self.thermalMassHeatCapacity.get().reshape(-1, 1) / self.nelements
+        return per_element.expand(per_element.shape[0], self.nelements)
+    #: Fusable coupling ports (see FusedStateSpaceSystem): the zone's
+    #: temperature in, the power given to the room out.  That power is linear
+    #: in the element temperatures and the zone temperature (an output row),
+    #: so a radiator and its zone fuse into one exact block instead of
+    #: stepping against each other's previous values.
+    FUSABLE_INPUT_PORTS = frozenset({"indoorTemperature"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"toRoomPower"})
+    #: The output that is no row of the linear output equation, and the
+    #: inputs and output rows :meth:`_ss_derived_outputs` computes it from
+    #: (see FusedStateSpaceSystem: a fused block evaluates the hook on the
+    #: member's external inputs and its output rows after the joint step).
+    SS_DERIVED_OUTPUT_PORTS = ("toRadiatorPower",)
+    SS_DERIVED_INPUT_PORTS = ("supplyWaterTemperature", "waterFlowRate")
+    SS_DERIVED_ROW_PORTS = ("outletWaterTemperature",)
+
+    def _ss_layout(self):
+        """Port <-> matrix index map, mirroring :meth:`forward` exactly:
+        ``u = [supplyWaterTemperature, waterFlowRate, indoorTemperature]``;
+        output rows ``[outletWaterTemperature, toRoomPower]``."""
+        return {
+            "u": [("supplyWaterTemperature", 1), ("waterFlowRate", 1), ("indoorTemperature", 1)],
+            "y": {"outletWaterTemperature": 0, "toRoomPower": 1},
+        }
+
+    @staticmethod
+    def _ss_derived_outputs(inputs, rows):
+        """The outputs that are no rows of the linear output equation, as a
+        pure function of the inputs of the step (:attr:`SS_DERIVED_INPUT_PORTS`)
+        and the output rows at the end of it (:attr:`SS_DERIVED_ROW_PORTS`).
+
+        ``toRadiatorPower`` is the heat the water leaves in the radiator,
+        ``waterFlowRate * c_p * (supplyWaterTemperature -
+        outletWaterTemperature)``: bilinear, so it cannot be a row of ``C``
+        and ``D``.  :meth:`forward` and the fused block both compute it here.
+        """
+        return {
+            "toRadiatorPower": inputs["waterFlowRate"]
+            * constants.CP_WATER
+            * (inputs["supplyWaterTemperature"] - rows["outletWaterTemperature"]),
+        }
+
+    def _ss_support(self):
+        """Conservative structural support of the ``D``, ``E`` and ``F``
+        matrices: the room power row feeds through the zone temperature; the water
+        flow (input 1) scales the element chain (``E``) and, with the supply
+        temperature (input 0), the first element's inflow (``F``)."""
+        n = self.nelements
+        return {
+            "D": frozenset({(1, 2)}),
+            "E": frozenset({(1, i, i) for i in range(n)} | {(1, i, i - 1) for i in range(1, n)}),
+            "F": frozenset({(0, 0, 1)}),
+        }
+
+    def _build_matrices(self, p=None):
+        """Build the radiator state-space matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a pure function of ``p`` (a dict of physical values
+        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  Passing ``p``
+        is the functorch fast path; see the thermal system for the rationale.
+        """
+        if p is None:
+            p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
+
+        n = self.nelements
+        n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
+
+        # Get parameters - shape (n_c,)
+        C_elem = p["thermalMassHeatCapacity"] / n  # (n_c,)
+        UA_elem = p["UA"] / n  # (n_c,)
+        n_c = C_elem.shape[0]
+        c_p = constants.CP_WATER
+        # Parameters' device/dtype: _build_matrices re-runs on cache miss
+        # during stepping, outside initialize()'s device context.
+        dev, dt = C_elem.device, C_elem.dtype
+
+        ua_over_c = UA_elem / C_elem
+        ones_n = torch.ones((n,), dtype=dt, device=dev)
+        input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+        state_basis = torch.eye(n, dtype=dt, device=dev)
+        input_supply = input_basis[0]
+        input_flow = input_basis[1]
+        input_indoor = input_basis[2]
+        first_state = state_basis[0]
+        last_state = state_basis[-1]
+
+        A = torch.diag_embed(-ua_over_c.unsqueeze(-1) * ones_n)
+        B = (
+            ua_over_c.reshape(n_c, 1, 1)
+            * ones_n.reshape(1, n, 1)
+            * input_indoor.reshape(1, 1, n_inputs)
+        )
+
+        transport = -torch.eye(n, dtype=dt, device=dev)
+        if n > 1:
+            transport = transport + torch.diag(
+                torch.ones(n - 1, dtype=dt, device=dev), diagonal=-1
+            )
+        E = (
+            (c_p / C_elem).reshape(n_c, 1, 1, 1)
+            * input_flow.reshape(1, n_inputs, 1, 1)
+            * transport.reshape(1, 1, n, n)
+        )
+        F = (
+            (c_p / C_elem).reshape(n_c, 1, 1, 1)
+            * input_supply.reshape(1, n_inputs, 1, 1)
+            * first_state.reshape(1, 1, n, 1)
+            * input_flow.reshape(1, 1, 1, n_inputs)
+        )
+
+        # Output rows: the outlet water temperature (the last element) and the
+        # power given to the room ``UA/n * sum_i (T_i - T_zone)``, linear in
+        # the states and the zone temperature (the fusable coupling row).
+        # Built on the device (a Python list would be a host-to-device copy,
+        # illegal while a CUDA graph records the rollout that builds these
+        # matrices once per rollout).
+        power_row = torch.eye(2, dtype=dt, device=dev)[1]
+        C_out = torch.stack(
+            [
+                last_state.reshape(1, n).expand(n_c, -1),
+                UA_elem.reshape(n_c, 1) * ones_n.reshape(1, n),
+            ],
+            dim=1,
+        )  # (n_c, 2, n)
+        D = (
+            -(UA_elem * n).reshape(n_c, 1, 1)
+            * power_row.reshape(1, 2, 1)
+            * input_indoor.reshape(1, 1, n_inputs)
+        )  # (n_c, 2, n_inputs)
+        return A, B, C_out, D, E, F
+
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
+
+    def forward(self, x, inputs, params, step_size):
+        """One step of the radiator: the next element temperatures and the
+        outputs ``{outletWaterTemperature, toRoomPower, toRadiatorPower}``:
+        toRoomPower = UA/n * sum(T_i - T_zone), the heat given to the zone
+        (the coupling into thermal), and toRadiatorPower = waterFlowRate * c_p
+        * (supplyWaterTemperature - outletWaterTemperature), the heat taken
+        from the heating circuit.  Both at the end-of-step state.
+        """
+        A, B, C_out, D, E, F = params["matrices"]
+        u = torch.stack(
+            [
+                inputs["supplyWaterTemperature"],
+                inputs["waterFlowRate"],
+                inputs["indoorTemperature"],
+            ],
+            dim=-1,
+        )
+        x_next, y = bilinear_onestep(
+            A,
+            B,
+            C_out,
+            D,
+            E,
+            F,
+            x,
+            u,
+            step_size,
+        )
+        outlet = y[..., 0]
+        # the power row: UA/n * sum_i (T_i - T_zone) at the end-of-step state
+        outputs = {"outletWaterTemperature": outlet, "toRoomPower": y[..., 1]}
+        # the water side, from the same end-of-step outlet temperature
+        outputs.update(self._ss_derived_outputs(inputs, outputs))
+        return x_next, outputs
+
+    def solve_UA(self) -> float:
+        """The ``UA`` that meets the radiator's nominal sizing.
+
+        Solves for the overall heat transfer coefficient at which the
+        radiator, in steady state at its nominal conditions
+        (``T_a_nominal_sh``, ``T_b_nominal_sh``, ``TAir_nominal_sh``, and
+        the water flow that gives ``Q_flow_nominal_sh`` over that
+        temperature drop), delivers ``Q_flow_nominal_sh``.  It is ``UA``'s
+        default; the component is not changed.  After a nominal changed,
+        solve again::
+
+            heater.UA = heater.solve_UA()
+
+        Returns:
+            The heat transfer coefficient [W/K].
+        """
+        UA0 = float(
+            self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+        )
+        root = fsolve(self._ua_residual, UA0, full_output=True)
+        return float(root[0][0])
+
+
+# Deprecated aliases (removed in twin4build 2.1)
+SpaceHeaterTorchSystem = SpaceHeaterSystem

@@ -1,126 +1,10 @@
-# Standard library imports
-import datetime
-from typing import Optional
+# Third party imports
+import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
-    Node,
-    Optional_,
-    SignaturePattern,
-    SinglePath,
-)
-from twin4build.utils.constants import Constants
-
-
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)
-    node1 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    node2 = Node(cls=core.namespace.S4BLDG.FlowJunction)
-    node3 = Node(cls=core.namespace.S4BLDG.FlowJunction)
-    node4 = Node(cls=core.namespace.S4BLDG.PrimaryAirFlowRateMax)
-    node5 = Node(cls=core.namespace.SAREF.PropertyValue)
-    node6 = Node(cls=core.namespace.XSD.float)
-    node7 = Node(cls=core.namespace.S4BLDG.SecondaryAirFlowRateMax)
-    node8 = Node(cls=core.namespace.SAREF.PropertyValue)
-    node9 = Node(cls=core.namespace.XSD.float)
-    node10 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)  # primary
-    node11 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)  # secondary
-    node12 = Node(cls=core.namespace.S4BLDG.Controller)
-    node13 = Node(cls=core.namespace.SAREF.Motion)
-    node14 = Node(cls=core.namespace.S4BLDG.Schedule)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="air_to_air_heat_recovery_signature_pattern"
-    )
-
-    # buildingTemperature (SecondaryTemperatureIn)
-    sp.add_triple(
-        SinglePath(
-            subject=node10,
-            object=node1,
-            predicate=core.namespace.FSO.hasFluidSuppliedBy,
-        )
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node10, object=node2, predicate=core.namespace.FSO.suppliesFluidTo
-        )
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node11,
-            object=node3,
-            predicate=core.namespace.FSO.hasFluidReturnedBy,
-        )
-    )
-
-    sp.add_triple(
-        Optional_(subject=node5, object=node6, predicate=core.namespace.SAREF.hasValue)
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node5,
-            object=node4,
-            predicate=core.namespace.SAREF.isValueOfProperty,
-        )
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node0, object=node5, predicate=core.namespace.SAREF.hasPropertyValue
-        )
-    )
-
-    # airFlowRateMax
-    sp.add_triple(
-        Optional_(subject=node8, object=node9, predicate=core.namespace.SAREF.hasValue)
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node8,
-            object=node7,
-            predicate=core.namespace.SAREF.isValueOfProperty,
-        )
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node0, object=node8, predicate=core.namespace.SAREF.hasPropertyValue
-        )
-    )
-
-    sp.add_triple(
-        Exact(subject=node10, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-    sp.add_triple(
-        Exact(subject=node11, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_triple(
-        Exact(subject=node12, object=node13, predicate=core.namespace.SAREF.controls)
-    )
-    sp.add_triple(
-        Exact(subject=node13, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-    sp.add_triple(
-        Exact(subject=node12, object=node14, predicate=core.namespace.SAREF.hasProfile)
-    )
-
-    sp.add_parameter("primaryAirFlowRateMax", node6)
-    sp.add_parameter("secondaryAirFlowRateMax", node9)
-
-    sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
-    sp.add_input("secondaryTemperatureIn", node3, "airTemperatureOut")
-    sp.add_input("primaryAirFlowRate", node2, "airFlowRateIn")
-    sp.add_input("secondaryAirFlowRate", node3, "airFlowRateOut")
-    sp.add_input("primaryTemperatureOutSetpoint", node14, "scheduleValue")
-
-    sp.add_modeled_node(node0)
-    sp.add_modeled_node(node10)
-    sp.add_modeled_node(node11)
-
-    return sp
+import twin4build.utils.constants as constants
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 
 
 class AirToAirHeatRecoverySystem(core.System):
@@ -188,310 +72,113 @@ class AirToAirHeatRecoverySystem(core.System):
 
     """
 
-    sp = [get_signature_pattern()]
+    primaryAirFlowRate = Input(doc="Primary (supply) air flow rate [kg/s]")
+    secondaryAirFlowRate = Input(doc="Secondary (exhaust) air flow rate [kg/s]")
+    primaryTemperatureIn = Input(doc="Primary air inlet temperature [degC]")
+    secondaryTemperatureIn = Input(doc="Secondary air inlet temperature [degC]")
+    primaryTemperatureOutSetpoint = Input(doc="Primary air outlet temperature setpoint [degC]")
+    primaryTemperatureOut = Output(doc="Primary air outlet temperature [degC]")
+    secondaryTemperatureOut = Output(doc="Secondary air outlet temperature [degC]")
+    eps_75_h = Parameter(0.86, lb=0.4, ub=0.95, doc="Effectiveness at 75% flow, heating [-]")
+    eps_100_h = Parameter(0.8, lb=0.4, ub=0.95, doc="Effectiveness at 100% flow, heating [-]")
+    eps_75_c = Parameter(0.86, lb=0.4, ub=0.95, doc="Effectiveness at 75% flow, cooling [-]")
+    eps_100_c = Parameter(0.8, lb=0.4, ub=0.95, doc="Effectiveness at 100% flow, cooling [-]")
+    primaryAirFlowRateMax = Parameter(
+        1.0, lb=0.5, ub=10.0, relative=(0.25, 4.0), doc="Maximum primary air flow rate [kg/s]"
+    )
+    secondaryAirFlowRateMax = Parameter(
+        1.0, lb=0.5, ub=10.0, relative=(0.25, 4.0), doc="Maximum secondary air flow rate [kg/s]"
+    )
 
-    def __init__(
-        self,
-        eps_75_h=None,
-        eps_100_h=None,
-        eps_75_c=None,
-        eps_100_c=None,
-        primaryAirFlowRateMax=None,
-        secondaryAirFlowRateMax=None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
+    def forward(self, x, inputs, params, step_size):
+        """Stateless: the heat recovered between the two streams.
 
-        # Store attributes as private variables
-        self._eps_75_h = eps_75_h
-        self._eps_100_h = eps_100_h
-        self._eps_75_c = eps_75_c
-        self._eps_100_c = eps_100_c
-        self._primaryAirFlowRateMax = primaryAirFlowRateMax
-        self._secondaryAirFlowRateMax = secondaryAirFlowRateMax
-
-        # Define inputs and outputs as private variables
-        self._input = {
-            "primaryAirFlowRate": tps.Scalar(),
-            "secondaryAirFlowRate": tps.Scalar(),
-            "primaryTemperatureIn": tps.Scalar(),
-            "secondaryTemperatureIn": tps.Scalar(),
-            "primaryTemperatureOutSetpoint": tps.Scalar(),
-        }
-        self._output = {
-            "primaryTemperatureOut": tps.Scalar(),
-            "secondaryTemperatureOut": tps.Scalar(),
-        }
-        self._config = {
-            "parameters": [
-                "eps_75_h",
-                "eps_100_h",
-                "eps_75_c",
-                "eps_100_c",
-                "primaryAirFlowRateMax",
-                "secondaryAirFlowRateMax",
-            ]
-        }
-
-    @property
-    def config(self):
-        """Get the configuration parameters.
-
-        Returns:
-            dict: Configuration parameters.
+        Effectiveness interpolated between the 75%/100% reference points,
+        operation mode selected from inlet temperatures vs the setpoint,
+        pass-through when there is no flow or recovery is infeasible.
         """
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the air-to-air heat recovery system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "primaryAirFlowRate": Primary (supply) air flow rate [kg/s]
-                - "secondaryAirFlowRate": Secondary (exhaust) air flow rate [kg/s]
-                - "primaryTemperatureIn": Primary air inlet temperature [°C]
-                - "secondaryTemperatureIn": Secondary air inlet temperature [°C]
-                - "primaryTemperatureOutSetpoint": Primary air outlet temperature setpoint [°C]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the air-to-air heat recovery system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "primaryTemperatureOut": Primary air outlet temperature [°C]
-                - "secondaryTemperatureOut": Secondary air outlet temperature [°C]
-        """
-        return self._output
-
-    @property
-    def eps_75_h(self):
-        """
-        Get the effectiveness at 75% flow in heating mode.
-        """
-        return self._eps_75_h
-
-    @eps_75_h.setter
-    def eps_75_h(self, value):
-        """
-        Set the effectiveness at 75% flow in heating mode.
-        """
-        self._eps_75_h = value
-
-    @property
-    def eps_100_h(self):
-        """
-        Get the effectiveness at 100% flow in heating mode.
-        """
-        return self._eps_100_h
-
-    @eps_100_h.setter
-    def eps_100_h(self, value):
-        """
-        Set the effectiveness at 100% flow in heating mode.
-        """
-        self._eps_100_h = value
-
-    @property
-    def eps_75_c(self):
-        """
-        Get the effectiveness at 75% flow in cooling mode.
-        """
-        return self._eps_75_c
-
-    @eps_75_c.setter
-    def eps_75_c(self, value):
-        """
-        Set the effectiveness at 75% flow in cooling mode.
-        """
-        self._eps_75_c = value
-
-    @property
-    def eps_100_c(self):
-        """
-        Get the effectiveness at 100% flow in cooling mode.
-        """
-        return self._eps_100_c
-
-    @eps_100_c.setter
-    def eps_100_c(self, value):
-        """
-        Set the effectiveness at 100% flow in cooling mode.
-        """
-        self._eps_100_c = value
-
-    @property
-    def primaryAirFlowRateMax(self):
-        """
-        Get the maximum primary (supply) air flow rate.
-        """
-        return self._primaryAirFlowRateMax
-
-    @primaryAirFlowRateMax.setter
-    def primaryAirFlowRateMax(self, value):
-        """
-        Set the maximum primary (supply) air flow rate.
-        """
-        self._primaryAirFlowRateMax = value
-
-    @property
-    def secondaryAirFlowRateMax(self):
-        """
-        Get the maximum secondary (exhaust) air flow rate.
-        """
-        return self._secondaryAirFlowRateMax
-
-    @secondaryAirFlowRateMax.setter
-    def secondaryAirFlowRateMax(self, value):
-        """
-        Set the maximum secondary (exhaust) air flow rate.
-        """
-        self._secondaryAirFlowRateMax = value
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
-    ) -> None:
-        """Initialize the system for simulation.
-
-        This method is currently not implemented as the system does not require initialization.
-
-        Args:
-            start_time: Start time of the simulation period.
-            end_time: End time of the simulation period.
-            step_size: Time step size in seconds.
-            simulator: Simulation model object.
-        """
-        pass
-
-    def do_step(
-        self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
-    ) -> None:
-        """Perform one simulation step.
-
-        This method calculates the heat recovery between supply and exhaust air streams
-        based on the current flow rates and temperatures. The effectiveness is interpolated
-        based on the flow rates, and the operation mode (heating/cooling) is determined
-        by comparing inlet temperatures and setpoints.
-
-        The method handles the following cases:
-        1. No flow in either stream: Pass-through temperatures
-        2. Heat recovery feasible: Calculate effectiveness and heat transfer
-        3. Heat recovery not feasible: Pass-through temperatures
-
-        Args:
-            secondTime: Current simulation time in seconds.
-            dateTime: Current simulation date and time.
-            step_size: Time step size in seconds.
-            stepIndex: Current simulation step index.
-        """
-        self.output.update(self.input)
         tol = 1e-5
-        if (
-            self.input["primaryAirFlowRate"] > tol
-            and self.input["secondaryAirFlowRate"] > tol
-        ):
-            m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)
-            if (
-                self.input["primaryTemperatureIn"]
-                < self.input["secondaryTemperatureIn"]
-            ):
-                eps_75 = self.eps_75_h
-                eps_100 = self.eps_100_h
-                feasibleMode = "Heating"
-            else:
-                eps_75 = self.eps_75_c
-                eps_100 = self.eps_100_c
-                feasibleMode = "Cooling"
 
-            operationMode = (
-                "Heating"
-                if self.input["primaryTemperatureIn"]
-                < self.input["primaryTemperatureOutSetpoint"]
-                else "Cooling"
-            )
+        primary_flow = inputs["primaryAirFlowRate"]
+        secondary_flow = inputs["secondaryAirFlowRate"]
+        primary_temp_in = inputs["primaryTemperatureIn"]
+        secondary_temp_in = inputs["secondaryTemperatureIn"]
+        primary_temp_setpoint = inputs["primaryTemperatureOutSetpoint"]
 
-            if feasibleMode == operationMode:
-                f_flow = (
-                    0.5
-                    * (
-                        self.input["primaryAirFlowRate"]
-                        + self.input["secondaryAirFlowRate"]
-                    )
-                    / m_a_max
-                )
-                eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
-                C_sup = (
-                    self.input["primaryAirFlowRate"]
-                    * Constants.specificHeatCapacity["air"]
-                )
-                C_exh = (
-                    self.input["secondaryAirFlowRate"]
-                    * Constants.specificHeatCapacity["air"]
-                )
-                C_min = min(C_sup, C_exh)
-                self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"]
-                    + eps_op
-                    * (
-                        self.input["secondaryTemperatureIn"]
-                        - self.input["primaryTemperatureIn"]
-                    )
-                    * (C_min / C_sup),
-                    stepIndex,
-                )
+        # Condition: both flow rates above tolerance
+        has_flow = (primary_flow > tol) & (secondary_flow > tol)
 
-                if (
-                    operationMode == "Heating"
-                    and self.output["primaryTemperatureOut"]
-                    > self.input["primaryTemperatureOutSetpoint"]
-                ):
-                    self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], stepIndex
-                    )
-                elif (
-                    operationMode == "Cooling"
-                    and self.output["primaryTemperatureOut"]
-                    < self.input["primaryTemperatureOutSetpoint"]
-                ):
-                    self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], stepIndex
-                    )
+        # Determine feasible mode (heating if primary < secondary, else cooling)
+        is_heating_feasible = primary_temp_in < secondary_temp_in
 
-                # Calculate secondaryTemperatureOut using energy conservation
-                primary_delta_T = (
-                    self.output["primaryTemperatureOut"].get()
-                    - self.input["primaryTemperatureIn"].get()
-                )
-                secondary_delta_T = primary_delta_T * (C_sup / C_exh)
-                self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"].get() - secondary_delta_T,
-                    stepIndex,
-                )
+        # Select effectiveness values based on feasible mode
+        eps_75 = torch.where(
+            is_heating_feasible, params["eps_75_h"], params["eps_75_c"]
+        )
+        eps_100 = torch.where(
+            is_heating_feasible, params["eps_100_h"], params["eps_100_c"]
+        )
 
-            else:
-                self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"], stepIndex
-                )
-                self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"], stepIndex
-                )
-        else:
-            self.output["primaryTemperatureOut"].set(
-                self.input["primaryTemperatureIn"], stepIndex
-            )
-            self.output["secondaryTemperatureOut"].set(
-                self.input["secondaryTemperatureIn"], stepIndex
-            )
+        # Determine operation mode (heating if primary < setpoint, else cooling)
+        is_heating_mode = primary_temp_in < primary_temp_setpoint
+
+        # Feasible matches operation mode when both are heating or both are cooling
+        feasible_matches_mode = is_heating_feasible == is_heating_mode
+
+        # Condition for heat recovery: has flow AND feasible matches mode
+        do_heat_recovery = has_flow & feasible_matches_mode
+
+        # Calculate heat recovery values (computed for all, selected later)
+        m_a_max = torch.max(
+            params["primaryAirFlowRateMax"], params["secondaryAirFlowRateMax"]
+        )
+
+        f_flow = 0.5 * (primary_flow + secondary_flow) / m_a_max
+        eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
+
+        C_sup = primary_flow * constants.CP_AIR
+        C_exh = secondary_flow * constants.CP_AIR
+        C_min = torch.min(C_sup, C_exh)
+
+        # Zero flow on either side (dampers closed, unit off) is a normal
+        # state handled by ``has_flow`` above; the capacity ratios are
+        # clamped so the (discarded) heat-recovery branch stays finite.
+        C_sup_safe = torch.clamp(C_sup, min=1e-9 * constants.CP_AIR)
+        C_exh_safe = torch.clamp(C_exh, min=1e-9 * constants.CP_AIR)
+
+        # Calculate primary temperature out with heat recovery
+        primary_temp_out_hr = primary_temp_in + eps_op * (
+            secondary_temp_in - primary_temp_in
+        ) * (C_min / C_sup_safe)
+
+        # Clamp to setpoint based on operation mode
+        # In heating mode: clamp if output > setpoint
+        # In cooling mode: clamp if output < setpoint
+        heating_exceeds = is_heating_mode & (
+            primary_temp_out_hr > primary_temp_setpoint
+        )
+        cooling_exceeds = (~is_heating_mode) & (
+            primary_temp_out_hr < primary_temp_setpoint
+        )
+        needs_clamping = heating_exceeds | cooling_exceeds
+
+        primary_temp_out_hr = torch.where(
+            needs_clamping, primary_temp_setpoint, primary_temp_out_hr
+        )
+
+        # Calculate secondary temperature out using energy conservation
+        primary_delta_T = primary_temp_out_hr - primary_temp_in
+        secondary_delta_T = primary_delta_T * (C_sup / C_exh_safe)
+        secondary_temp_out_hr = secondary_temp_in - secondary_delta_T
+
+        # Select final outputs: heat recovery values if conditions met, else pass-through
+        primary_temp_out = torch.where(
+            do_heat_recovery, primary_temp_out_hr, primary_temp_in
+        )
+        secondary_temp_out = torch.where(
+            do_heat_recovery, secondary_temp_out_hr, secondary_temp_in
+        )
+        return x, {
+            "primaryTemperatureOut": primary_temp_out,
+            "secondaryTemperatureOut": secondary_temp_out,
+        }
