@@ -70,6 +70,9 @@ class BuildingSpaceSystem(core.System):
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
           - wallHeatGain (heat flows from connected WallSystem components)
+          - exchangeHeatGain (heat flows from connected openings, the heat
+            twin of the mass model's exchangeCO2Gain)
+          - plugLoad (electrical plug load, all of it heat; optional)
 
        **Combined Outputs:**
           - indoorTemperature: From thermal subsystem
@@ -114,6 +117,10 @@ class BuildingSpaceSystem(core.System):
         default=outdoorTemperature, doc="Temperature of the make-up air [degC]; unwired: outdoor air"
     )
     wallHeatGain = Input(size="wired", doc="Heat flows from connected WallSystem components [W], one slot per wall")
+    exchangeHeatGain = Input(
+        size="wired", doc="Heat flows from connected openings to other zones [W], one slot per opening"
+    )
+    plugLoad = Input(default=0.0, doc="Electrical plug load [W], all of it heat in the air; unwired: none")
     infiltrationAirFlowRate = Input(default=0.0, doc="Envelope inflow on top of the make-up flow [kg/s]")
     outdoorCo2Concentration = Input(default=400.0, doc="Outdoor CO2 concentration [ppmv]")
     makeUpAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the make-up air [ppmv]; unwired: outdoor air")
@@ -138,7 +145,7 @@ class BuildingSpaceSystem(core.System):
     #: without the room gets it in the room's place (:mod:`twin4build.model.signal_dependencies`).
     OUTPUT_PROJECTIONS = {"surplusAirFlowRate": "AirImbalanceSystem", "makeUpAirFlowRate": "AirImbalanceSystem"}
 
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "heatGain"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "exchangeHeatGain", "heatGain"})
 
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature", "indoorCO2"})
 
