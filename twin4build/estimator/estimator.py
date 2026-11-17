@@ -740,6 +740,10 @@ class Estimator:
               directory and can be reloaded with
               :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
             - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
+            - The fit's simulations log the measuring devices only; every port's
+              logging (``set_save_simulation_result``) is put back as it was when
+              ``estimate`` returns or raises, so a simulation after it logs what
+              one before it did.
 
         Examples:
             >>> # New list format (recommended)
@@ -768,6 +772,29 @@ class Estimator:
             ...     options={"maxiter": 500}
             ... )
         """
+        # The fit logs its measuring devices only (set below); every port's
+        # flag is put back when it returns or raises.
+        flags = _port_logging(self.simulator.model)
+        try:
+            return self._estimate(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                parameters=parameters,
+                measurements=measurements,
+                n_warmup=n_warmup,
+                method=method,
+                options=options,
+                schedule=schedule,
+                **kwargs,
+            )
+        finally:
+            _restore_port_logging(flags)
+
+    def _estimate(
+        self, start_time, end_time, step_size, parameters, measurements, n_warmup, method, options, schedule, **kwargs
+    ) -> EstimationResult:
+        """:meth:`estimate`'s body; :meth:`estimate` puts the ports' logging back."""
         # Reject removed kwargs with clear migration messages.
         for legacy_key in (
             "startTime",
@@ -4039,6 +4066,28 @@ def _check_contiguous_periods(start_time, end_time) -> None:
                 f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods, or "
                 "continuity_gaps=True to leave the tie out across a gap"
             )
+
+
+def _port_logging(model) -> list:
+    """The ``log_history`` flag of every port ``set_save_simulation_result``
+    sets, as ``(component, "input" | "output", port name, flag)``; none
+    without a model (``estimate`` then raises on its arguments as before)."""
+    flags = []
+    components = getattr(model, "components", None) or {}
+    for component in components.values():
+        for side in ("input", "output"):
+            for name, port in getattr(component, side).items():
+                if isinstance(port, (tps.Scalar, tps.Vector)):
+                    flags.append((component, side, name, port.log_history))
+    return flags
+
+
+def _restore_port_logging(flags) -> None:
+    """Set every port of :func:`_port_logging`'s list back to its flag."""
+    for component, side, name, flag in flags:
+        port = getattr(component, side).get(name)
+        if isinstance(port, (tps.Scalar, tps.Vector)):
+            port.log_history = flag
 
 
 class EstimationResult(ResultDict):
