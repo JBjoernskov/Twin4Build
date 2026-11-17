@@ -67,6 +67,17 @@ import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.utils.rgetattr import rgetattr
 
+#: A route's order before ``prepare_routes`` decides it (a route is ``(out_v,
+#: s_ic, r_ic, target_n_c, output_is_vector, order, detached)``; ``detached``:
+#: ``False``, ``True`` or one flag per pair, the connection read without its
+#: gradient, ``ConnectionPoint.detached_of``).
+_ORDER_UNSET = "order-unset"
+
+
+def _route_cut(route):
+    """A route's ``detached``: ``False``, ``True`` or one flag per pair."""
+    return route[6] if len(route) > 6 else False
+
 
 def _content_signature(value):
     """Return an exact, device-independent signature for tensor-like data."""
@@ -646,6 +657,8 @@ class FunctionalModel:
                     cp.input_component_index.get(conn, slice(None)),
                     target_n_c,
                     isinstance(producer.output[conn.output_port], tps.Vector),
+                    _ORDER_UNSET,
+                    cp.detached_of(conn),
                 )
                 sources.append((producer, conn.output_port, (route,)))
         return sources
@@ -695,6 +708,7 @@ class FunctionalModel:
                 out_idx = cp.output_port_index.get(conn, slice(None))
                 s_ic = cp.output_component_index.get(conn, slice(None))
                 r_ic = cp.input_component_index.get(conn, slice(None))
+                cut = cp.detached_of(conn)
                 if isinstance(in_idx, torch.Tensor) and in_idx.numel() > 1:
                     # One connection, several slot pairs (a zone fed by
                     # several branches of one AHU, or a batched meta whose
@@ -708,12 +722,13 @@ class FunctionalModel:
                             return value.reshape(-1).tolist()
                         return [value] * n_pairs
 
+                    cuts = [bool(v) for v in cut.tolist()] if isinstance(cut, torch.Tensor) else [cut] * n_pairs
                     pairs = list(zip(
-                        in_idx.reshape(-1).tolist(), _per_pair(out_idx), _per_pair(s_ic), _per_pair(r_ic)
+                        in_idx.reshape(-1).tolist(), _per_pair(out_idx), _per_pair(s_ic), _per_pair(r_ic), cuts
                     ))
                 else:
                     idx = int(in_idx.item()) if hasattr(in_idx, "item") else int(in_idx)
-                    pairs = [(idx, out_idx, s_ic, r_ic)]
+                    pairs = [(idx, out_idx, s_ic, r_ic, cut)]
                 immediate = self._connection_sources(comp, port)
                 for src in immediate:
                     if src[0] is conn.connects_system and src[1] == conn.output_port:
@@ -726,16 +741,18 @@ class FunctionalModel:
                             # route with tensor indices: one gather and one
                             # scatter per slot instead of one per pair.
                             by_slot = {}
-                            for idx, o, s_i, r_i in pairs:
-                                by_slot.setdefault(idx, []).append((o, s_i, r_i))
+                            for idx, o, s_i, r_i, d in pairs:
+                                by_slot.setdefault(idx, []).append((o, s_i, r_i, d))
                             for idx, group in by_slot.items():
                                 if len(group) == 1:
-                                    o, s_i, r_i = group[0]
+                                    o, s_i, r_i, d = group[0]
                                 else:
                                     o, s_i, r_i = (
                                         self._index_tensor([g[k] for g in group]) for k in range(3)
                                     )
-                                route = (o, s_i, r_i) + tuple(src[2][0][3:])
+                                    flags = [bool(g[3]) for g in group]
+                                    d = all(flags) if all(flags) or not any(flags) else torch.tensor(flags)
+                                route = (o, s_i, r_i) + tuple(src[2][0][3:5]) + (_ORDER_UNSET, d)
                                 slots.setdefault(idx, []).append(
                                     (
                                         followed[0],
@@ -918,7 +935,11 @@ class FunctionalModel:
 
         def route(r):
             out_v, s_ic, r_ic, n_c, is_vector = r[:5]
-            return (idx(out_v), instance(s_ic), instance(r_ic), n_c, is_vector, self._target_order_of(r_ic, n_c, device))
+            cut = _route_cut(r)
+            if isinstance(cut, torch.Tensor):
+                cut = cut.to(device)
+            return (idx(out_v), instance(s_ic), instance(r_ic), n_c, is_vector,
+                    self._target_order_of(r_ic, n_c, device), cut)
 
         def sources(srcs):
             return [(p, port, tuple(route(r) for r in routes)) for p, port, routes in srcs]
@@ -1002,16 +1023,29 @@ class FunctionalModel:
                         out_t = torch.arange(n_pairs, device=device)
                     else:  # a scalar output: no slot (unused when not is_vector)
                         out_t = torch.zeros(n_pairs, dtype=torch.long, device=device)
-                    g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": []})
+                    g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": [], "cut": []})
                     g["s_ic"].append(s_ic.reshape(-1))
                     g["out_v"].append(out_t)
                     g["r_ic"].append(r_ic.reshape(-1))
                     g["in_v"].append(torch.full((n_pairs,), slot, dtype=torch.long, device=device))
+                    cut = _route_cut(routes[0])
+                    g["cut"].append(
+                        cut.reshape(-1).to(device) if isinstance(cut, torch.Tensor)
+                        else torch.full((n_pairs,), bool(cut), dtype=torch.bool, device=device)
+                    )
                 continue
             leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+        def _cut(flags):
+            """``None`` (every pair with its gradient), ``True`` (none) or the pairs' mask."""
+            mask = torch.cat(flags)
+            if not bool(mask.any()):
+                return None
+            return True if bool(mask.all()) else mask
+
         group_list = [
             (g["producer"].id, g["port"], g["is_vector"],
-             torch.cat(g["s_ic"]), torch.cat(g["out_v"]), torch.cat(g["r_ic"]), torch.cat(g["in_v"]))
+             torch.cat(g["s_ic"]), torch.cat(g["out_v"]), torch.cat(g["r_ic"]), torch.cat(g["in_v"]),
+             _cut(g["cut"]))
             for g in groups.values()
         ]
         exo = None
@@ -1041,7 +1075,7 @@ class FunctionalModel:
                 # component, thousands of them outside the cone).
                 externals.append(i)
                 continue
-            if m[0] == "fresh" and len(m[3]) == 1:
+            if m[0] == "fresh" and len(m[3]) == 1 and _route_cut(m[3][0]) is False:
                 out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
                 if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
                     g = groups.setdefault((m[1], m[2]), {"cid": m[1], "port": m[2], "is_vector": is_vector, "s_ic": [], "out_v": [], "meas": []})
@@ -1094,11 +1128,14 @@ class FunctionalModel:
             pos += w
         return blocks, perm.to(device)
 
-    def _apply_routes(self, value, routes):
-        """Apply object-graph output/input branch mappings without mutation."""
+    def _apply_routes(self, value, routes, zero_detached=False):
+        """Apply object-graph output/input branch mappings without mutation.
+        A detached route passes its values without their gradient
+        (``zero_detached``: as zeros, the structure walk's tags of no owner)."""
         result = value
         for r in routes:
             out_v, source_i_c, target_i_c, target_n_c, output_is_vector = r[:5]
+            cut = _route_cut(r)
             paired = (
                 output_is_vector
                 and isinstance(out_v, torch.Tensor)
@@ -1123,6 +1160,12 @@ class FunctionalModel:
                     result = result.reshape(1)
                 source_i_c = self._as_index(source_i_c, result.device)
                 selected = result[source_i_c]
+            if cut is True:
+                selected = torch.zeros_like(selected) if zero_detached else selected.detach()
+            elif cut is not False:
+                # per pair (a batched meta): the pairs are the first axis
+                mask = cut.to(selected.device).reshape((-1,) + (1,) * (selected.dim() - 1))
+                selected = torch.where(mask, torch.zeros_like(selected) if zero_detached else selected.detach(), selected)
             if isinstance(target_i_c, slice):
                 if selected.shape[0] == target_n_c:
                     result = selected
@@ -1131,7 +1174,9 @@ class FunctionalModel:
                 else:
                     result = selected
             else:
-                order = r[5] if len(r) > 5 else self._target_order_of(target_i_c, target_n_c, result.device)
+                order = r[5] if len(r) > 5 and not isinstance(r[5], str) else None
+                if len(r) <= 5 or isinstance(r[5], str):
+                    order = self._target_order_of(target_i_c, target_n_c, result.device)
                 if order is None:
                     # The pairs cover every target instance exactly once, in
                     # order: the selection already is the target.
@@ -1335,7 +1380,7 @@ class FunctionalModel:
                         value = torch.zeros((n_c * n_v,), dtype=states_flat.dtype, device=states_flat.device)
                         if exo is not None:
                             value = torch.scatter(value, 0, (exo[1] * n_v + exo[2]).reshape(-1), exogenous[exo[0]].reshape(-1))
-                        for pid, pport, is_vector, s_ic, out_v, r_ic, in_v in groups:
+                        for pid, pport, is_vector, s_ic, out_v, r_ic, in_v, cut in groups:
                             out = produced[pid][pport]
                             if is_vector and out.ndim >= 2:
                                 gathered = out[s_ic, out_v]
@@ -1343,6 +1388,10 @@ class FunctionalModel:
                                 gathered = out[out_v]
                             else:
                                 gathered = out.reshape(-1)[s_ic]
+                            if cut is True:
+                                gathered = gathered.detach()  # read without its gradient (split_worlds' cut)
+                            elif cut is not None:
+                                gathered = torch.where(cut, gathered.detach(), gathered)
                             value = torch.scatter_add(value, 0, r_ic * n_v + in_v, gathered.reshape(-1))
                         for rows_t, slot_full, slot_spec in leftovers:
                             value = torch.scatter_add(value, 0, rows_t * n_v + slot_full, _input_value(slot_spec).reshape(-1))
@@ -1459,7 +1508,7 @@ class FunctionalModel:
             # prepared for (``prepare_routes``); the tags must sit there too.
             device = getattr(self, "_routes_device", None) or "cpu"
             tags = torch.arange(1, n + 1, dtype=torch.float64, device=device)[:, None].expand(n, width)
-            mapped = self._apply_routes(tags, routes)
+            mapped = self._apply_routes(tags, routes, zero_detached=True)
             if mapped.ndim == 1:
                 mapped = mapped[:, None]
             rows = mapped.reshape(mapped.shape[0], -1)
@@ -1487,7 +1536,8 @@ class FunctionalModel:
         def producer_ids(spec) -> Set[str]:
             kind = spec[0]
             if kind == "fresh":
-                return {src[0].id for src in spec[1]}
+                # a source read only without its gradient (a detached connection) carries no parameter
+                return {src[0].id for src in spec[1] if not any(_route_cut(r) is True for r in src[2])}
             if kind == "feedback":
                 sl = spec[1]
                 return {node[0] for pos in range(sl.start, sl.stop) if pos < len(fb_owner) for node in fb_owner[pos]}
@@ -1495,7 +1545,7 @@ class FunctionalModel:
                 return set().union(*(producer_ids(part) for part in spec[1])) if spec[1] else set()
             if kind == "vector_grouped":
                 _, _n_c, _n_v, groups, _exo, leftovers = spec
-                out = {g[0] for g in groups}
+                out = {g[0] for g in groups if g[7] is not True}
                 for _rows, _slot, slot_spec in leftovers:
                     out |= producer_ids(slot_spec)
                 return out
@@ -1504,6 +1554,9 @@ class FunctionalModel:
         upstream = {cid: set().union(*(producer_ids(spec) for _port, spec in ports)) if ports else set()
                     for cid, ports in self.wiring.items()}
         reached: Set[str] = {cid for cid, attrs in self.theta_by_comp.items() if attrs}
+        # A connection read without its gradient (split_worlds' cut from a provided component) lets no parameter
+        # through: producer_ids leaves it out, so its readers' blocks stay apart from its sender's (7 Nov 2026: a
+        # building's hidden node, read by every room).
         changed = True
         while changed:
             changed = False
@@ -1538,11 +1591,13 @@ class FunctionalModel:
                 # per producer the aligned pairs (s_ic, out_v, r_ic, in_v),
                 # the exogenous slots (no coupling), and per-slot leftovers
                 _, _n_c, _n_v, groups, _exo, leftovers = spec
-                for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v in groups:
-                    if pid not in reached:
-                        continue  # a function of data
-                    for s_i, r_i in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist()):
-                        union((consumer_id, int(r_i)), (pid, int(s_i)))
+                for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v, cut in groups:
+                    if pid not in reached or cut is True:
+                        continue  # a function of data, or read without its gradient
+                    cuts = cut.reshape(-1).tolist() if isinstance(cut, torch.Tensor) else [False] * int(s_ic.numel())
+                    for s_i, r_i, c in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist(), cuts):
+                        if not c:
+                            union((consumer_id, int(r_i)), (pid, int(s_i)))
                 for _rows, _slot, slot_spec in leftovers:
                     bind(consumer_id, slot_spec)
             # "exogenous": data, no coupling

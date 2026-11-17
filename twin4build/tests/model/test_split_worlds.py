@@ -131,6 +131,49 @@ class TestSplitWorlds(unittest.TestCase):
         self.assertTrue(bool((t == t).all()))
 
 
+class _JoiningWall(tb.WallSystem):
+    """A wall whose class joins the worlds of the spaces it connects (``JOINS_WORLDS``), as an opening between the
+    zones of one room does."""
+
+    JOINS_WORLDS = True
+
+
+def build_joined(model_id, joining=True):
+    """Measured rooms A and B coupled by one wall: a plain :class:`WallSystem`, or one whose class joins worlds."""
+    model = tb.Model(id=model_id)
+    a, sa = _room(model, "A")
+    b, sb = _room(model, "B")
+    wall = (_JoiningWall if joining else tb.WallSystem)(C=2e5, R_a=0.02, R_b=0.02, id="J_AB")
+    model.add_connection(a, wall, "indoorTemperature", "temperatureA")
+    model.add_connection(b, wall, "indoorTemperature", "temperatureB")
+    model.add_connection(wall, a, "heatFlowRateA", "wallHeatGain", input_port_index=0)
+    model.add_connection(wall, b, "heatFlowRateB", "wallHeatGain", input_port_index=0)
+    return model, sa + sb
+
+
+class TestJoiningComponent(unittest.TestCase):
+    """8 Nov 2026: a component whose class declares ``JOINS_WORLDS`` keeps the spaces it connects in one world.  A
+    large building's openings between the zones of one room, cut like a wall between rooms, let each zone dump CO2
+    into its neighbour's measured series; the coupled model, with both zones simulated, then ran 150 ppm high."""
+
+    def test_its_spaces_are_one_world_and_it_reads_both_simulated(self):
+        model, sensors = build_joined("split_worlds_joined")
+        worlds = split_worlds(model, measured=sensors, scored=sensors)
+        self.assertEqual(worlds.copies, {})
+        self.assertEqual(worlds.merged, {"J_AB": ["A", "B"]})
+        self.assertEqual([s.id for s in senders(model.components["J_AB"], "temperatureA")], ["A"])
+        self.assertEqual([s.id for s in senders(model.components["J_AB"], "temperatureB")], ["B"])
+        p = measured_partition(model, measured=sensors, scored=sensors)
+        self.assertEqual(p.group_of["A"], p.group_of["B"])
+
+    def test_without_the_trait_the_same_wall_is_copied(self):
+        self.assertFalse(tb.WallSystem.JOINS_WORLDS)
+        model, sensors = build_joined("split_worlds_joined_off", joining=False)
+        worlds = split_worlds(model, measured=sensors, scored=sensors)
+        self.assertEqual(worlds.copies, {"J_AB": ["J_AB__in_B"]})
+        self.assertEqual(worlds.merged, {})
+
+
 def build_data(model_id):
     """Rooms A and B (measured) take their heat gain from M, the max of room C's measured CO2 and a schedule: M has
     no parameters and reads only data."""

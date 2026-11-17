@@ -1490,6 +1490,15 @@ class System(nn.Module, metaclass=SystemMeta):
     FUSABLE_INPUT_PORTS: frozenset = frozenset()
     FUSABLE_OUTPUT_PORTS: frozenset = frozenset()
 
+    #: Whether the component joins the worlds of the spaces it connects when a
+    #: model is split into worlds (:func:`twin4build.model.partition.split_worlds`):
+    #: the scored spaces it reads or feeds are one world, so it is neither
+    #: copied nor fed a measurement of either side.  For a free coupling that
+    #: can be strong (an opening between the zones of one room), where a
+    #: measured side would be a reservoir a fit can push and pull without
+    #: cost.  False on the base class: components opt in explicitly.
+    JOINS_WORLDS: bool = False
+
     def _ss_units(self):
         """The linear/bilinear state-space *leaf* units owned by this component,
         as ``[(prefix, unit), ...]`` in state order (the order

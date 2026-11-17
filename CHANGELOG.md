@@ -918,6 +918,39 @@ Unused and untested; 2.0 drops them without a deprecation period.
   neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
   touched.  A composite's children see the composite's wiring
   (`System.input_defaults()` of a room's `thermal` is the room's).
+- `split_worlds` provides a lagged hub instead of copying it: a component
+  with free parameters whose outputs the other worlds read are all lagged
+  (`LAGGED_OUTPUT_PORTS`, a building's hidden interior node) and that one
+  world needs only through measured or exogenous signals lives in that
+  world (its home), and every other world reads it through a cut
+  connection: `Model.add_connection(..., detached=True)`, the value without
+  its gradient (`Worlds.provided` lists them as `(output port, reader,
+  input port)`).  Both engines pass the value on detached and still
+  evaluate the sender every step, the partition reads the signal as data,
+  and the estimator's structure walk (`FunctionalModel.index_coupling`) lets
+  no parameter through, so the readers' blocks stay apart from the home's.
+  A batched meta holds one flag per pair (its instances may read the sender
+  in different ways), and a saved model keeps the flag.
+- `System.JOINS_WORLDS` (default `False`): a component whose class sets it
+  (an opening between the zones of one room) joins the worlds of the scored
+  spaces it reads or feeds into one world (`Worlds.merged`) instead of being
+  copied with a measurement of the other side.
+- `split_worlds` records what it did on the model it splits:
+  `Model.worlds` (a batched model reads its source's).  A multiple-shooting
+  fit of such a model starts every component and its copies in other worlds
+  (`Worlds.copies`) from one box and one start, without an option: they are
+  one state.  Per state entry their window-start variables get the union of
+  their boxes and their mean start.
+- On such a model, a parameter and its copies (`Worlds.shared`) are one
+  parameter: `Estimator.estimate` puts each copy into its original's entry
+  with its start and bounds (a private original becomes one shared entry
+  with its copies, a shared group takes them in; `parameters="auto"`, which
+  lists the copies, too).  A copy listed with another start or bounds, a
+  copy listed without its original or in a shared group without it, and
+  an original or a copy that is an instance of a batched component raise a
+  `ValueError` that names them and says what to list.  The worlds that
+  share a copied parameter are one block of the estimator's structure
+  (`FunctionalModel.index_coupling`).
 
 ### Migration notes
 
