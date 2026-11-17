@@ -476,6 +476,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
   mode and a loop whose gate seeding could not run keeps its pinned gate;
   level-based setpoint tie-break and the park value taken from the off
   regime; the radiator loop is gated on the VAV flow setpoints.
+- Controller identification, rewire over periods of different lengths: every
+  fit, score and seed reads each period's own steps only.  A sensor holds
+  every period padded to the longest with its last value; scored, that
+  padding rewarded a proportional loop on a constant setpoint over the loop
+  that explains the command (integral action on the scheduled setpoint).
 - `SpaceHeaterSystem`: `UA` and `thermalMassHeatCapacity` carry bounds and
   are estimable through the base `get_estimable_parameters` contract.
 

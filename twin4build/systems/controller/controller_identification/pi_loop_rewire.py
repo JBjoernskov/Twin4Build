@@ -39,7 +39,10 @@ the seeds are recomputed from the same data to identical values.
 from __future__ import annotations
 
 # Standard library imports
+import contextvars
 import datetime
+import functools
+import inspect
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Tuple
 import traceback as _tb
@@ -73,6 +76,35 @@ from twin4build.systems.controller.controller_identification.loop_classifier imp
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.simulation_time import get_simulation_timesteps
+
+#: During a rewire, each period's own steps (``get_simulation_timesteps``):
+#: a sensor holds every period padded to the longest with its last value,
+#: and the padding is not data.  :func:`_sensor_timeseries` keeps a period's
+#: own steps only, so no fit, score or seed of the rewire reads the padding.
+_OWN_STEPS: contextvars.ContextVar = contextvars.ContextVar("rewire_own_steps", default=None)
+
+
+def _own_period_steps(func):
+    """Run ``func`` (the rewire) with :data:`_OWN_STEPS` set from its
+    ``start_time``, ``end_time`` and ``step_size``."""
+    signature = inspect.signature(func)
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        start, end, step = (bound.arguments[k] for k in ("start_time", "end_time", "step_size"))
+        start = start if isinstance(start, list) else [start]
+        end = end if isinstance(end, list) else [end]
+        step = list(step) if isinstance(step, list) else [step] * max(len(start), len(end))
+        _, _, _, own = get_simulation_timesteps(start, end, step)
+        token = _OWN_STEPS.set(tuple(int(n) for n in own))
+        try:
+            return func(*args, **kwargs)
+        finally:
+            _OWN_STEPS.reset(token)
+
+    return wrapper
 
 # ---------------------------------------------------------------------------
 # Public dataclasses
@@ -162,6 +194,7 @@ FEEDBACK_MIX_WEIGHTS = (0.25, 0.5, 0.75)
 # ---------------------------------------------------------------------------
 
 
+@_own_period_steps
 def _rewire_pi_loops(
     model: core.SimulationModel,
     *,
@@ -652,6 +685,13 @@ def _sensor_timeseries(sensor: SensorSystem) -> Optional[np.ndarray]:
     gives ``-6.1`` -- a silent numerical disaster that corrupts every
     downstream consumer that compares values against physical thresholds).
 
+    Periods of different lengths: a sensor holds every period padded to the
+    longest with its last value.  During a rewire only each period's own
+    steps are returned (:data:`_OWN_STEPS`), one period after another: the
+    padding is no data, and scored it rewards a loop that matches the held
+    values (a proportional loop on a constant setpoint) over the loop that
+    explains the command.
+
     Returns ``None`` if the sensor was not initialised or has no data.
     """
     tsi = getattr(sensor, "time_series_input", None)
@@ -661,6 +701,9 @@ def _sensor_timeseries(sensor: SensorSystem) -> Optional[np.ndarray]:
     if values is None:
         return None
     arr = values.detach().cpu().numpy()
+    own = _OWN_STEPS.get()
+    if arr.ndim == 3 and own is not None and len(own) == arr.shape[1]:
+        return np.concatenate([arr[:n, p, 0] for p, n in enumerate(own)]).astype(np.float64)
     if arr.ndim == 3:
         flat = arr[..., 0].T.reshape(-1)
     elif arr.ndim == 2:
