@@ -223,6 +223,24 @@ class TestWeightedSumSystem(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._step(system, [1.0, 2.0, 3.0])
 
+    @unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+    def test_the_compiled_forward_is_captured_without_a_host_copy(self):
+        """A step captured as a CUDA graph cannot copy from the host: the
+        weights are one tensor on the values' device, also when compiled."""
+        system = WeightedSumSystem(weights=[0.5, 0.25, 0.25], id="captured")
+
+        def step(values):
+            return system.forward(None, {"inputs": values}, None, 600.0)[1]["value"]
+
+        compiled = torch.compile(step, fullgraph=True, dynamic=False)
+        values = torch.tensor([[1.0, 5.0, 3.0], [2.0, 2.0, 2.0]], device="cuda")
+        compiled(values)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            out = compiled(values)
+        graph.replay()
+        torch.testing.assert_close(out.cpu(), torch.tensor([2.5, 2.0]))
+
     def test_forward_keeps_batch_dims(self):
         system = WeightedSumSystem(weights=[1.0, 2.0], id="batched")
         system.input["inputs"].initialize(n_t=1, n_s=1, n_v=2)

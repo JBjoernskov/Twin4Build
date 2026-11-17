@@ -1047,6 +1047,18 @@ The following were not listed when they landed:
   no parameter through, so the readers' blocks stay apart from the home's.
   A batched meta holds one flag per pair (its instances may read the sender
   in different ways), and a saved model keeps the flag.
+- `split_worlds` gives a component's copy in another world an id the
+  model accepts (`partition.member_id`): `<id>__in_<world>` where that fits
+  the id limit, else the world by a hash of its name and the component's id
+  cut to fit.  The copy of a batched component's long id was refused when
+  the split model loaded.
+- A replay leaf of a cut (`partition.replay_leaf`) reads with a copy of its
+  sensor's reader.  It was given the reader itself, so a fill decided for
+  the replayed input was the scored sensor's too, and a sensor that
+  measures a model output refuses a fill: the cut model did not initialize.
+- `WeightedSumSystem` builds its weights as one tensor on the values'
+  device.  Through Python floats a compiled step copied them from the host
+  at every call, which a step captured as a CUDA graph refuses.
 - `System.JOINS_WORLDS` (default `False`): a component whose class sets it
   (an opening between the zones of one room) joins the worlds of the scored
   spaces it reads or feeds into one world (`Worlds.merged`) instead of being

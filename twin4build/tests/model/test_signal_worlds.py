@@ -85,6 +85,55 @@ def build_junction(model_id):
     return model, sensors + [meter]
 
 
+class TestMemberIds(unittest.TestCase):
+    """A copy is named after its component and its world; a model takes no id longer than ``MAX_ID_LEN``, and
+    batched components' ids are long."""
+
+    def test_a_short_name_is_the_plain_one(self):
+        from twin4build.model.partition import member_id
+
+        self.assertEqual(member_id("A_damper", "in", "H"), "A_damper__in_H")
+        self.assertEqual(member_id("W", "projection_in", "M"), "W__projection_in_M")
+
+    def test_a_long_name_fits_stays_distinct_and_is_the_same_every_time(self):
+        from twin4build.model.partition import member_id
+        from twin4build.model.simulation_model.simulation_model import MAX_ID_LEN, _check_id
+
+        long_world = "[ZoneA][ZoneB][ZoneC][ZoneD][ZoneE]_0123456789abcdef"
+        short_cid, long_cid = "terminal_" + "x" * 40, "[a][b][c]_" + "y" * 95
+        ids = set()
+        for cid in (short_cid, long_cid, long_cid + "z"):
+            for world in (long_world, long_world + "_b"):
+                for role in ("in", "projection_in"):
+                    made = member_id(cid, role, world)
+                    self.assertLessEqual(len(made), MAX_ID_LEN)
+                    _check_id(made, "component")
+                    self.assertEqual(made, member_id(cid, role, world))
+                    self.assertIn(f"__{role}_", made)
+                    ids.add(made)
+        self.assertEqual(len(ids), 12)
+        self.assertTrue(member_id(short_cid, "in", long_world).startswith(short_cid + "__in_"))  # the component still named
+
+
+class TestReplayLeaf(unittest.TestCase):
+    def test_the_leaf_reads_the_same_data_with_a_reader_of_its_own(self):
+        """A replayed input may get a fill for its gaps; the sensor it mirrors measures a model output, where a
+        fill would invent measurements to score.  The leaf takes the sensor's reading options as they are and
+        keeps its own afterwards."""
+        from twin4build.model.partition import replay_leaf
+        from twin4build.utils.data_loaders.sources import DataFrameSource
+
+        index = pd.date_range("2024-01-01", periods=6, freq="600s", tz="UTC")
+        sensor = tb.SensorSystem(id="T", source=DataFrameSource(pd.DataFrame({"value": range(6)}, index=index)))
+        sensor.reader.resample_method = "mean"
+        leaf = replay_leaf(sensor, "T__world_replay")
+        self.assertIsNot(leaf.reader, sensor.reader)
+        self.assertEqual(leaf.reader.signature(), sensor.reader.signature())
+        self.assertEqual(leaf.reader.resample_method, "mean")
+        leaf.reader.fill = "constant"
+        self.assertIsNone(sensor.reader.fill)
+
+
 class TestHallway(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

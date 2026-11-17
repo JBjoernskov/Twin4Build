@@ -50,6 +50,7 @@ the sensor replays its series.
 from __future__ import annotations
 
 import copy as _copy
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -410,6 +411,27 @@ class Worlds:
     provided: Dict[str, List[str]] = field(default_factory=dict)
 
 
+def member_id(cid: str, role: str, world: str) -> str:
+    """The id of a component's member in another world: ``<cid>__<role>_<world>`` (``role``: ``"in"`` for a copy,
+    ``"projection_in"`` for a projection).  A world is named after its anchor component, and ids of batched
+    components are long: when the name passes the longest id a model takes (``MAX_ID_LEN``), the world is given
+    by a hash of its name, and the component's id is cut to fit and closed with a hash of the whole id.  The same
+    component and world always give the same id, and two never share one."""
+    from twin4build.model.simulation_model.simulation_model import MAX_ID_LEN
+
+    full = f"{cid}__{role}_{world}"
+    if len(full) <= MAX_ID_LEN:
+        return full
+
+    def digest(text: str) -> str:
+        return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+
+    tail = f"__{role}_{digest(world)}"
+    if len(cid) + len(tail) <= MAX_ID_LEN:
+        return cid + tail
+    return f"{cid[: MAX_ID_LEN - len(tail) - 11]}_{digest(cid)}{tail}"
+
+
 def _clone(model, comp, new_id: str):
     """A copy of ``comp`` (its ports, parameters and sub-models) under ``new_id``, wired to nothing: everything
     else in ``model`` (the other components, the model itself) is referred to, never copied."""
@@ -757,13 +779,13 @@ def split_worlds(
             if sd.has_state(comp) and not entry["state"] and ports:
                 classes = {sd.projection(comp, p) for p in ports}
                 if len(classes) == 1 and None not in classes:
-                    member = next(iter(classes))(id=f"{cid}__projection_in_{anchor(w)}")
+                    member = next(iter(classes))(id=member_id(cid, "projection_in", anchor(w)))
                     model.add_component(member)
                     members[cid][w] = member
                     kind[(cid, w)] = "projection"
                     result.projections.setdefault(cid, []).append(member.id)
                     continue
-            member = _clone(model, comp, f"{cid}__in_{anchor(w)}")
+            member = _clone(model, comp, member_id(cid, "in", anchor(w)))
             model.add_component(member)
             members[cid][w] = member
             kind[(cid, w)] = "copy"
@@ -890,8 +912,12 @@ def _edges_between(sender, receiver, conn, cp) -> List[Edge]:
 
 
 def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable] = None) -> SensorSystem:
-    """A data leaf with ``sensor``'s reader (database, DataFrame or file),
-    optionally with ``transform`` composed onto its unit conversion."""
+    """A data leaf that reads what ``sensor`` reads (database, DataFrame or
+    file) with the sensor's reading options as they are now, optionally with
+    ``transform`` composed onto its unit conversion.  The leaf has a reader
+    of its own: it drives the model, and what is decided for it afterwards (a
+    fill for its gaps) is not the sensor's, whose gaps stay unscored
+    samples."""
     base = sensor.transformation
     if transform is None:
         transformation = base
@@ -900,7 +926,7 @@ def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable
     else:
         def transformation(x, _base=base, _t=transform):
             return _t(_base(x))
-    return SensorSystem(id=leaf_id, uuid=sensor.uuid, source=sensor.reader, transformation=transformation)
+    return SensorSystem(id=leaf_id, uuid=sensor.uuid, source=_copy.deepcopy(sensor.reader), transformation=transformation)
 
 
 def cut_measured_edges(
