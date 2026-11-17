@@ -25,6 +25,12 @@ Execution mode and backend belong to ``Simulator``. Model layout is configured
 separately with ``Model.batch_components()``. Solver-specific settings belong
 in the ``options`` argument of ``estimate`` or ``optimize``.
 
+The **core**—Model, Simulator, Estimator, Optimizer, Translator and their
+interactions—must remain stable and predictable. **Adjacent modules** (e.g.,
+component models and GPU backends) extend the system but must respect explicit
+boundaries, documented contracts, and shared interfaces so contributors
+understand how their work interacts with the foundations.
+
 Repository layout
 ~~~~~~~~~~~~~~~~~
 
@@ -120,10 +126,14 @@ If you prefer to set up manually or need a different environment manager:
 
 **Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
 
-Code Style and Conventions
+With ``venv``, replace the two conda commands with the platform-appropriate
+environment creation and activation commands. Keep the editable install so
+source changes are imported immediately.
+
+Code style and conventions
 --------------------------
 
-Python Style Guide
+Python style guide
 ~~~~~~~~~~~~~~~~~~
 
 - Follow PEP 8 style guidelines
@@ -131,7 +141,7 @@ Python Style Guide
 - Keep line length under 88 characters (Black formatter default)
 - Use meaningful variable and function names
 
-Naming Conventions
+Naming conventions
 ~~~~~~~~~~~~~~~~~~
 
 - **Classes**: PascalCase (e.g., `Model`, `SpaceHeaterSystem`)
@@ -141,7 +151,7 @@ Naming Conventions
 - **Private attributes**: prefix with underscore (e.g., `_components`)
 - **Keys used in System.input and System.output dictionaries**: camelCase (e.g., `indoorTemperature`, `co2Concentration`)
 
-Docstring Standards
+Docstring standards
 ~~~~~~~~~~~~~~~~~~~
 
 Use Google-style docstrings and type hints:
@@ -150,20 +160,21 @@ Use Google-style docstrings and type hints:
 
     def calculate_energy_consumption(self, temperature: float, duration: float) -> float:
         """Calculate energy consumption for a given temperature and duration.
-        
+
         Args:
             temperature: The target temperature in Celsius
             duration: The duration in hours
-            
+
         Returns:
             Energy consumption in kWh
-            
+
         Raises:
             ValueError: If temperature is outside valid range
         """
         pass
 
-For public class properties (acessed from outside the class), use the @property decorator:
+For public class properties (accessed from outside the class), use the
+``@property`` decorator:
 
 .. code-block:: python
 
@@ -172,23 +183,27 @@ For public class properties (acessed from outside the class), use the @property 
         def property_name(self) -> Any:
             """Description of the property."""
             return self._property_name
-    
+
 Avoid defining setter methods for public class properties unless necessary.
-This way, we avoid accidently changing the value of a property.
-If necessary, define a setter method for the property.
+This way, we avoid accidentally changing the value of a property.
+If necessary, define a setter method for the property:
 
 .. code-block:: python
 
     class MyClass:
+        @property
+        def property_name(self) -> Any:
+            """Description of the property."""
+            return self._property_name
+
         @property_name.setter
         def property_name(self, value: Any) -> None:
-            """Description of the property."""
             self._property_name = value
 
-Development Workflow
+Development workflow
 --------------------
 
-Branching Strategy
+Branching strategy
 ~~~~~~~~~~~~~~~~~~
 
 Twin4Build follows a disciplined branching model to keep development organized and reversible:
@@ -201,19 +216,80 @@ Twin4Build follows a disciplined branching model to keep development organized a
   - Once complete, features merge into dev (never directly into main)
   - Main contributors can make exemptions to this rule
 
-Git Workflow
+Git workflow
 ~~~~~~~~~~~~
 
-.. code-block:: console
+1. **Create a GitHub issue** describing the work to be done.
 
-   conda create -n t4bdev python=3.12
-   conda activate t4bdev
-   python -m pip install -e ".[dev]"
-   # GPU (optional): python -m pip install -e ".[dev,gpu]" --extra-index-url https://download.pytorch.org/whl/cu128
+2. **Create a feature branch** from ``dev``:
 
-With ``venv``, replace the first two commands with the platform-appropriate
-environment creation and activation commands. Keep the editable install so
-source changes are imported immediately.
+   .. code-block:: console
+
+      git checkout dev
+      git pull origin dev
+      git checkout -b type/issue-XX/description
+
+   Replace ``type`` with the branch type (see `Branch naming conventions`_),
+   ``XX`` with the issue number, and ``description`` with a brief description.
+
+3. **Make your changes** and commit with a descriptive message in the
+   imperative mood:
+
+   .. code-block:: console
+
+      git commit -m "Add new HVAC component for variable air volume systems"
+
+4. **Push your branch** and create a pull request:
+
+   .. code-block:: console
+
+      git push origin type/issue-XX/description
+
+Branch naming conventions
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All branches must reference a GitHub issue and follow the pattern
+``type/issue-XX/description``:
+
+- ``feature/issue-XX/description``: New features
+- ``bugfix/issue-XX/description``: Bug fixes
+- ``docs/issue-XX/description``: Documentation updates
+- ``test/issue-XX/description``: Test additions or improvements
+- ``refactor/issue-XX/description``: Code refactoring
+
+**Examples:**
+
+- ``feature/issue-88/increase-test-coverage``
+- ``bugfix/issue-42/fix-simulator-memory-leak``
+- ``docs/issue-15/update-installation-guide``
+
+Definition of done
+~~~~~~~~~~~~~~~~~~
+
+A feature is considered "done" when:
+
+- Functionality meets the agreed scope
+- Code satisfies style guidelines (validated with ``python scripts/validate_code.py``)
+- Tests (unit + integration) are included and pass
+- Documentation is updated
+- UML/architecture notes are provided when complexity requires it
+
+This checklist ensures consistency, transparency, and predictable development
+velocity.
+
+Pull request process
+~~~~~~~~~~~~~~~~~~~~
+
+1. **Run code validation**: ``python scripts/validate_code.py``
+2. **Run the test suite locally**: ensure all tests pass before pushing
+3. Update documentation if needed
+4. Add tests for new functionality
+5. Provide UML diagrams or architecture notes for moderately complex features
+6. Add examples if applicable
+7. Request review from maintainers
+
+Note: a pull request is required for any change made to the ``main`` and
+``dev`` branches.
 
 Style and compatibility
 -----------------------
@@ -358,6 +434,7 @@ options; pytest is included in ``.[dev]``):
    python -m pytest
    python -m pytest twin4build/tests/systems/junction/test_junction_systems.py
    python -m pytest twin4build/tests/ --cov=twin4build --cov-report=term-missing
+   python -m pytest twin4build/tests/ --html=report.html --self-contained-html
 
 Every test is a ``unittest.TestCase``, so unittest runs the same suite without
 pytest installed:
@@ -387,6 +464,26 @@ TestCase, or a pytest import. Public
 behavior needs unit coverage; interactions among Model, Simulator, Estimator,
 Optimizer, and Translator need integration coverage.
 
+Testing strategy
+~~~~~~~~~~~~~~~~
+
+Twin4Build aims for a practical balance: ensure stability without
+over-engineering.
+
+**Core requirements:**
+
+- All core features require component and integration tests to verify
+  correctness of the Model→Simulator→Estimator→Optimizer chain
+- **Public methods MUST have unit tests**
+- **Private methods CAN have unit tests for critical functionality**
+- Adjacent modules should include targeted tests to validate their interfaces
+  with the core
+- Before pushing to a branch, the test suite must be run locally to avoid
+  pushing broken code
+
+Tests serve two purposes: quality assurance and developer guidance, helping
+newcomers understand expected behavior.
+
 Writing components
 ------------------
 
@@ -413,6 +510,9 @@ not write ``initialize`` or ``do_step``. ``derive(p, step_size)`` computes what
 depends only on the parameters and the step size, and a data source defines
 ``series(timestamps, step_size)`` instead of ``forward``. Follow
 :doc:`differentiable_system_models` for the rules ``forward`` keeps.
+
+For performance, use torch operations so automatic differentiation works, use
+vectorized operations when possible, and profile code to identify bottlenecks.
 
 Every System passes the conformance check, in Twin4Build and in packages that
 build on it:
@@ -589,12 +689,41 @@ When adding a public package, regenerate the API pages and verify that it is
 reachable from ``auto/twin4build``. Do not solve unwanted API pages only with
 navigation hiding; prevent their generation.
 
+Documentation standards
+~~~~~~~~~~~~~~~~~~~~~~~
+
+- Keep documentation up to date with code changes
+- Include code examples for all public APIs
+- Use clear, concise language
+- Include diagrams and visual aids when helpful
+- Follow reStructuredText formatting for manual pages
+
+Architecture documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For moderately complex features, contributors should provide lightweight but
+effective architecture documentation:
+
+- Small UML-style diagrams or flow charts summarizing class interactions
+- Data flow diagrams when relevant
+- Component lifecycle documentation
+- Interface contracts and boundaries
+
+This documentation supports knowledge transfer, helps reviewers rapidly
+understand intent, reduces onboarding friction, and prevents duplicate or
+conflicting design efforts.
+
+**Note**: Features naturally change the architecture of the library over time.
+The goal of architecture documentation is not purely technical—it's
+communicational: to define a ubiquitous language for developer onboarding and
+establish a traceable history of architectural decisions.
+
 Contribution workflow
 ---------------------
 
 Create focused branches from the repository's current integration branch,
-link work to an issue when required by the maintainers, and use descriptive
-imperative commit messages. Before requesting review:
+link the work to its GitHub issue (see `Development workflow`_), and use
+descriptive imperative commit messages. Before requesting review:
 
 * run relevant tests and static checks;
 * update public API documentation and migration notes;
@@ -647,4 +776,5 @@ Getting help
 Use `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for
 reproducible bug reports and feature discussions. Include the Twin4Build and
 Python versions, operating system, device and dtype where relevant, a minimal
-example, and the complete error message.
+example, and the complete error message. When suggesting a feature, clearly
+distinguish whether it extends core functionality or is an adjacent module.
