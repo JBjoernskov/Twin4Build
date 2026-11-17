@@ -8,8 +8,10 @@ import warnings
 import weakref
 
 import torch
+from torch.utils import _pytree as pytree
 
 from twin4build import settings as _settings
+from twin4build.utils.logger import LOGGER
 
 
 # The ``cuda_graph_sync_phases`` setting (T4B_CUDA_GRAPH_SYNC_PHASES=1)
@@ -78,6 +80,126 @@ def phase_note() -> str:
         f"{'on' if _sync_phases_enabled() else 'off'}; set "
         f"T4B_CUDA_GRAPH_SYNC_PHASES=1 to attribute asynchronous faults)"
     )
+
+
+#: ``c`` in the bound ``c * n * u * scale`` of :func:`check_replay_matches_eager`.
+REPLAY_BOUND_FACTOR = 8
+
+
+def largest_dimension(*trees) -> int:
+    """The largest dimension of any tensor in the pytrees ``trees``, at least 1.
+
+    The ``n`` the callers of :func:`check_replay_matches_eager` pass: the
+    longest sum a function computes runs along an axis of the tensors it
+    reads and returns (the state width, the input width, a batch or window
+    length, a captured rollout's number of steps).
+    """
+    n = 1
+    for tree in trees:
+        for leaf in pytree.tree_leaves(tree):
+            if isinstance(leaf, torch.Tensor) and leaf.dim() > 0:
+                n = max(n, *leaf.shape)
+    return n
+
+
+def check_replay_matches_eager(replay, eager, *, n: int, label: str):
+    """Check a CUDA-graph replay against an eager run of the same function.
+
+    The replay and the eager run do the same arithmetic but may sum in
+    different orders: an atomic accumulation (``index_add_``,
+    ``scatter_add_``, the backward of an indexing) adds in the order its
+    threads arrive, and the capture may pick other kernels than the eager
+    call.  In float32 the two then differ by a few ulp in some elements.
+
+    The difference allowed is the standard bound on floating-point
+    summation: two orders of a sum of ``n`` terms differ by at most about
+    ``2 * n * u * sum(|terms|)``, ``u = finfo(dtype).eps / 2`` the unit
+    roundoff.  Element-wise, in each output tensor::
+
+        |replay - eager| <= c * n * u * scale,    c = REPLAY_BOUND_FACTOR = 8
+
+    ``n`` is the length of the longest sum the function computes; the
+    callers pass :func:`largest_dimension` of its input and output tensors.
+    ``scale`` is the largest finite magnitude of that eager output tensor,
+    at least the dtype's smallest normal.  The assumptions:
+
+    * an output is at most four such sums deep (``c = 8`` is four times the
+      factor 2 of one sum);
+    * a sum's terms are at most of the size of the largest value of the
+      tensor it ends up in, so ``scale`` stands for ``sum(|terms|)``; taking
+      the tensor's largest value instead of each element's own covers an
+      element whose terms cancel to near zero;
+    * no sum is longer than ``n``.
+
+    Relative to ``scale`` the bound is ``c * n * u``: at ``n = 100`` about
+    ``4.8e-5`` in float32 and ``8.9e-14`` in float64.  A wrong capture (a
+    stale address, an input it does not track) is off by about the values
+    themselves, orders of magnitude above the bound while ``n`` stays well
+    below ``1 / (c * u)``.  NaNs must sit at the same elements, infinities
+    must be equal, and so must integer and boolean outputs.
+
+    Raises :class:`AssertionError` naming the largest difference observed
+    and the one allowed.  Otherwise logs both at debug level, for the output
+    closest to its bound, and returns them as ``(observed, allowed)``.
+    """
+    replay_leaves, replay_spec = pytree.tree_flatten(replay)
+    eager_leaves, eager_spec = pytree.tree_flatten(eager)
+    headline = f"{label} differs from eager output"
+    if replay_spec != eager_spec:
+        raise AssertionError(
+            f"{headline}: the outputs are structured {replay_spec}, eager {eager_spec}"
+        )
+    n = max(1, int(n))
+    # the output closest to its bound: (observed / allowed, observed, allowed, index)
+    closest = (0.0, 0.0, 0.0, None)
+    for index, (out, ref) in enumerate(zip(replay_leaves, eager_leaves)):
+        where = f"{headline}: output {index}"
+        tensors = isinstance(out, torch.Tensor), isinstance(ref, torch.Tensor)
+        if not all(tensors):
+            if any(tensors) or out != ref:
+                raise AssertionError(f"{where} is {out!r}, eager {ref!r}")
+            continue
+        if out.shape != ref.shape or out.dtype != ref.dtype:
+            raise AssertionError(
+                f"{where} is {out.dtype} {tuple(out.shape)}, "
+                f"eager {ref.dtype} {tuple(ref.shape)}"
+            )
+        if out.numel() == 0:
+            continue
+        if not (ref.is_floating_point() or ref.is_complex()):
+            if not torch.equal(out, ref):
+                raise AssertionError(f"{where} ({ref.dtype}) is not equal")
+            continue
+        finfo = torch.finfo(ref.dtype)
+        u = finfo.eps / 2
+        largest = float(torch.where(torch.isfinite(ref), ref.abs(), 0).max())
+        scale = max(largest, finfo.tiny)
+        allowed = REPLAY_BOUND_FACTOR * n * u * scale
+        same = (out == ref) | (torch.isnan(out) & torch.isnan(ref))
+        diff = torch.where(same, 0, (out - ref).abs()).nan_to_num(nan=float("inf"))
+        observed = float(diff.max())
+        if observed > allowed:
+            over = int((diff.double() > allowed).sum())
+            raise AssertionError(
+                f"{where} ({ref.dtype}, shape {tuple(ref.shape)}): "
+                f"max |replay - eager| = {observed:.3e} exceeds the allowed "
+                f"{allowed:.3e} (= {REPLAY_BOUND_FACTOR} * n {n} * u {u:.3e} "
+                f"* scale {scale:.3e}); {over} of {ref.numel()} elements over"
+            )
+        if observed / allowed >= closest[0]:
+            closest = (observed / allowed, observed, allowed, index)
+    ratio, observed, allowed, index = closest
+    LOGGER.debug(
+        "%s matches eager output: max |replay - eager| %.3e, allowed %.3e "
+        "(output %s, %.1e of the bound, n %d)",
+        label,
+        observed,
+        allowed,
+        index,
+        ratio,
+        n,
+    )
+    return observed, allowed
 
 
 class CudaGraphCaptureInvalidated(RuntimeError):
@@ -225,13 +347,12 @@ class CudaGraphCallable:
             phase("replay")
             self.graph.replay()
             phase("parity-check")
-            torch.testing.assert_close(
+            n = largest_dimension(self.static_inputs, reference_output)
+            check_replay_matches_eager(
                 self.static_output,
                 reference_output,
-                rtol=1e-9,
-                atol=1e-11,
-                equal_nan=True,
-                msg="Direct CUDA Graph replay differs from eager output",
+                n=n,
+                label="Direct CUDA Graph replay",
             )
             # One warmup + one capture record is enough to certify replay
             # parity. A second eager AD at a perturbed input (the old
@@ -251,13 +372,11 @@ class CudaGraphCallable:
                 for target, value in zip(self.static_inputs, probe_inputs):
                     target.copy_(value)
                 self.graph.replay()
-                torch.testing.assert_close(
+                check_replay_matches_eager(
                     self.static_output,
                     probe_output,
-                    rtol=1e-9,
-                    atol=1e-11,
-                    equal_nan=True,
-                    msg="Direct CUDA Graph replay does not track changed inputs",
+                    n=n,
+                    label="Direct CUDA Graph replay at changed inputs",
                 )
                 for target, value in zip(self.static_inputs, inputs):
                     target.copy_(value)
