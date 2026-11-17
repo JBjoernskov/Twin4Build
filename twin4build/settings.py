@@ -227,13 +227,43 @@ _register(
 )
 _register(
     _Setting(
+        name="expm_squarings",
+        env="T4B_EXPM_SQUARINGS",
+        kind=int,
+        default=18,
+        doc="The doublings of a state-space step's matrix exponential in "
+        "transform mode (scaling and squaring): fixed for every block, so it "
+        "covers the stiffest one a run reaches.  The matrix is balanced first; "
+        "its 1-norm over 2^squarings should stay below about 0.5 in float32 "
+        "and 0.05 in float64.  Each doubling is a matrix product per block "
+        "per step, three in a reverse-mode gradient.  A matrix beyond the "
+        "series' range comes out NaN, never as a wrong finite value.",
+    )
+)
+_register(
+    _Setting(
         name="small_matmul_max",
         env="T4B_SMALL_MATMUL_MAX",
         kind=int,
         default=16,
-        doc="The largest matrix whose exponential is written with broadcast "
-        "products while torch.compile traces (Inductor fuses them into few "
-        "kernels); a larger one uses bmm.",
+        doc="The largest matrix whose products are written as a broadcast "
+        "multiply and sum while torch.compile traces (Inductor fuses them with "
+        "the arithmetic around them): the exponential's own products, and a "
+        "step's product whose left factor has at most this many rows and "
+        "columns.  A larger one is a library call.",
+    )
+)
+_register(
+    _Setting(
+        name="combo_kernels",
+        env="T4B_COMBO_KERNELS",
+        kind=bool,
+        default=False,
+        doc="Compile a step with Inductor's combo kernels: kernels that do not "
+        "depend on each other are combined into one launch.  It pays in a step "
+        "of many small kernels (a launch costs more than its arithmetic) and "
+        "lengthens the compile; an experimental Inductor option, read when a "
+        "step is compiled.",
     )
 )
 _register(
