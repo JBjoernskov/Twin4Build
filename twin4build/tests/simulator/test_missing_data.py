@@ -23,6 +23,7 @@ import unittest
 # Third party imports
 import numpy as np
 import pandas as pd
+import torch
 
 # Local application imports
 import twin4build as tb
@@ -214,6 +215,68 @@ class TestSensorsAndScoring(unittest.TestCase):
         self.assertEqual(getattr(sensor, "_source_component_ids", (sensor.id,))[0], "T2")
         frames = simulator.measurement_frames()
         self.assertFalse(frames[reached[0]]["scored"].to_numpy()[GAP.start:GAP.stop].any())
+
+
+class _RowsOfTheSpan(DataFrameSource):
+    """A frame read as the database is read: only the rows of the window's
+    span are fetched, so a point without a row in it gives an empty frame."""
+
+    def window(self, start_time, end_time, step_size, fetch_span=None):
+        a, b = fetch_span or (start_time, end_time)
+        full = self.df
+        rows = full[(full.index >= a) & (full.index < b)]
+        if len(rows.index) == 0:  # as load_from_database gives a window without a row
+            return pd.DataFrame()
+        self.df = rows
+        try:
+            return super().window(start_time, end_time, step_size, fetch_span)
+        finally:
+            self.df = full
+
+
+class TestAPeriodWithoutAReading(unittest.TestCase):
+    """A point that gives no reading in one of a run's periods (a dead
+    outstation's damper command, a training week of a fit over sixteen) is
+    NaN on that period's steps, as any gap is: the period's samples are not
+    scored and the functional objective is built.  The series kept for the
+    period was empty and the objective could not stack it with the others."""
+
+    PERIODS = (
+        (START, START + datetime.timedelta(hours=3)),
+        (START + datetime.timedelta(days=2), START + datetime.timedelta(days=2, hours=3)),
+    )
+
+    def _model(self, model_id):
+        model = build(n_pairs=1, model_id=model_id)
+        sensor = tb.SensorSystem(id="T0", source=_RowsOfTheSpan(frame(np.full(4 * 6, 21.0), START)), uuid="ROOM0_T")
+        model.add_connection(model.components["Zone0"], sensor, "indoorTemperature", "measuredValue")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model, sensor
+
+    def test_its_steps_are_nan_in_the_series_kept(self):
+        _, sensor = self._model("no_reading_series")
+        starts, ends = [a for a, _ in self.PERIODS], [b for _, b in self.PERIODS]
+        first, second = sensor.get_physical_readings(starts, ends, [STEP, STEP])
+        self.assertEqual(len(first), 18)
+        self.assertFalse(first.isna().any())
+        self.assertEqual(len(second), 18)
+        self.assertTrue(second.isna().all())
+        self.assertEqual(pd.Timestamp(second.index[0]), pd.Timestamp(self.PERIODS[1][0]))
+        self.assertEqual(pd.Timestamp(second.index[-1]), pd.Timestamp(self.PERIODS[1][1]) - pd.Timedelta(seconds=STEP))
+
+    def test_the_functional_objective_is_built(self):
+        model, sensor = self._model("no_reading_objective")
+        heater = model.get_components_by_class(tb.SpaceHeaterSystem)[0]
+        estimator = tb.Estimator(tb.Simulator(model, execution_mode="functional", execution_backend="eager", compile_step=False))
+        estimator.estimate(
+            parameters=[(heater, "UA", None, 1.0, 500.0)], measurements=[(sensor, 0.5)],
+            start_time=[a for a, _ in self.PERIODS], end_time=[b for _, b in self.PERIODS], step_size=STEP,
+            n_warmup=2, method=("scipy", "SLSQP", "ad"), options={"maxiter": 1},
+        )
+        objective = estimator._functional_objective
+        self.assertIsNotNone(objective)
+        self.assertFalse(bool(torch.isnan(objective.ACT[0]).any()))
+        self.assertTrue(bool(torch.isnan(objective.ACT[1]).all()))  # unscored: a zero residual
 
 
 if __name__ == "__main__":
