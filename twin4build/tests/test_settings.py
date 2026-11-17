@@ -177,10 +177,27 @@ class TestSettings(_NoSettingsInTheEnvironment):
         with self.assertRaises(TypeError):
             settings._register(
                 settings._Setting(
-                    name="steps", env="T4B_TEST_STEPS", kind=int, default=1, doc=""
+                    name="steps", env="T4B_TEST_STEPS", kind=float, default=1.0, doc=""
                 )
             )
         self.assertNotIn("steps", settings.snapshot())
+
+    def test_a_whole_number(self):
+        self.assertEqual(
+            settings.snapshot()["small_matmul_max"], {"value": 16, "source": "default"}
+        )
+        os.environ["T4B_SMALL_MATMUL_MAX"] = " 24 "
+        self.assertEqual(settings.value("small_matmul_max"), 24)
+        os.environ["T4B_SMALL_MATMUL_MAX"] = "big"
+        with self.assertRaisesRegex(ValueError, "T4B_SMALL_MATMUL_MAX='big'"):
+            settings.value("small_matmul_max")
+        for wrong in (True, "24", 24.0, None):
+            with self.subTest(value=wrong), self.assertRaises(TypeError):
+                settings.set(small_matmul_max=wrong)
+        settings.set(small_matmul_max=32)
+        self.assertEqual(
+            settings.snapshot()["small_matmul_max"], {"value": 32, "source": "set"}
+        )
 
     def test_the_log_line_names_values_and_sources_once_per_change(self):
         settings.log_active("test")  # whatever came before: the defaults now
@@ -262,6 +279,33 @@ class TestSettingsAreReadWhereTheyAreUsed(_NoSettingsInTheEnvironment):
                     ) as recorded:
                         step()
                 self.assertTrue(recorded.called)
+
+    def test_the_augmented_step(self):
+        A = torch.tensor([[-1.0, 0.2], [0.1, -0.5]], dtype=torch.float64)
+        B = torch.tensor([[1.0], [0.5]], dtype=torch.float64)
+        C = torch.eye(2, dtype=torch.float64)
+        D = torch.zeros(2, 1, dtype=torch.float64)
+        x = torch.tensor([1.0, 2.0], dtype=torch.float64)
+        u = torch.ones(1, dtype=torch.float64)
+
+        def step(transform_mode=True):
+            return dss.bilinear_onestep(A, B, C, D, None, None, x, u, 0.5, transform_mode=transform_mode)
+
+        reference = step(transform_mode=False)  # torch.matrix_exp
+        checkpoint = torch.utils.checkpoint.checkpoint
+        with settings.override(zoh_expm="aug"), mock.patch.object(
+            dss, "_onestep_augmented", wraps=dss._onestep_augmented
+        ) as recorded:
+            x_next, y = step()
+        self.assertTrue(recorded.called)
+        torch.testing.assert_close(x_next, reference[0])
+        torch.testing.assert_close(y, reference[1])
+        with settings.override(zoh_expm="aug", expm_checkpoint=True):
+            with mock.patch.object(
+                torch.utils.checkpoint, "checkpoint", wraps=checkpoint
+            ) as recorded:
+                step()
+        self.assertTrue(recorded.called)
 
 
 class TestResultsCarryTheSettings(_NoSettingsInTheEnvironment):

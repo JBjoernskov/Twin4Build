@@ -5,7 +5,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
-from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, State
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, Setting, State
 from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 
 #: What the in-zone boundary wall's names say now (removed in 2.0).
@@ -220,6 +220,10 @@ class BuildingSpaceThermalSystem(core.System):
                      "manual_setup_n_boundary_temperature")
     }
 
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the walls and heaters it is connected to; False: couple to them one step late",
+    )
     outdoorTemperature = Input(doc="Outdoor temperature [degC]")
     supplyAirFlowRate = Input(doc="Supply air flow rate [kg/s]")
     exhaustAirFlowRate = Input(doc="Exhaust air flow rate [kg/s]")
