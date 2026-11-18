@@ -65,6 +65,12 @@ dependencies = [
     # still imports it in brickify (ModuleNotFoundError on every import of
     # the semantic model); stay on 0.7 until that is fixed upstream
     "brickschema[persistence]<0.8",
+    # The semantic model imports brickify's table handler, which imports
+    # PyYAML and Jinja2.  brickschema declares them only in its [brickify]
+    # extra, and that extra also pins typer<0.5 and xlrd<2, so they are
+    # listed here instead (as click_spinner, xlrd and typer are).
+    "PyYAML",
+    "Jinja2",
     "click_spinner",
     "xlrd",
     "rdflib_sqlalchemy",
