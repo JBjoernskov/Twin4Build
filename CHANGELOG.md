@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed:** a clean `pip install twin4build==2.0.0rc1` could not import the
+  semantic model or the simulation model (`ModuleNotFoundError: No module
+  named 'yaml'`). The semantic model imports brickschema's brickify, which
+  needs PyYAML and Jinja2; both are now declared dependencies.
+- **CI:** a job installs the built wheel alone into a fresh environment and
+  imports every module (`scripts/check_installed_imports.py`), so a
+  dependency the library imports but does not declare fails CI, and with it
+  a release.
+
 ## 2.0.0rc1
 
 The first release candidate of 2.0.0: every change since 1.1.2.  PyPI
