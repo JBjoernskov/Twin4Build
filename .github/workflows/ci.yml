@@ -74,3 +74,30 @@ jobs:
         run: python -m build
       - name: Validate distributions
         run: python -m twine check dist/*
+
+  installed-package:
+    name: Installed package imports with its own dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The test jobs install .[dev], whose tools bring packages the library
+      # itself imports, so a dependency missing from pyproject.toml passes
+      # them (2.0.0rc1 shipped without PyYAML).  Here the wheel is installed
+      # alone into a fresh environment, with CPU torch first.
+      - name: Build the wheel
+        run: python -m pip install --upgrade pip && python -m pip wheel --no-deps -w dist .
+      - name: Install the wheel alone
+        run: |
+          python -m venv "$RUNNER_TEMP/clean"
+          "$RUNNER_TEMP/clean/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/clean/bin/python" -m pip install torch -c constraints/ci.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+          "$RUNNER_TEMP/clean/bin/python" -m pip install dist/*.whl -c constraints/ci.txt
+      # From outside the checkout, so that twin4build is the installed wheel.
+      - name: Import every module
+        working-directory: ${{ runner.temp }}
+        run: '"$RUNNER_TEMP/clean/bin/python" "$GITHUB_WORKSPACE/scripts/check_installed_imports.py"'
