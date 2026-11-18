@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 2.0.0rc2
+
+The second release candidate of 2.0.0: 2.0.0rc1 with one packaging fix.
+Like rc1 it is a pre-release, so `pip install twin4build` keeps 1.1.2 and
+`pip install --pre twin4build` (or `twin4build==2.0.0rc2`) installs it.
 
 - **Fixed:** a clean `pip install twin4build==2.0.0rc1` could not import the
   semantic model or the simulation model (`ModuleNotFoundError: No module
