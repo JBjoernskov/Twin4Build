@@ -187,3 +187,51 @@ class TestLargeExponentialUnderCompile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBlockFormInFloat32(unittest.TestCase):
+    """20 Nov 2026: the block form ``[[A T, B T], [0, 0]]`` carries every input's column; a radiator's bilinear term
+    puts its supply temperature times its gain into its water flow's column (~40 x 1.2 /s), so the block's norm
+    reaches ~1e4 and a float32 exponential lost a slow wall node's decay (8 K a week in a CPU evaluation).  The
+    block's exponential is taken in float64: float32 steps stay with the float64 ones."""
+
+    def _block(self, dtype):
+        # states: air, wall (slow, heavy), radiator element; inputs: outdoor T, supply water T, water flow
+        A = torch.tensor([[-1.2e-4, 4.44e-5, 1.57e-6], [1.56e-6, -1.71e-6, 0.0], [1.37e-3, 0.0, -1.37e-3]],
+                         dtype=torch.float64)[None]
+        B = torch.tensor([[3.7e-7, 0.0, 0.0], [1.53e-7, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=torch.float64)[None]
+        E = torch.zeros(1, 3, 3, 3, dtype=torch.float64)
+        E[0, 2, 2, 2] = -1.16  # the water flow drains the element at its own temperature
+        F = torch.zeros(1, 3, 3, 3, dtype=torch.float64)
+        F[0, 1, 2, 2] = 1.16  # supply temperature x water flow into the element (the orientation that blows the block up)
+        C = torch.eye(3, dtype=torch.float64)[None]
+        D = torch.zeros(1, 3, 3, dtype=torch.float64)
+        x = torch.tensor([[21.0, 17.2, 30.0]], dtype=torch.float64)
+        u = torch.tensor([[8.0, 38.0, 1e-4]], dtype=torch.float64)
+        return [t.to(dtype) for t in (A, B, C, D, E, F, x, u)]
+
+    def _week(self, dtype, transform_mode, mode=None):
+        A, B, C, D, E, F, x, u = self._block(dtype)
+        for _ in range(1008):
+            if mode is None:
+                x, _ = bilinear_onestep(A, B, C, D, E, F, x, u, 600.0, transform_mode=transform_mode)
+            else:
+                with tb.settings.override(zoh_expm=mode):
+                    x, _ = bilinear_onestep(A, B, C, D, E, F, x, u, 600.0, transform_mode=transform_mode)
+        return x.double()
+
+    def test_the_eager_block_step_in_float32_keeps_the_slow_state(self):
+        ref = self._week(torch.float64, False)
+        got = self._week(torch.float32, False)
+        self.assertLess(abs(float(got[0, 1] - ref[0, 1])), 0.05)  # the wall node after a week, K
+        self.assertLess(abs(float(got[0, 0] - ref[0, 0])), 0.05)
+
+    def test_the_transform_block_step_in_float32_keeps_the_slow_state(self):
+        ref = self._week(torch.float64, False)
+        got = self._week(torch.float32, True, mode="block")
+        self.assertLess(abs(float(got[0, 1] - ref[0, 1])), 0.05)
+
+    def test_the_block_form_returns_the_models_dtype(self):
+        A, B, C, D, E, F, x, u = self._block(torch.float32)
+        Ad, Bd = dss._discretize_onestep(A, B, E, F, u, 600.0, transform_mode=False)
+        self.assertEqual((Ad.dtype, Bd.dtype), (torch.float32, torch.float32))

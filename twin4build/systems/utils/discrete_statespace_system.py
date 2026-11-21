@@ -457,13 +457,21 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     # the mode explicitly.  ``None`` preserves compatibility for direct calls,
     # while the explicit bool keeps the private functorch-state query out of
     # captured production graphs.
+    # The block carries every input's column, and a bilinear input's column can be large: a radiator's water flow
+    # gets the supply temperature times its gain (~40 x 1.2 /s, x T: |M| ~ 2.5e4), where a float32 exponential loses
+    # the slow states' decay (20 Nov 2026: a room's wall node drifted 8 K a week in a CPU evaluation; the aug and
+    # phi1 forms never exponentiate those columns).  The block's exponential is taken in float64 and cast back.
+    low = M.dtype in (torch.float32, torch.float16, torch.bfloat16)
+    M64 = M.to(torch.float64) if low else M
     if transform_mode:
         if _settings.value("expm_checkpoint"):
-            expM = torch.utils.checkpoint.checkpoint(_expm_ss, M, use_reentrant=False)
+            expM = torch.utils.checkpoint.checkpoint(_expm_ss, M64, use_reentrant=False)
         else:
-            expM = _expm_ss(M)
+            expM = _expm_ss(M64)
     else:
-        expM = torch.matrix_exp(M)
+        expM = torch.matrix_exp(M64)
+    if low:
+        expM = expM.to(M.dtype)
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
